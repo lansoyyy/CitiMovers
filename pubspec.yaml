@@ -38,6 +38,12 @@ dependencies:
   fluttertoast: ^8.2.4
   flutter_spinkit: ^5.2.0
 
+  # Location & Maps (Uncomment when ready to integrate)
+  # google_maps_flutter: ^2.5.0
+  # geolocator: ^10.1.0
+  # geocoding: ^2.1.1
+  # google_places_flutter: ^2.0.9
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

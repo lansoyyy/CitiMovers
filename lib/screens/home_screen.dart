@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_constants.dart';
 import '../utils/ui_helpers.dart';
+import 'profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,7 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _screens = [
     const HomeTab(),
     const BookingsTab(),
-    const ProfileTab(),
+    const ProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -159,7 +160,7 @@ class HomeTab extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        
+
                         Row(
                           children: [
                             Expanded(
@@ -168,7 +169,8 @@ class HomeTab extends StatelessWidget {
                                 title: 'Book Delivery',
                                 color: AppColors.primaryRed,
                                 onTap: () {
-                                  UIHelpers.showInfoToast('Book Delivery tapped');
+                                  UIHelpers.showInfoToast(
+                                      'Book Delivery tapped');
                                 },
                               ),
                             ),
@@ -414,28 +416,6 @@ class BookingsTab extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// Profile Tab
-class ProfileTab extends StatelessWidget {
-  const ProfileTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-      ),
-      body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            UIHelpers.showSuccessToast('Profile updated successfully!');
-          },
-          child: const Text('Test Toast'),
         ),
       ),
     );

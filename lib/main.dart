@@ -1,3 +1,4 @@
+import 'package:citimovers/screens/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'utils/app_theme.dart';
@@ -27,7 +28,7 @@ class CitiMoversApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const SplashScreen(),
+      home: const HomeScreen(),
     );
   }
 }

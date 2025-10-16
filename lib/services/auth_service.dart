@@ -126,6 +126,19 @@ class AuthService {
     debugPrint('User logged out');
   }
 
+  /// Get current user
+  Future<UserModel?> getCurrentUser() async {
+    try {
+      // TODO: Implement Firebase user fetch
+      // For now, return the in-memory user
+      await Future.delayed(const Duration(milliseconds: 500));
+      return _currentUser;
+    } catch (e) {
+      debugPrint('Error getting current user: $e');
+      return null;
+    }
+  }
+
   /// Update user profile
   Future<bool> updateProfile({
     String? name,
@@ -149,6 +162,37 @@ class AuthService {
       return true;
     } catch (e) {
       debugPrint('Error updating profile: $e');
+      return false;
+    }
+  }
+
+  /// Change password
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      // TODO: Implement Firebase password change
+      await Future.delayed(const Duration(seconds: 1));
+      
+      debugPrint('Password changed successfully');
+      return true;
+    } catch (e) {
+      debugPrint('Error changing password: $e');
+      return false;
+    }
+  }
+
+  /// Request account deletion
+  Future<bool> requestAccountDeletion() async {
+    try {
+      // TODO: Implement account deletion request
+      await Future.delayed(const Duration(seconds: 1));
+      
+      debugPrint('Account deletion requested');
+      return true;
+    } catch (e) {
+      debugPrint('Error requesting account deletion: $e');
       return false;
     }
   }
