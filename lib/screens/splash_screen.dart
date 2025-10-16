@@ -4,6 +4,8 @@ import 'dart:async';
 import '../utils/app_colors.dart';
 import '../utils/app_constants.dart';
 import '../utils/ui_helpers.dart';
+import '../services/auth_service.dart';
+import 'auth/welcome_screen.dart';
 import 'home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -24,18 +26,6 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     _setupAnimations();
     _navigateToHome();
-    _setSystemUIOverlay();
-  }
-
-  void _setSystemUIOverlay() {
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: AppColors.primaryRed,
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
-    );
   }
 
   void _setupAnimations() {
@@ -65,13 +55,17 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(seconds: 3));
 
     if (mounted) {
-      // TODO: Check authentication status and navigate accordingly
-      // For now, navigate to home screen
+      // Check if user is logged in
+      final authService = AuthService();
+      final isLoggedIn = authService.isLoggedIn;
+
+      // Navigate to appropriate screen
+      final destination = isLoggedIn ? const HomeScreen() : const WelcomeScreen();
+
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              const HomeScreen(),
+          pageBuilder: (context, animation, secondaryAnimation) => destination,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(
               opacity: animation,
@@ -93,181 +87,134 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppColors.primaryGradient,
-        ),
-        child: SafeArea(
-          child: Stack(
+      backgroundColor: AppColors.white,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Decorative circles
-              Positioned(
-                top: -50,
-                right: -50,
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.white.withOpacity(0.1),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: -100,
-                left: -100,
-                child: Container(
-                  width: 300,
-                  height: 300,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.white.withOpacity(0.1),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 150,
-                left: -30,
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.white.withOpacity(0.05),
-                  ),
-                ),
-              ),
+              const Spacer(flex: 2),
 
-              // Main content
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Spacer(flex: 2),
-
-                    // Animated logo/icon
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        return FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: ScaleTransition(
-                            scale: _scaleAnimation,
-                            child: Container(
-                              width: 140,
-                              height: 140,
-                              decoration: BoxDecoration(
-                                color: AppColors.white,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 30,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Icon(
-                                  Icons.local_shipping_rounded,
-                                  size: 70,
-                                  color: AppColors.primaryRed,
-                                ),
-                              ),
+              // Animated logo/icon
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryRed.withOpacity(0.3),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
                             ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.local_shipping_rounded,
+                            size: 60,
+                            color: AppColors.white,
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
-
-                    const SizedBox(height: 32),
-
-                    // App name
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        return FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: Column(
-                            children: [
-                              Text(
-                                AppConstants.appName,
-                                style: const TextStyle(
-                                  fontSize: 42,
-                                  fontFamily: 'Bold',
-                                  color: AppColors.white,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                AppConstants.appTagline,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontFamily: 'Regular',
-                                  color: AppColors.white.withOpacity(0.9),
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-
-                    const Spacer(flex: 2),
-
-                    // Loading indicator
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        return FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: Column(
-                            children: [
-                              UIHelpers.loadingThreeBounce(
-                                color: AppColors.white,
-                                size: 25,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Loading...',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'Regular',
-                                  color: AppColors.white.withOpacity(0.8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 50),
-
-                    // Version info
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        return FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: Text(
-                            'Version ${AppConstants.appVersion}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Regular',
-                              color: AppColors.white.withOpacity(0.6),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 30),
-                  ],
-                ),
+                  );
+                },
               ),
+
+              const SizedBox(height: 40),
+
+              // App name
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Column(
+                      children: [
+                        Text(
+                          AppConstants.appName,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          AppConstants.appTagline,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontFamily: 'Regular',
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+              const Spacer(flex: 2),
+
+              // Loading indicator
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Column(
+                      children: [
+                        UIHelpers.loadingThreeBounce(
+                          color: AppColors.primaryRed,
+                          size: 22,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Loading...',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Regular',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 50),
+
+              // Version info
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Text(
+                      'Version ${AppConstants.appVersion}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Regular',
+                        color: AppColors.textHint,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 30),
             ],
           ),
         ),
