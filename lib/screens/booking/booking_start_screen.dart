@@ -3,7 +3,7 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/location_model.dart';
 import '../../services/maps_service.dart';
-import 'location_picker_screen.dart';
+import 'map_view_screen.dart';
 import 'vehicle_selection_screen.dart';
 
 class BookingStartScreen extends StatefulWidget {
@@ -15,46 +15,115 @@ class BookingStartScreen extends StatefulWidget {
 
 class _BookingStartScreenState extends State<BookingStartScreen> {
   final MapsService _mapsService = MapsService();
-  
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+
   LocationModel? _pickupLocation;
   LocationModel? _dropoffLocation;
   double? _distance;
   bool _isCalculating = false;
+  bool _isSearching = false;
+  List<PlaceSuggestion> _searchSuggestions = [];
+  bool _isSelectingPickup = true; // Toggle between pickup and dropoff search
 
   Future<void> _selectPickupLocation() async {
-    final location = await Navigator.push<LocationModel>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const LocationPickerScreen(
-          title: 'Pickup Location',
-        ),
-      ),
-    );
-
-    if (location != null) {
-      setState(() {
-        _pickupLocation = location;
-      });
-      _calculateDistance();
-    }
+    setState(() {
+      _isSelectingPickup = true;
+      _searchController.clear();
+      _searchSuggestions.clear();
+    });
+    _searchFocusNode.requestFocus();
   }
 
   Future<void> _selectDropoffLocation() async {
-    final location = await Navigator.push<LocationModel>(
+    setState(() {
+      _isSelectingPickup = false;
+      _searchController.clear();
+      _searchSuggestions.clear();
+    });
+    _searchFocusNode.requestFocus();
+  }
+
+  Future<void> _searchPlaces(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        _searchSuggestions = [];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearching = true);
+
+    final suggestions = await _mapsService.searchPlaces(query);
+
+    setState(() {
+      _searchSuggestions = suggestions;
+      _isSearching = false;
+    });
+  }
+
+  Future<void> _selectSuggestion(PlaceSuggestion suggestion) async {
+    UIHelpers.showLoadingDialog(context);
+
+    final location = await _mapsService.getPlaceDetails(suggestion.placeId);
+
+    if (mounted) {
+      Navigator.pop(context); // Close loading dialog
+
+      if (location != null) {
+        setState(() {
+          if (_isSelectingPickup) {
+            _pickupLocation = location;
+          } else {
+            _dropoffLocation = location;
+          }
+          _searchController.clear();
+          _searchSuggestions.clear();
+          _searchFocusNode.unfocus();
+        });
+
+        // Calculate distance if both locations are set
+        if (_pickupLocation != null && _dropoffLocation != null) {
+          _calculateDistance();
+        }
+      } else {
+        UIHelpers.showErrorToast('Failed to get location details');
+      }
+    }
+  }
+
+  void _openMapSelection() {
+    Navigator.push<LocationModel>(
       context,
       MaterialPageRoute(
-        builder: (context) => const LocationPickerScreen(
-          title: 'Drop-off Location',
+        builder: (context) => MapViewScreen(
+          pickupLocation: _isSelectingPickup ? null : _pickupLocation,
+          dropoffLocation: !_isSelectingPickup ? null : _dropoffLocation,
+          isSelectingPickup: _isSelectingPickup,
+          showRoute: false, // Don't show route when selecting
+          isEmbedded: false, // Not embedded when used for selection
+          // No callback needed here since we're using Navigator.pop to return the location
         ),
       ),
-    );
+    ).then((location) {
+      if (location != null) {
+        setState(() {
+          if (_isSelectingPickup) {
+            _pickupLocation = location;
+          } else {
+            _dropoffLocation = location;
+          }
+          _searchController.clear();
+          _searchSuggestions.clear();
+        });
 
-    if (location != null) {
-      setState(() {
-        _dropoffLocation = location;
-      });
-      _calculateDistance();
-    }
+        // Calculate distance if both locations are set
+        if (_pickupLocation != null && _dropoffLocation != null) {
+          _calculateDistance();
+        }
+      }
+    });
   }
 
   Future<void> _calculateDistance() async {
@@ -74,7 +143,9 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
   }
 
   void _continueToVehicleSelection() {
-    if (_pickupLocation == null || _dropoffLocation == null || _distance == null) {
+    if (_pickupLocation == null ||
+        _dropoffLocation == null ||
+        _distance == null) {
       UIHelpers.showErrorToast('Please select both locations');
       return;
     }
@@ -97,173 +168,439 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
       backgroundColor: AppColors.scaffoldBackground,
       appBar: AppBar(
         title: const Text('New Booking'),
+        elevation: 0,
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: AppColors.textPrimary,
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  const Text(
-                    'Where would you like to go?',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontFamily: 'Bold',
-                      color: AppColors.textPrimary,
-                    ),
+          // Map View
+          MapViewScreen(
+            key: ValueKey(
+                'map_${_pickupLocation?.latitude}_${_pickupLocation?.longitude}_${_dropoffLocation?.latitude}_${_dropoffLocation?.longitude}'),
+            pickupLocation: _pickupLocation,
+            dropoffLocation: _dropoffLocation,
+            isSelectingPickup: false,
+            showRoute: _pickupLocation != null && _dropoffLocation != null,
+            isEmbedded: true,
+            onLocationChanged: (pickup, dropoff) {
+              setState(() {
+                if (pickup != null) {
+                  _pickupLocation = pickup;
+                }
+                if (dropoff != null) {
+                  _dropoffLocation = dropoff;
+                }
+              });
+
+              // Calculate distance if both locations are set
+              if (_pickupLocation != null && _dropoffLocation != null) {
+                _calculateDistance();
+              }
+            },
+          ),
+
+          // Search Bar and Location Selection
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 16,
+            child: Column(
+              children: [
+                // Search Bar
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Select your pickup and drop-off locations',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Regular',
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Location Type Selector
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _isSelectingPickup = true;
+                                  _searchController.clear();
+                                  _searchSuggestions.clear();
+                                });
+                              },
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _isSelectingPickup
+                                      ? AppColors.primaryRed.withOpacity(0.1)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.radio_button_checked,
+                                      color: _isSelectingPickup
+                                          ? AppColors.primaryRed
+                                          : AppColors.textHint,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Pickup',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontFamily: 'Medium',
+                                        color: _isSelectingPickup
+                                            ? AppColors.primaryRed
+                                            : AppColors.textHint,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _isSelectingPickup = false;
+                                  _searchController.clear();
+                                  _searchSuggestions.clear();
+                                });
+                              },
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: !_isSelectingPickup
+                                      ? AppColors.primaryBlue.withOpacity(0.1)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.location_on,
+                                      color: !_isSelectingPickup
+                                          ? AppColors.primaryBlue
+                                          : AppColors.textHint,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Drop-off',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontFamily: 'Medium',
+                                        color: !_isSelectingPickup
+                                            ? AppColors.primaryBlue
+                                            : AppColors.textHint,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
 
-                  const SizedBox(height: 32),
-
-                  // Pickup Location
-                  _LocationSelector(
-                    icon: Icons.radio_button_checked,
-                    iconColor: AppColors.primaryRed,
-                    title: 'Pickup Location',
-                    location: _pickupLocation,
-                    onTap: _selectPickupLocation,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Drop-off Location
-                  _LocationSelector(
-                    icon: Icons.location_on,
-                    iconColor: AppColors.primaryBlue,
-                    title: 'Drop-off Location',
-                    location: _dropoffLocation,
-                    onTap: _selectDropoffLocation,
-                  ),
-
-                  if (_distance != null) ...[
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.primaryBlue.withOpacity(0.3),
+                      // Search Input
+                      TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        onChanged: _searchPlaces,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Search for ${_isSelectingPickup ? 'pickup' : 'drop-off'} location',
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: _isSelectingPickup
+                                ? AppColors.primaryRed
+                                : AppColors.primaryBlue,
+                          ),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _searchSuggestions.clear();
+                                  },
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.map),
+                                  onPressed: _openMapSelection,
+                                  tooltip: 'Select on map',
+                                ),
+                          filled: true,
+                          fillColor: AppColors.scaffoldBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: _isSelectingPickup
+                                  ? AppColors.primaryRed.withOpacity(0.3)
+                                  : AppColors.primaryBlue.withOpacity(0.3),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: _isSelectingPickup
+                                  ? AppColors.primaryRed
+                                  : AppColors.primaryBlue,
+                            ),
+                          ),
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.route,
-                            color: AppColors.primaryBlue,
-                            size: 24,
+                    ],
+                  ),
+                ),
+
+                // Search Suggestions
+                if (_searchSuggestions.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _searchSuggestions.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final suggestion = _searchSuggestions[index];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _isSelectingPickup
+                                  ? AppColors.primaryRed.withOpacity(0.1)
+                                  : AppColors.primaryBlue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.location_on,
+                              color: _isSelectingPickup
+                                  ? AppColors.primaryRed
+                                  : AppColors.primaryBlue,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            suggestion.mainText,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Medium',
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          subtitle: Text(
+                            suggestion.secondaryText,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          onTap: () => _selectSuggestion(suggestion),
+                        );
+                      },
+                    ),
+                  ),
+
+                // Selected Locations Display
+                if (_pickupLocation != null || _dropoffLocation != null)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        if (_pickupLocation != null)
+                          _SelectedLocationCard(
+                            icon: Icons.radio_button_checked,
+                            iconColor: AppColors.primaryRed,
+                            title: 'Pickup',
+                            location: _pickupLocation!,
+                            onTap: () {
+                              setState(() {
+                                _isSelectingPickup = true;
+                                _searchController.text =
+                                    _pickupLocation!.address;
+                              });
+                              _searchFocusNode.requestFocus();
+                            },
+                          ),
+                        if (_pickupLocation != null && _dropoffLocation != null)
+                          const SizedBox(height: 8),
+                        if (_dropoffLocation != null)
+                          _SelectedLocationCard(
+                            icon: Icons.location_on,
+                            iconColor: AppColors.primaryBlue,
+                            title: 'Drop-off',
+                            location: _dropoffLocation!,
+                            onTap: () {
+                              setState(() {
+                                _isSelectingPickup = false;
+                                _searchController.text =
+                                    _dropoffLocation!.address;
+                              });
+                              _searchFocusNode.requestFocus();
+                            },
+                          ),
+                        if (_distance != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryBlue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.primaryBlue.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
                               children: [
-                                const Text(
-                                  'Estimated Distance',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontFamily: 'Regular',
-                                    color: AppColors.textSecondary,
-                                  ),
+                                const Icon(
+                                  Icons.route,
+                                  color: AppColors.primaryBlue,
+                                  size: 20,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${_distance!.toStringAsFixed(1)} km',
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontFamily: 'Bold',
-                                    color: AppColors.primaryBlue,
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${_distance!.toStringAsFixed(1)} km',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontFamily: 'Bold',
+                                      color: AppColors.primaryBlue,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
-                  ],
-
-                  if (_isCalculating) ...[
-                    const SizedBox(height: 24),
-                    const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          // Continue Button
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
+                  ),
               ],
             ),
-            child: SafeArea(
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _pickupLocation != null &&
-                          _dropoffLocation != null &&
-                          _distance != null
-                      ? _continueToVehicleSelection
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: AppColors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    disabledBackgroundColor: AppColors.textHint.withOpacity(0.3),
-                  ),
-                  child: const Text(
-                    'Select Vehicle',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontFamily: 'Bold',
-                    ),
-                  ),
+          ),
+
+          // Loading Indicator
+          if (_isCalculating || _isSearching)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
+                ),
+              ),
+            ),
+        ],
+      ),
+
+      // Continue Button
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _pickupLocation != null &&
+                      _dropoffLocation != null &&
+                      _distance != null
+                  ? _continueToVehicleSelection
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryRed,
+                foregroundColor: AppColors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                disabledBackgroundColor: AppColors.textHint.withOpacity(0.3),
+              ),
+              child: const Text(
+                'Select Vehicle',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontFamily: 'Bold',
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
 }
 
-// Location Selector Widget
-class _LocationSelector extends StatelessWidget {
+// Selected Location Card Widget
+class _SelectedLocationCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
-  final LocationModel? location;
+  final LocationModel location;
   final VoidCallback onTap;
 
-  const _LocationSelector({
+  const _SelectedLocationCard({
     required this.icon,
     required this.iconColor,
     required this.title,
@@ -276,31 +613,26 @@ class _LocationSelector extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: location != null
-                ? iconColor.withOpacity(0.3)
-                : AppColors.textHint.withOpacity(0.2),
-          ),
+          color: AppColors.scaffoldBackground,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 icon,
                 color: iconColor,
-                size: 24,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -308,30 +640,29 @@ class _LocationSelector extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontFamily: 'Medium',
                       color: AppColors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
-                    location?.address ?? 'Select location',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: location != null ? 'Regular' : 'Medium',
-                      color: location != null
-                          ? AppColors.textPrimary
-                          : AppColors.textHint,
+                    location.shortAddress,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Regular',
+                      color: AppColors.textPrimary,
                     ),
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
             Icon(
-              Icons.chevron_right,
+              Icons.edit,
               color: AppColors.textHint,
+              size: 20,
             ),
           ],
         ),

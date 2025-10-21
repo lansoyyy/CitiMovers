@@ -26,7 +26,7 @@ class BookingSummaryScreen extends StatefulWidget {
 class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   final TextEditingController _notesController = TextEditingController();
   final BookingService _bookingService = BookingService();
-  
+
   String _bookingType = 'now'; // 'now' or 'scheduled'
   DateTime? _scheduledDateTime;
   bool _isLoading = false;
@@ -73,7 +73,9 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       scheduledDateTime: _scheduledDateTime,
       distance: widget.distance,
       estimatedFare: _estimatedFare,
-      notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      notes: _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
     );
 
     setState(() => _isLoading = false);
@@ -337,17 +339,20 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                       children: [
                         _FareRow(
                           label: 'Base Fare',
-                          value: '₱${widget.vehicle.baseFare.toStringAsFixed(0)}',
+                          value:
+                              'P${widget.vehicle.baseFare.toStringAsFixed(0)}',
                         ),
                         const SizedBox(height: 8),
                         _FareRow(
-                          label: 'Distance (${widget.distance.toStringAsFixed(1)} km)',
-                          value: '₱${(widget.distance * widget.vehicle.perKmRate).toStringAsFixed(0)}',
+                          label:
+                              'Distance (${widget.distance.toStringAsFixed(1)} km)',
+                          value:
+                              'P${(widget.distance * widget.vehicle.perKmRate).toStringAsFixed(0)}',
                         ),
                         const Divider(height: 24),
                         _FareRow(
                           label: 'Total',
-                          value: '₱${_estimatedFare.toStringAsFixed(0)}',
+                          value: 'P${_estimatedFare.toStringAsFixed(0)}',
                           isBold: true,
                         ),
                       ],
@@ -384,7 +389,8 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    disabledBackgroundColor: AppColors.textHint.withOpacity(0.3),
+                    disabledBackgroundColor:
+                        AppColors.textHint.withOpacity(0.3),
                   ),
                   child: _isLoading
                       ? const SizedBox(
@@ -448,7 +454,8 @@ class _BookingTypeCard extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? AppColors.primaryRed : AppColors.textSecondary,
+              color:
+                  isSelected ? AppColors.primaryRed : AppColors.textSecondary,
               size: 32,
             ),
             const SizedBox(height: 8),
@@ -457,7 +464,8 @@ class _BookingTypeCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontFamily: 'Bold',
-                color: isSelected ? AppColors.primaryRed : AppColors.textPrimary,
+                color:
+                    isSelected ? AppColors.primaryRed : AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 4),

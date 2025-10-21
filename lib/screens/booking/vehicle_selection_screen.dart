@@ -213,7 +213,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '₱${estimatedFare.toStringAsFixed(0)}',
+                          'P${estimatedFare.toStringAsFixed(0)}',
                           style: const TextStyle(
                             fontSize: 20,
                             fontFamily: 'Bold',
@@ -255,7 +255,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _selectedVehicle != null ? _continueToSummary : null,
+                  onPressed:
+                      _selectedVehicle != null ? _continueToSummary : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryRed,
                     foregroundColor: AppColors.white,
@@ -263,7 +264,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    disabledBackgroundColor: AppColors.textHint.withOpacity(0.3),
+                    disabledBackgroundColor:
+                        AppColors.textHint.withOpacity(0.3),
                   ),
                   child: const Text(
                     'Continue',

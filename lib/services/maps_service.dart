@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math';
+import 'package:http/http.dart' as http;
 import '../models/location_model.dart';
 
 /// Maps Service for CitiMovers
@@ -11,25 +13,21 @@ class MapsService {
   MapsService._internal();
 
   // TODO: Add your Google Maps API Key
-  static const String _apiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
+  static const String _apiKey = 'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o';
+
+  // Base URLs for Google Maps APIs
+  static const String _placesApiBase =
+      'https://maps.googleapis.com/maps/api/place';
+  static const String _directionsApiBase =
+      'https://maps.googleapis.com/maps/api/directions';
+  static const String _geocodingApiBase =
+      'https://maps.googleapis.com/maps/api/geocode';
 
   /// Search places using Google Places Autocomplete API
-  /// TODO: Implement with google_places_flutter or http package
   Future<List<PlaceSuggestion>> searchPlaces(String query) async {
-    try {
-      // TODO: Implement Google Places Autocomplete
-      // final response = await http.get(
-      //   Uri.parse(
-      //     'https://maps.googleapis.com/maps/api/place/autocomplete/json'
-      //     '?input=$query'
-      //     '&key=$_apiKey'
-      //     '&components=country:ph' // Philippines only
-      //   ),
-      // );
-
-      // Mock implementation
+    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+      // Return mock data if API key is not set
       await Future.delayed(const Duration(milliseconds: 800));
-
       return [
         PlaceSuggestion(
           placeId: 'place_1',
@@ -50,6 +48,33 @@ class MapsService {
           secondaryText: 'Taguig, Metro Manila',
         ),
       ];
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_placesApiBase/autocomplete/json'
+            '?input=${Uri.encodeComponent(query)}'
+            '&key=$_apiKey'
+            '&components=country:ph' // Philippines only
+            '&sessiontoken=${_generateSessionToken()}'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final predictions = data['predictions'] as List;
+          return predictions.map((prediction) {
+            return PlaceSuggestion(
+              placeId: prediction['place_id'],
+              description: prediction['description'],
+              mainText: prediction['structured_formatting']['main_text'],
+              secondaryText:
+                  prediction['structured_formatting']['secondary_text'] ?? '',
+            );
+          }).toList();
+        }
+      }
+      return [];
     } catch (e) {
       print('Error searching places: $e');
       return [];
@@ -57,21 +82,10 @@ class MapsService {
   }
 
   /// Get place details from place ID
-  /// TODO: Implement with Google Places Details API
   Future<LocationModel?> getPlaceDetails(String placeId) async {
-    try {
-      // TODO: Implement Google Places Details API
-      // final response = await http.get(
-      //   Uri.parse(
-      //     'https://maps.googleapis.com/maps/api/place/details/json'
-      //     '?place_id=$placeId'
-      //     '&key=$_apiKey'
-      //   ),
-      // );
-
-      // Mock implementation
+    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+      // Return mock data if API key is not set
       await Future.delayed(const Duration(milliseconds: 500));
-
       return LocationModel(
         address: 'Sample Address for $placeId',
         latitude: 14.5995,
@@ -80,6 +94,47 @@ class MapsService {
         province: 'Metro Manila',
         country: 'Philippines',
       );
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_placesApiBase/details/json'
+            '?place_id=$placeId'
+            '&key=$_apiKey'
+            '&fields=name,formatted_address,geometry,address_component'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final result = data['result'];
+          final location = result['geometry']['location'];
+          final addressComponents = result['address_components'] as List;
+
+          String? city, province, country;
+
+          for (var component in addressComponents) {
+            final types = component['types'] as List;
+            if (types.contains('locality')) {
+              city = component['long_name'];
+            } else if (types.contains('administrative_area_level_1')) {
+              province = component['long_name'];
+            } else if (types.contains('country')) {
+              country = component['long_name'];
+            }
+          }
+
+          return LocationModel(
+            address: result['formatted_address'],
+            latitude: location['lat'],
+            longitude: location['lng'],
+            city: city,
+            province: province,
+            country: country,
+          );
+        }
+      }
+      return null;
     } catch (e) {
       print('Error getting place details: $e');
       return null;
@@ -87,41 +142,55 @@ class MapsService {
   }
 
   /// Calculate route between two points
-  /// TODO: Implement with Google Directions API
   Future<RouteInfo?> calculateRoute(
     LocationModel origin,
     LocationModel destination,
   ) async {
-    try {
-      // TODO: Implement Google Directions API
-      // final response = await http.get(
-      //   Uri.parse(
-      //     'https://maps.googleapis.com/maps/api/directions/json'
-      //     '?origin=${origin.latitude},${origin.longitude}'
-      //     '&destination=${destination.latitude},${destination.longitude}'
-      //     '&key=$_apiKey'
-      //   ),
-      // );
-
-      // Mock implementation
+    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+      // Mock implementation if API key is not set
       await Future.delayed(const Duration(milliseconds: 800));
-
-      // Calculate simple distance
       final distance = _calculateDistance(
         origin.latitude,
         origin.longitude,
         destination.latitude,
         destination.longitude,
       );
-
-      // Estimate duration (assuming 30 km/h average speed)
       final durationMinutes = (distance / 30 * 60).round();
-
       return RouteInfo(
         distanceKm: distance,
         durationMinutes: durationMinutes,
-        polylinePoints: [], // TODO: Decode polyline from API response
+        polylinePoints: [],
       );
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_directionsApiBase/json'
+            '?origin=${origin.latitude},${origin.longitude}'
+            '&destination=${destination.latitude},${destination.longitude}'
+            '&key=$_apiKey'
+            '&alternatives=false'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final route = data['routes'][0];
+          final leg = route['legs'][0];
+
+          final distance = leg['distance']['value'] / 1000; // Convert to km
+          final duration = leg['duration']['value'] / 60; // Convert to minutes
+          final polylinePoints =
+              _decodePolyline(route['overview_polyline']['points']);
+
+          return RouteInfo(
+            distanceKm: distance,
+            durationMinutes: duration.round(),
+            polylinePoints: polylinePoints,
+          );
+        }
+      }
+      return null;
     } catch (e) {
       print('Error calculating route: $e');
       return null;
@@ -151,7 +220,8 @@ class MapsService {
 
     // Add peak hour surcharge (20%) if needed
     final now = DateTime.now();
-    if ((now.hour >= 7 && now.hour <= 9) || (now.hour >= 17 && now.hour <= 19)) {
+    if ((now.hour >= 7 && now.hour <= 9) ||
+        (now.hour >= 17 && now.hour <= 19)) {
       totalFare *= 1.2;
     }
 
@@ -183,6 +253,104 @@ class MapsService {
 
   double _toRadians(double degree) {
     return degree * (pi / 180);
+  }
+
+  /// Generate a session token for Places API
+  String _generateSessionToken() {
+    return DateTime.now().millisecondsSinceEpoch.toString();
+  }
+
+  /// Decode Google Maps polyline
+  List<Map<String, double>> _decodePolyline(String encoded) {
+    List<Map<String, double>> points = [];
+    int index = 0, len = encoded.length;
+    int lat = 0, lng = 0;
+
+    while (index < len) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      points.add({
+        'latitude': lat / 1E5,
+        'longitude': lng / 1E5,
+      });
+    }
+    return points;
+  }
+
+  /// Get address from coordinates (reverse geocoding)
+  Future<LocationModel?> getAddressFromCoordinates(
+      double lat, double lng) async {
+    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+      // Mock implementation if API key is not set
+      await Future.delayed(const Duration(milliseconds: 500));
+      return LocationModel(
+        address: 'Mock Address for $lat, $lng',
+        latitude: lat,
+        longitude: lng,
+        city: 'Manila',
+        province: 'Metro Manila',
+        country: 'Philippines',
+      );
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_geocodingApiBase/json'
+            '?latlng=$lat,$lng'
+            '&key=$_apiKey'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final result = data['results'][0];
+          final addressComponents = result['address_components'] as List;
+
+          String? city, province, country;
+
+          for (var component in addressComponents) {
+            final types = component['types'] as List;
+            if (types.contains('locality')) {
+              city = component['long_name'];
+            } else if (types.contains('administrative_area_level_1')) {
+              province = component['long_name'];
+            } else if (types.contains('country')) {
+              country = component['long_name'];
+            }
+          }
+
+          return LocationModel(
+            address: result['formatted_address'],
+            latitude: lat,
+            longitude: lng,
+            city: city,
+            province: province,
+            country: country,
+          );
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error getting address from coordinates: $e');
+      return null;
+    }
   }
 }
 
