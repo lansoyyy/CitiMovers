@@ -44,6 +44,7 @@ dependencies:
   geocoding: ^2.1.1
   google_places_flutter: ^2.0.9
   http: ^1.1.0
+  font_awesome_flutter: 
 
 dev_dependencies:
   flutter_test:

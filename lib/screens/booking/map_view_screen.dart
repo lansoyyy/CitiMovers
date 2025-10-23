@@ -347,7 +347,7 @@ class _MapViewScreenState extends State<MapViewScreen> {
     );
 
     _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 100.0),
+      CameraUpdate.newLatLngBounds(bounds, 135.0),
     );
   }
 
@@ -504,7 +504,6 @@ class _MapViewScreenState extends State<MapViewScreen> {
                 },
                 markers: _markers,
                 polylines: _polylines,
-                onTap: _onMapTap,
                 myLocationEnabled: true,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,

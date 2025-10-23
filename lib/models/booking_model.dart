@@ -15,7 +15,9 @@ class BookingModel {
   final double distance;
   final double estimatedFare;
   final double? finalFare;
-  final String status; // 'pending', 'accepted', 'in_progress', 'completed', 'cancelled'
+  final String
+      status; // 'pending', 'accepted', 'in_progress', 'completed', 'cancelled'
+  final String paymentMethod; // 'Gcash', 'Maya', 'Debit Card', 'Credit Card'
   final String? notes;
   final DateTime createdAt;
   final DateTime? completedAt;
@@ -34,6 +36,7 @@ class BookingModel {
     required this.estimatedFare,
     this.finalFare,
     this.status = 'pending',
+    required this.paymentMethod,
     this.notes,
     required this.createdAt,
     this.completedAt,
@@ -46,8 +49,10 @@ class BookingModel {
       bookingId: map['bookingId'] as String?,
       customerId: map['customerId'] as String,
       driverId: map['driverId'] as String?,
-      pickupLocation: LocationModel.fromMap(map['pickupLocation'] as Map<String, dynamic>),
-      dropoffLocation: LocationModel.fromMap(map['dropoffLocation'] as Map<String, dynamic>),
+      pickupLocation:
+          LocationModel.fromMap(map['pickupLocation'] as Map<String, dynamic>),
+      dropoffLocation:
+          LocationModel.fromMap(map['dropoffLocation'] as Map<String, dynamic>),
       vehicle: VehicleModel.fromMap(map['vehicle'] as Map<String, dynamic>),
       bookingType: map['bookingType'] as String,
       scheduledDateTime: map['scheduledDateTime'] != null
@@ -55,8 +60,11 @@ class BookingModel {
           : null,
       distance: (map['distance'] as num).toDouble(),
       estimatedFare: (map['estimatedFare'] as num).toDouble(),
-      finalFare: map['finalFare'] != null ? (map['finalFare'] as num).toDouble() : null,
+      finalFare: map['finalFare'] != null
+          ? (map['finalFare'] as num).toDouble()
+          : null,
       status: map['status'] as String,
+      paymentMethod: map['paymentMethod'] as String,
       notes: map['notes'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] as int),
       completedAt: map['completedAt'] != null
@@ -81,6 +89,7 @@ class BookingModel {
       'estimatedFare': estimatedFare,
       'finalFare': finalFare,
       'status': status,
+      'paymentMethod': paymentMethod,
       'notes': notes,
       'createdAt': createdAt.millisecondsSinceEpoch,
       'completedAt': completedAt?.millisecondsSinceEpoch,
@@ -102,6 +111,7 @@ class BookingModel {
     double? estimatedFare,
     double? finalFare,
     String? status,
+    String? paymentMethod,
     String? notes,
     DateTime? createdAt,
     DateTime? completedAt,
@@ -120,6 +130,7 @@ class BookingModel {
       estimatedFare: estimatedFare ?? this.estimatedFare,
       finalFare: finalFare ?? this.finalFare,
       status: status ?? this.status,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       completedAt: completedAt ?? this.completedAt,
@@ -152,7 +163,9 @@ class BookingModel {
 
   /// Check if booking is active
   bool get isActive {
-    return status == 'pending' || status == 'accepted' || status == 'in_progress';
+    return status == 'pending' ||
+        status == 'accepted' ||
+        status == 'in_progress';
   }
 
   @override

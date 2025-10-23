@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/location_model.dart';
 import '../../models/vehicle_model.dart';
 import '../../services/booking_service.dart';
+import '../../services/maps_service.dart';
 
 class BookingSummaryScreen extends StatefulWidget {
   final LocationModel pickupLocation;
@@ -26,12 +28,36 @@ class BookingSummaryScreen extends StatefulWidget {
 class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   final TextEditingController _notesController = TextEditingController();
   final BookingService _bookingService = BookingService();
+  final MapsService _mapsService = MapsService();
 
   String _bookingType = 'now'; // 'now' or 'scheduled'
   DateTime? _scheduledDateTime;
+  String _selectedPaymentMethod = 'Gcash'; // Default payment method
   bool _isLoading = false;
+  int? _travelDurationMinutes; // Store travel duration
 
-  double get _estimatedFare => widget.vehicle.getEstimatedFare(widget.distance);
+  double get _estimatedFare => _mapsService.calculateFare(
+        distanceKm: widget.distance,
+        vehicleType: widget.vehicle.name,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateTravelTime();
+  }
+
+  Future<void> _calculateTravelTime() async {
+    final routeInfo = await _mapsService.calculateRoute(
+      widget.pickupLocation,
+      widget.dropoffLocation,
+    );
+    if (routeInfo != null && mounted) {
+      setState(() {
+        _travelDurationMinutes = routeInfo.durationMinutes;
+      });
+    }
+  }
 
   Future<void> _selectScheduledTime() async {
     final date = await showDatePicker(
@@ -73,6 +99,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       scheduledDateTime: _scheduledDateTime,
       distance: widget.distance,
       estimatedFare: _estimatedFare,
+      paymentMethod: _selectedPaymentMethod,
       notes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
@@ -93,6 +120,31 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  // Format duration into readable text
+  String _formatDuration(int minutes) {
+    if (minutes < 60) {
+      return '$minutes min';
+    }
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+    return '${hours}h ${mins}min';
+  }
+
+  // Calculate ETA based on current time + travel duration
+  String _calculateETA() {
+    if (_travelDurationMinutes == null) return '';
+
+    final now = DateTime.now();
+    final eta = now.add(Duration(minutes: _travelDurationMinutes!));
+
+    final hour = eta.hour;
+    final minute = eta.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+
+    return '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
   }
 
   @override
@@ -319,6 +371,137 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
 
                   const SizedBox(height: 24),
 
+                  // Travel Time
+                  const Text(
+                    'Travel Information',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.access_time,
+                          color: AppColors.primaryBlue,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Estimated Travel Time',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'Medium',
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _travelDurationMinutes != null
+                                    ? _formatDuration(_travelDurationMinutes!)
+                                    : 'Calculating...',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontFamily: 'Bold',
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_travelDurationMinutes != null) ...[
+                          const Icon(
+                            Icons.schedule,
+                            color: AppColors.primaryBlue,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _calculateETA(),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Medium',
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Payment Method
+                  const Text(
+                    'Payment Method',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        _PaymentOption(
+                          icon: FontAwesomeIcons.g,
+                          title: 'Gcash',
+                          subtitle: 'Digital wallet',
+                          isSelected: _selectedPaymentMethod == 'Gcash',
+                          onTap: () =>
+                              setState(() => _selectedPaymentMethod = 'Gcash'),
+                        ),
+                        const SizedBox(height: 8),
+                        _PaymentOption(
+                          icon: FontAwesomeIcons.m,
+                          title: 'Maya',
+                          subtitle: 'Digital wallet',
+                          isSelected: _selectedPaymentMethod == 'Maya',
+                          onTap: () =>
+                              setState(() => _selectedPaymentMethod = 'Maya'),
+                        ),
+                        const SizedBox(height: 8),
+                        _PaymentOption(
+                          icon: FontAwesomeIcons.creditCard,
+                          title: 'Debit Card',
+                          subtitle: 'Bank debit card',
+                          isSelected: _selectedPaymentMethod == 'Debit Card',
+                          onTap: () => setState(
+                              () => _selectedPaymentMethod = 'Debit Card'),
+                        ),
+                        const SizedBox(height: 8),
+                        _PaymentOption(
+                          icon: FontAwesomeIcons.creditCard,
+                          title: 'Credit Card',
+                          subtitle: 'Bank credit card',
+                          isSelected: _selectedPaymentMethod == 'Credit Card',
+                          onTap: () => setState(
+                              () => _selectedPaymentMethod = 'Credit Card'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
                   // Fare Breakdown
                   const Text(
                     'Fare Breakdown',
@@ -337,21 +520,52 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                     ),
                     child: Column(
                       children: [
-                        _FareRow(
-                          label: 'Base Fare',
-                          value:
-                              'P${widget.vehicle.baseFare.toStringAsFixed(0)}',
-                        ),
-                        const SizedBox(height: 8),
-                        _FareRow(
-                          label:
-                              'Distance (${widget.distance.toStringAsFixed(1)} km)',
-                          value:
-                              'P${(widget.distance * widget.vehicle.perKmRate).toStringAsFixed(0)}',
-                        ),
+                        if (widget.vehicle.name == '10-Wheeler Wingvan') ...[
+                          _FareRow(
+                            label: 'Distance ',
+                            value: '(${widget.distance.toStringAsFixed(1)} km)',
+                          ),
+                          const SizedBox(height: 8),
+                          _FareRow(
+                            label: 'Calculated Fare',
+                            value:
+                                'P${((widget.distance * 3 / 2.5) * 60).toStringAsFixed(0)}',
+                          ),
+                          const SizedBox(height: 8),
+                          if (_estimatedFare >= 12000) ...[
+                            _FareRow(
+                              label: 'Above Minimum',
+                              value: 'No minimum applied',
+                              valueColor: AppColors.primaryBlue,
+                            ),
+                          ] else ...[
+                            _FareRow(
+                              label: 'Minimum Rate Applied',
+                              value: 'P12,000 minimum',
+                              valueColor: AppColors.primaryRed,
+                            ),
+                          ],
+                        ] else ...[
+                          _FareRow(
+                            label: 'Base Fare',
+                            value:
+                                'P${widget.vehicle.baseFare.toStringAsFixed(0)}',
+                          ),
+                          const SizedBox(height: 8),
+                          _FareRow(
+                            label: 'Distance ',
+                            value: '(${widget.distance.toStringAsFixed(1)} km)',
+                          ),
+                          const SizedBox(height: 8),
+                          _FareRow(
+                            label: 'Calculated Fare',
+                            value:
+                                'P${(widget.distance * widget.vehicle.perKmRate).toStringAsFixed(0)}',
+                          ),
+                        ],
                         const Divider(height: 24),
                         _FareRow(
-                          label: 'Total',
+                          label: 'Total Fare',
                           value: 'P${_estimatedFare.toStringAsFixed(0)}',
                           isBold: true,
                         ),
@@ -415,6 +629,103 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Payment Option Widget
+class _PaymentOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _PaymentOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primaryRed.withOpacity(0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.primaryRed
+                : AppColors.textHint.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primaryRed.withOpacity(0.2)
+                    : AppColors.textHint.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? AppColors.primaryRed : AppColors.textHint,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Medium',
+                      color: isSelected
+                          ? AppColors.primaryRed
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed,
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: const Icon(
+                  Icons.check,
+                  color: AppColors.white,
+                  size: 16,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -547,11 +858,13 @@ class _FareRow extends StatelessWidget {
   final String label;
   final String value;
   final bool isBold;
+  final Color? valueColor;
 
   const _FareRow({
     required this.label,
     required this.value,
     this.isBold = false,
+    this.valueColor,
   });
 
   @override
@@ -572,7 +885,8 @@ class _FareRow extends StatelessWidget {
           style: TextStyle(
             fontSize: isBold ? 18 : 14,
             fontFamily: isBold ? 'Bold' : 'Medium',
-            color: isBold ? AppColors.primaryRed : AppColors.textPrimary,
+            color: valueColor ??
+                (isBold ? AppColors.primaryRed : AppColors.textPrimary),
           ),
         ),
       ],

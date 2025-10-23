@@ -202,30 +202,47 @@ class MapsService {
     required double distanceKm,
     required String vehicleType,
   }) {
-    // Base fare rates per vehicle type (in PHP)
-    const Map<String, Map<String, double>> fareRates = {
-      'AUV': {'base': 100, 'perKm': 15},
-      '4-Wheeler': {'base': 150, 'perKm': 20},
-      '6-Wheeler': {'base': 300, 'perKm': 35},
-      'Wingvan': {'base': 500, 'perKm': 50},
-      'Trailer': {'base': 800, 'perKm': 80},
-    };
+    // New fare calculation formula: Distance x 3 / 2.5 x 60
+    // With minimum rate of ₱12,000 for 10-wheeler wingvan
+    double calculatedFare = 0.0;
 
-    final rates = fareRates[vehicleType] ?? fareRates['AUV']!;
-    final baseFare = rates['base']!;
-    final perKmRate = rates['perKm']!;
-
-    // Calculate total fare
-    double totalFare = baseFare + (distanceKm * perKmRate);
+    switch (vehicleType) {
+      case '10-Wheeler Wingvan':
+        calculatedFare = (distanceKm * 3 / 2.5) * 60;
+        // Apply minimum rate of ₱12,000
+        if (calculatedFare < 12000) {
+          calculatedFare = 12000;
+        }
+        break;
+      case 'AUV':
+        // Using existing rates for other vehicle types until new formulas are provided
+        calculatedFare = 100 + (distanceKm * 15);
+        break;
+      case '4-Wheeler':
+        calculatedFare = 150 + (distanceKm * 20);
+        break;
+      case '6-Wheeler':
+        calculatedFare = 300 + (distanceKm * 35);
+        break;
+      case 'Wingvan':
+        calculatedFare = 500 + (distanceKm * 50);
+        break;
+      case 'Trailer':
+        calculatedFare = 800 + (distanceKm * 80);
+        break;
+      default:
+        // Default to AUV rates
+        calculatedFare = 100 + (distanceKm * 15);
+    }
 
     // Add peak hour surcharge (20%) if needed
     final now = DateTime.now();
     if ((now.hour >= 7 && now.hour <= 9) ||
         (now.hour >= 17 && now.hour <= 19)) {
-      totalFare *= 1.2;
+      calculatedFare *= 1.2;
     }
 
-    return totalFare;
+    return calculatedFare;
   }
 
   /// Calculate distance using Haversine formula

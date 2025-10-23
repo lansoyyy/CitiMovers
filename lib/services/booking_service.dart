@@ -24,6 +24,7 @@ class BookingService {
     DateTime? scheduledDateTime,
     required double distance,
     required double estimatedFare,
+    required String paymentMethod,
     String? notes,
   }) async {
     try {
@@ -45,6 +46,7 @@ class BookingService {
         scheduledDateTime: scheduledDateTime,
         distance: distance,
         estimatedFare: estimatedFare,
+        paymentMethod: paymentMethod,
         notes: notes,
         createdAt: DateTime.now(),
       );

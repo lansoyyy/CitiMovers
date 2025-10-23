@@ -154,6 +154,24 @@ class VehicleModel {
         ],
         imageUrl: 'assets/images/trailer.png',
       ),
+      VehicleModel(
+        id: '10wheeler_wingvan_001',
+        name: '10-Wheeler Wingvan',
+        type: '10-Wheeler Wingvan',
+        description: 'Heavy-duty transport for large cargo and bulk deliveries',
+        baseFare: 12000, // Minimum base fare
+        perKmRate: 0, // Not used with new formula
+        capacity: 'Up to 8,000 kg',
+        features: [
+          'Heavy cargo',
+          'Bulk delivery',
+          'Long distance',
+          'Professional drivers',
+          'Helper available',
+          'Secure transport',
+        ],
+        imageUrl: 'assets/images/10wheeler_wingvan.png',
+      ),
     ];
   }
 
