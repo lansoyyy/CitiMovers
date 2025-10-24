@@ -19,25 +19,11 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 60),
 
               // Logo
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryRed,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.25),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.local_shipping_rounded,
-                  size: 50,
-                  color: AppColors.white,
-                ),
+
+              Image.asset(
+                AppConstants.logo,
+                width: 250,
+                height: 250,
               ),
 
               const SizedBox(height: 40),

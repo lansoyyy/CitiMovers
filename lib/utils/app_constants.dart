@@ -1,6 +1,8 @@
 /// App-wide constants for CitiMovers
 class AppConstants {
   AppConstants._();
+
+  static String logo = 'assets/images/logo.png';
   static const String apiKey = 'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o';
   // App Information
   static const String appName = 'CitiMovers';

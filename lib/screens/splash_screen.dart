@@ -60,7 +60,8 @@ class _SplashScreenState extends State<SplashScreen>
       final isLoggedIn = authService.isLoggedIn;
 
       // Navigate to appropriate screen
-      final destination = isLoggedIn ? const HomeScreen() : const WelcomeScreen();
+      final destination =
+          isLoggedIn ? const HomeScreen() : const WelcomeScreen();
 
       Navigator.pushReplacement(
         context,
@@ -103,27 +104,10 @@ class _SplashScreenState extends State<SplashScreen>
                     opacity: _fadeAnimation,
                     child: ScaleTransition(
                       scale: _scaleAnimation,
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryRed,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primaryRed.withOpacity(0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.local_shipping_rounded,
-                            size: 60,
-                            color: AppColors.white,
-                          ),
-                        ),
+                      child: Image.asset(
+                        AppConstants.logo,
+                        width: 250,
+                        height: 250,
                       ),
                     ),
                   );
