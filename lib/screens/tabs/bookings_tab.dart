@@ -109,8 +109,7 @@ class _BookingsTabState extends State<BookingsTab>
           return BookingCard(
             booking: bookings[index],
             onTap: () {
-              UIHelpers.showInfoToast(
-                  'View booking details for ${bookings[index].id}');
+              _showBookingDetailsBottomSheet(context, bookings[index]);
             },
           );
         },
@@ -287,6 +286,16 @@ class _BookingsTabState extends State<BookingsTab>
         ];
     }
   }
+
+  void _showBookingDetailsBottomSheet(
+      BuildContext context, BookingData booking) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BookingDetailsBottomSheet(booking: booking),
+    );
+  }
 }
 
 class BookingCard extends StatelessWidget {
@@ -305,62 +314,82 @@ class BookingCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
+        border: Border.all(
+          color: Colors.white,
+          width: 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header with vehicle type and status
+                // Header with vehicle type, ID and status
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryRed.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primaryRed,
+                                AppColors.primaryRed.withOpacity(0.8),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withOpacity(0.2),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: const Icon(
                             Icons.local_shipping,
-                            color: AppColors.primaryRed,
-                            size: 24,
+                            color: AppColors.white,
+                            size: 26,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 16),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               booking.vehicleType,
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 18,
                                 fontFamily: 'Bold',
                                 color: AppColors.textPrimary,
+                                height: 1.2,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 2),
                             Text(
                               'ID: ${booking.id}',
                               style: const TextStyle(
                                 fontSize: 12,
-                                fontFamily: 'Regular',
+                                fontFamily: 'Medium',
                                 color: AppColors.textSecondary,
+                                height: 1.2,
                               ),
                             ),
                           ],
@@ -369,10 +398,14 @@ class BookingCard extends StatelessWidget {
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                          horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: booking.statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: booking.statusColor.withOpacity(0.2),
+                          width: 1,
+                        ),
                       ),
                       child: Text(
                         booking.status,
@@ -380,169 +413,272 @@ class BookingCard extends StatelessWidget {
                           fontSize: 12,
                           fontFamily: 'Medium',
                           color: booking.statusColor,
+                          height: 1.2,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                // Date and Time
+                const SizedBox(height: 20),
+
+                // Date and Time Row
                 Row(
                   children: [
-                    const Icon(
-                      Icons.calendar_today,
-                      size: 16,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${booking.date} at ${booking.time}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontFamily: 'Regular',
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.scaffoldBackground,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.calendar_today,
+                        size: 18,
                         color: AppColors.textSecondary,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // Driver Info (for active and completed bookings)
-                if (booking.driverName != 'Not Assigned')
-                  Column(
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.person,
-                            size: 16,
-                            color: AppColors.textSecondary,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              booking.driverName,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontFamily: 'Regular',
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (booking.driverRating > 0)
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.star,
-                                  size: 16,
-                                  color: Colors.amber,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  booking.driverRating.toString(),
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontFamily: 'Medium',
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                  ),
-                // Route
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.scaffoldBackground,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      _RoutePoint(
-                        icon: Icons.radio_button_checked,
-                        label: 'From',
-                        location: booking.from,
-                        color: AppColors.primaryRed,
-                      ),
-                      const SizedBox(height: 8),
-                      const Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: SizedBox(
-                          height: 20,
-                          child: VerticalDivider(
-                            color: AppColors.textHint,
-                            thickness: 1,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _RoutePoint(
-                        icon: Icons.location_on,
-                        label: 'To',
-                        location: booking.to,
-                        color: AppColors.primaryBlue,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Footer with fare and action
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
+                    const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Fare',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'Regular',
-                            color: AppColors.textSecondary,
+                        Text(
+                          booking.date,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Medium',
+                            color: AppColors.textPrimary,
+                            height: 1.2,
                           ),
                         ),
                         Text(
-                          booking.fare,
+                          booking.time,
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontFamily: 'Bold',
-                            color: AppColors.primaryRed,
+                            fontSize: 12,
+                            fontFamily: 'Regular',
+                            color: AppColors.textSecondary,
+                            height: 1.2,
                           ),
                         ),
                       ],
                     ),
-                    if (booking.status == 'In Transit' ||
-                        booking.status == 'Driver Assigned')
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // Driver Info (simplified for card view)
+                if (booking.driverName != 'Not Assigned')
+                  Row(
+                    children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.1),
+                          color: AppColors.primaryBlue.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        child: const Icon(
+                          Icons.person,
+                          size: 18,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.access_time,
-                              size: 16,
-                              color: AppColors.primaryRed,
-                            ),
-                            const SizedBox(width: 4),
                             Text(
-                              booking.estimatedTime,
+                              booking.driverName,
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 14,
                                 fontFamily: 'Medium',
-                                color: AppColors.primaryRed,
+                                color: AppColors.textPrimary,
+                                height: 1.2,
                               ),
+                            ),
+                            if (booking.driverRating > 0)
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.star,
+                                    size: 14,
+                                    color: Colors.amber,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${booking.driverRating} rating',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'Regular',
+                                      color: AppColors.textSecondary,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                if (booking.driverName != 'Not Assigned')
+                  const SizedBox(height: 20),
+
+                // Simplified Route
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.lightGrey.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primaryRed,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'From',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              booking.from,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Medium',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
+                        child: const Icon(
+                          Icons.arrow_forward,
+                          size: 16,
+                          color: AppColors.textHint,
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primaryBlue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'To',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              booking.to,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Medium',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Footer with fare and quick action
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        booking.fare,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontFamily: 'Bold',
+                          color: AppColors.primaryRed,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.lightGrey.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'View Details',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Medium',
+                              color: AppColors.textSecondary,
+                              height: 1.2,
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -641,4 +777,630 @@ enum BookingStatus {
   active,
   completed,
   cancelled,
+}
+
+// Booking Details Bottom Sheet
+class BookingDetailsBottomSheet extends StatelessWidget {
+  final BookingData booking;
+
+  const BookingDetailsBottomSheet({
+    super.key,
+    required this.booking,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          // Handle Bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textHint.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryRed,
+                        AppColors.primaryRed.withOpacity(0.8),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.local_shipping,
+                    color: AppColors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        booking.vehicleType,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Booking ID: ${booking.id}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: booking.statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: booking.statusColor.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    booking.status,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Medium',
+                      color: booking.statusColor,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Schedule Information
+                  _buildSectionCard(
+                    'Schedule Information',
+                    Icons.calendar_today,
+                    [
+                      _buildDetailRow('Date', booking.date),
+                      _buildDetailRow('Time', booking.time),
+                      if (booking.status == 'In Transit' ||
+                          booking.status == 'Driver Assigned')
+                        _buildDetailRow(
+                            'Estimated Time', booking.estimatedTime),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Driver Information
+                  if (booking.driverName != 'Not Assigned') ...[
+                    _buildSectionCard(
+                      'Driver Information',
+                      Icons.person,
+                      [
+                        _buildDetailRow('Name', booking.driverName),
+                        if (booking.driverRating > 0)
+                          _buildDetailRow(
+                              'Rating', '${booking.driverRating} ⭐'),
+                        _buildDetailRow('Contact', '+63 912 345 6789'),
+                        _buildDetailRow('Vehicle Number', 'ABC 1234'),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Route Details
+                  _buildRouteSection(),
+
+                  const SizedBox(height: 20),
+
+                  // Payment Information
+                  _buildSectionCard(
+                    'Payment Information',
+                    Icons.payment,
+                    [
+                      _buildDetailRow('Total Fare', booking.fare),
+                      _buildDetailRow('Payment Method', 'Cash on Delivery'),
+                      _buildDetailRow('Payment Status',
+                          booking.status == 'Completed' ? 'Paid' : 'Pending'),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Additional Information
+                  _buildSectionCard(
+                    'Additional Information',
+                    Icons.info_outline,
+                    [
+                      _buildDetailRow('Package Type', 'Standard Delivery'),
+                      _buildDetailRow('Weight', 'Up to 500kg'),
+                      _buildDetailRow('Insurance', 'Basic Coverage'),
+                      _buildDetailRow(
+                          'Special Instructions', 'Handle with care'),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom Action Buttons
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                // Primary Action
+                if (booking.status == 'In Transit' ||
+                    booking.status == 'Driver Assigned') ...[
+                  Container(
+                    width: double.infinity,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primaryRed,
+                          AppColors.primaryRed.withOpacity(0.8),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryRed.withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        UIHelpers.showInfoToast('Tracking feature coming soon');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: AppColors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.track_changes, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Track Delivery',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                              color: AppColors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // Secondary Actions Row
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast(
+                              'Contact driver feature coming soon');
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          side: BorderSide(
+                            color: AppColors.primaryRed.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.phone,
+                              size: 18,
+                              color: AppColors.primaryRed,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Contact',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Medium',
+                                color: AppColors.primaryRed,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast(
+                              'Support feature coming soon');
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          side: BorderSide(
+                            color: AppColors.textHint.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.support_agent,
+                              size: 18,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Support',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(String title, IconData icon, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.lightGrey.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+                height: 1.3,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.lightGrey.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.route,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Route Details',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Pickup Location
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.radio_button_checked,
+                  size: 16,
+                  color: AppColors.primaryRed,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pickup Location',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      booking.from,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Route Line
+          Container(
+            margin: const EdgeInsets.only(left: 11),
+            height: 30,
+            child: const VerticalDivider(
+              color: AppColors.textHint,
+              thickness: 1,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Drop-off Location
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.location_on,
+                  size: 16,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Drop-off Location',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      booking.to,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Distance
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.scaffoldBackground,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.straighten,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Estimated Distance: ',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Regular',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  '12.5 km',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

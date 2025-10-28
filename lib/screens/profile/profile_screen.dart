@@ -1,6 +1,10 @@
+import 'package:citimovers/screens/tabs/notifications_tab.dart';
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import 'edit_profile_screen.dart';
+import '../help_center_screen.dart';
+import '../terms_conditions_screen.dart';
+import '../privacy_policy_screen.dart';
 import 'change_password_screen.dart';
 import '../auth/welcome_screen.dart';
 
@@ -191,6 +195,12 @@ class ProfileScreen extends StatelessWidget {
               subtitle: 'Manage notification preferences',
               onTap: () {
                 // TODO: Navigate to notifications settings
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotificationsTab(),
+                  ),
+                );
               },
             ),
             _ProfileMenuItem(
@@ -222,7 +232,12 @@ class ProfileScreen extends StatelessWidget {
               title: 'Help Center',
               subtitle: 'FAQs and support',
               onTap: () {
-                // TODO: Navigate to help center
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HelpCenterScreen(),
+                  ),
+                );
               },
             ),
             _ProfileMenuItem(
@@ -230,7 +245,12 @@ class ProfileScreen extends StatelessWidget {
               title: 'Terms & Conditions',
               subtitle: 'Read our terms',
               onTap: () {
-                // TODO: Navigate to terms
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TermsConditionsScreen(),
+                  ),
+                );
               },
             ),
             _ProfileMenuItem(
@@ -238,7 +258,12 @@ class ProfileScreen extends StatelessWidget {
               title: 'Privacy Policy',
               subtitle: 'Read our privacy policy',
               onTap: () {
-                // TODO: Navigate to privacy policy
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PrivacyPolicyScreen(),
+                  ),
+                );
               },
             ),
 

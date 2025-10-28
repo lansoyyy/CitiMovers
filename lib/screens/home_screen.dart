@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../utils/app_colors.dart';
 import '../utils/ui_helpers.dart';
 import 'profile/profile_screen.dart';
@@ -48,15 +49,6 @@ class _HomeScreenState extends State<HomeScreen>
         children: _screens,
       ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
         child: TabBar(
           controller: _tabController,
           onTap: (index) {
@@ -75,15 +67,15 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           tabs: const [
             Tab(
-              icon: Icon(Icons.home_rounded),
+              icon: Icon(FontAwesomeIcons.house),
               text: 'Home',
             ),
             Tab(
-              icon: Icon(Icons.list_alt_rounded),
+              icon: Icon(FontAwesomeIcons.rectangleList),
               text: 'Bookings',
             ),
             Tab(
-              icon: Icon(Icons.person_rounded),
+              icon: Icon(FontAwesomeIcons.user),
               text: 'Profile',
             ),
           ],
