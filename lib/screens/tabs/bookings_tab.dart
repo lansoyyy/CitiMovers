@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
+import '../delivery/delivery_tracking_screen.dart';
 
 class BookingsTab extends StatefulWidget {
   const BookingsTab({super.key});
@@ -995,7 +996,14 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(context);
-                        UIHelpers.showInfoToast('Tracking feature coming soon');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DeliveryTrackingScreen(
+                              booking: booking,
+                            ),
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
