@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../tabs/bookings_tab.dart';
+import 'delivery_completion_screen.dart';
 
 class DeliveryTrackingScreen extends StatefulWidget {
   final BookingData booking;
@@ -163,7 +164,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             _isDelivered = true;
           });
           _locationUpdateTimer?.cancel();
-          UIHelpers.showSuccessToast('Package delivered successfully!');
+          UIHelpers.showSuccessToast('Package has arrived at destination!');
         }
       }
     });
@@ -561,58 +562,150 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      UIHelpers.showInfoToast(
-                          'Contact driver feature coming soon');
-                    },
-                    icon: const Icon(Icons.phone, size: 18),
-                    label: const Text(
-                      'Contact Driver',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
+            child: _isDelivered
+                ? Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DeliveryCompletionScreen(
+                                  booking: widget.booking,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.check_circle,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Confirm Receipt & Review',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.success,
+                            foregroundColor: AppColors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: BorderSide(
-                          color: AppColors.primaryRed.withOpacity(0.3)),
-                      foregroundColor: AppColors.primaryRed,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      UIHelpers.showInfoToast(
-                          'Emergency support feature coming soon');
-                    },
-                    icon: const Icon(
-                      Icons.support_agent,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    label: const Text(
-                      'Support',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                UIHelpers.showInfoToast(
+                                    'Contact driver feature coming soon');
+                              },
+                              icon: const Icon(Icons.phone, size: 18),
+                              label: const Text(
+                                'Contact',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide(
+                                    color: AppColors.primaryRed.withOpacity(0.3)),
+                                foregroundColor: AppColors.primaryRed,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                UIHelpers.showInfoToast(
+                                    'Report issue feature coming soon');
+                              },
+                              icon: const Icon(Icons.report_problem, size: 18),
+                              label: const Text(
+                                'Report',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                side: BorderSide(
+                                    color: AppColors.primaryRed.withOpacity(0.3)),
+                                foregroundColor: AppColors.primaryRed,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryRed,
-                      foregroundColor: AppColors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            UIHelpers.showInfoToast(
+                                'Contact driver feature coming soon');
+                          },
+                          icon: const Icon(Icons.phone, size: 18),
+                          label: const Text(
+                            'Contact Driver',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Medium',
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: BorderSide(
+                                color: AppColors.primaryRed.withOpacity(0.3)),
+                            foregroundColor: AppColors.primaryRed,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            UIHelpers.showInfoToast(
+                                'Emergency support feature coming soon');
+                          },
+                          icon: const Icon(
+                            Icons.support_agent,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Support',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Medium',
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryRed,
+                            foregroundColor: AppColors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
