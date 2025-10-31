@@ -21,13 +21,35 @@ class DeliveryCompletionScreen extends StatefulWidget {
 class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _reviewController = TextEditingController();
+  final TextEditingController _customTipController = TextEditingController();
+  final TextEditingController _otherTipReasonController =
+      TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
   final List<XFile> _selectedImages = [];
-  
+
   double _rating = 0.0;
   bool _isConfirmed = false;
   bool _isSubmitting = false;
-  
+
+  // Tip-related variables
+  bool _wantsToTip = false;
+  double? _selectedTipAmount;
+  final List<String> _selectedTipReasons = [];
+  bool _isCustomTip = false;
+
+  // Predefined tip amounts
+  final List<double> _tipAmounts = [20, 50, 100, 150, 200];
+
+  // Tip reasons
+  final List<Map<String, dynamic>> _tipReasons = [
+    {'icon': Icons.favorite, 'label': 'Handled with care'},
+    {'icon': Icons.speed, 'label': 'Fast delivery'},
+    {'icon': Icons.directions, 'label': 'Good in instruction'},
+    {'icon': Icons.chat_bubble, 'label': 'Responsive'},
+    {'icon': Icons.star, 'label': 'Excellent service'},
+    {'icon': Icons.more_horiz, 'label': 'Others'},
+  ];
+
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
@@ -39,21 +61,21 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    
+
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
         curve: Curves.elasticOut,
       ),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
         curve: Curves.easeIn,
       ),
     );
-    
+
     _animationController.forward();
   }
 
@@ -61,6 +83,8 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   void dispose() {
     _animationController.dispose();
     _reviewController.dispose();
+    _customTipController.dispose();
+    _otherTipReasonController.dispose();
     super.dispose();
   }
 
@@ -72,7 +96,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         maxHeight: 1080,
         imageQuality: 85,
       );
-      
+
       if (image != null) {
         setState(() {
           _selectedImages.add(image);
@@ -195,7 +219,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
       _isSubmitting = true;
     });
 
-    // Simulate API call
+    // Simulate API call with tip data
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
@@ -203,8 +227,26 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         _isSubmitting = false;
       });
 
-      UIHelpers.showSuccessToast('Thank you for your feedback!');
-      
+      // Show success message with tip info
+      String message = 'Thank you for your feedback!';
+      if (_wantsToTip &&
+          _selectedTipAmount != null &&
+          _selectedTipAmount! > 0) {
+        message =
+            'Thank you for your feedback and generous tip of ₱${_selectedTipAmount!.toStringAsFixed(0)}!';
+      }
+      UIHelpers.showSuccessToast(message);
+
+      // Log tip data (in real app, send to API)
+      if (_wantsToTip && _selectedTipAmount != null) {
+        debugPrint('Tip Amount: ₱${_selectedTipAmount}');
+        debugPrint('Tip Reasons: ${_selectedTipReasons.join(", ")}');
+        if (_selectedTipReasons.contains('Others') &&
+            _otherTipReasonController.text.isNotEmpty) {
+          debugPrint('Other Reason: ${_otherTipReasonController.text}');
+        }
+      }
+
       // Navigate back to home or bookings
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
@@ -316,14 +358,13 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   const SizedBox(height: 16),
                   _buildSummaryRow(Icons.local_shipping, 'Vehicle',
                       widget.booking.vehicleType),
-                  _buildSummaryRow(Icons.person, 'Driver',
-                      widget.booking.driverName),
-                  _buildSummaryRow(Icons.calendar_today, 'Date',
-                      widget.booking.date),
-                  _buildSummaryRow(Icons.access_time, 'Time',
-                      widget.booking.time),
-                  _buildSummaryRow(Icons.payments, 'Fare',
-                      widget.booking.fare),
+                  _buildSummaryRow(
+                      Icons.person, 'Driver', widget.booking.driverName),
+                  _buildSummaryRow(
+                      Icons.calendar_today, 'Date', widget.booking.date),
+                  _buildSummaryRow(
+                      Icons.access_time, 'Time', widget.booking.time),
+                  _buildSummaryRow(Icons.payments, 'Fare', widget.booking.fare),
                 ],
               ),
             ),
@@ -425,9 +466,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: Icon(
-                              index < _rating
-                                  ? Icons.star
-                                  : Icons.star_border,
+                              index < _rating ? Icons.star : Icons.star_border,
                               size: 40,
                               color: index < _rating
                                   ? Colors.amber
@@ -552,13 +591,14 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Image Grid
                   if (_selectedImages.isNotEmpty)
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         crossAxisSpacing: 8,
                         mainAxisSpacing: 8,
@@ -599,10 +639,9 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                         );
                       },
                     ),
-                  
-                  if (_selectedImages.isNotEmpty)
-                    const SizedBox(height: 12),
-                  
+
+                  if (_selectedImages.isNotEmpty) const SizedBox(height: 12),
+
                   // Add Photo Button
                   if (_selectedImages.length < 5)
                     GestureDetector(
@@ -642,6 +681,368 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                 ],
               ),
             ),
+
+            const SizedBox(height: 16),
+
+            // Tip Section
+            if (_rating >= 4)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.volunteer_activism,
+                            color: Colors.amber,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Add a Tip (Optional)',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontFamily: 'Bold',
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                'Show your appreciation',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontFamily: 'Regular',
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _wantsToTip,
+                          onChanged: (value) {
+                            setState(() {
+                              _wantsToTip = value;
+                              if (!value) {
+                                _selectedTipAmount = null;
+                                _selectedTipReasons.clear();
+                                _isCustomTip = false;
+                                _customTipController.clear();
+                                _otherTipReasonController.clear();
+                              }
+                            });
+                          },
+                          activeColor: AppColors.success,
+                        ),
+                      ],
+                    ),
+                    if (_wantsToTip) ...[
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Why are you tipping?',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Tip Reasons
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _tipReasons.map((reason) {
+                          final isSelected =
+                              _selectedTipReasons.contains(reason['label']);
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                if (isSelected) {
+                                  _selectedTipReasons.remove(reason['label']);
+                                  // Clear custom reason text when "Others" is deselected
+                                  if (reason['label'] == 'Others') {
+                                    _otherTipReasonController.clear();
+                                  }
+                                } else {
+                                  _selectedTipReasons.add(reason['label']);
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primaryRed.withOpacity(0.1)
+                                    : AppColors.scaffoldBackground,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.primaryRed
+                                      : Colors.transparent,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    reason['icon'],
+                                    size: 16,
+                                    color: isSelected
+                                        ? AppColors.primaryRed
+                                        : AppColors.textSecondary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    reason['label'],
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontFamily: 'Medium',
+                                      color: isSelected
+                                          ? AppColors.primaryRed
+                                          : AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+
+                      // Custom Tip Reason Input (when "Others" is selected)
+                      if (_selectedTipReasons.contains('Others')) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _otherTipReasonController,
+                          maxLength: 100,
+                          decoration: InputDecoration(
+                            hintText: 'Please specify your reason...',
+                            hintStyle: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                            ),
+                            filled: true,
+                            fillColor: AppColors.scaffoldBackground,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.all(16),
+                            prefixIcon: const Icon(
+                              Icons.edit,
+                              color: AppColors.primaryRed,
+                              size: 20,
+                            ),
+                          ),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Regular',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Select tip amount',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Tip Amount Options
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ..._tipAmounts.map((amount) {
+                            final isSelected =
+                                _selectedTipAmount == amount && !_isCustomTip;
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedTipAmount = amount;
+                                  _isCustomTip = false;
+                                  _customTipController.clear();
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppColors.success
+                                      : AppColors.scaffoldBackground,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? AppColors.success
+                                        : Colors.transparent,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Text(
+                                  'P${amount.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontFamily: 'Bold',
+                                    color: isSelected
+                                        ? AppColors.white
+                                        : AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+
+                          // Custom Amount Button
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _isCustomTip = true;
+                                _selectedTipAmount = null;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _isCustomTip
+                                    ? AppColors.success
+                                    : AppColors.scaffoldBackground,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _isCustomTip
+                                      ? AppColors.success
+                                      : Colors.transparent,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Text(
+                                'Custom',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Bold',
+                                  color: _isCustomTip
+                                      ? AppColors.white
+                                      : AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // Custom Tip Input
+                      if (_isCustomTip) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _customTipController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: 'Enter custom amount',
+                            prefixText: '₱ ',
+                            hintStyle: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                            ),
+                            filled: true,
+                            fillColor: AppColors.scaffoldBackground,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.all(16),
+                          ),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                          ),
+                          onChanged: (value) {
+                            final amount = double.tryParse(value);
+                            if (amount != null && amount > 0) {
+                              setState(() {
+                                _selectedTipAmount = amount;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+
+                      // Tip Summary
+                      if (_selectedTipAmount != null &&
+                          _selectedTipAmount! > 0) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: AppColors.success,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You are tipping P${_selectedTipAmount!.toStringAsFixed(0)} to ${widget.booking.driverName}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.success,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
 
             const SizedBox(height: 24),
 

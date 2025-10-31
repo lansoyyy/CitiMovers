@@ -370,58 +370,61 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ),
 
           // Delivery Details Toggle Button
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showDeliveryDetails = !_showDeliveryDetails;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _showDeliveryDetails = !_showDeliveryDetails;
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
                       ),
-                      child: const Icon(
-                        Icons.info_outline,
-                        color: AppColors.primaryRed,
-                        size: 20,
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.info_outline,
+                          color: AppColors.primaryRed,
+                          size: 20,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Delivery Details',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontFamily: 'Bold',
-                        color: AppColors.textPrimary,
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Delivery Details',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      _showDeliveryDetails
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: AppColors.textSecondary,
-                    ),
-                  ],
+                      const Spacer(),
+                      Icon(
+                        _showDeliveryDetails
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: AppColors.textSecondary,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -621,7 +624,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
                                 side: BorderSide(
-                                    color: AppColors.primaryRed.withOpacity(0.3)),
+                                    color:
+                                        AppColors.primaryRed.withOpacity(0.3)),
                                 foregroundColor: AppColors.primaryRed,
                               ),
                             ),
@@ -645,7 +649,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
                                 side: BorderSide(
-                                    color: AppColors.primaryRed.withOpacity(0.3)),
+                                    color:
+                                        AppColors.primaryRed.withOpacity(0.3)),
                                 foregroundColor: AppColors.primaryRed,
                               ),
                             ),
