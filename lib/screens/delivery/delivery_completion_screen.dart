@@ -233,13 +233,13 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
           _selectedTipAmount != null &&
           _selectedTipAmount! > 0) {
         message =
-            'Thank you for your feedback and generous tip of ₱${_selectedTipAmount!.toStringAsFixed(0)}!';
+            'Thank you for your feedback and generous tip of P${_selectedTipAmount!.toStringAsFixed(0)}!';
       }
       UIHelpers.showSuccessToast(message);
 
       // Log tip data (in real app, send to API)
       if (_wantsToTip && _selectedTipAmount != null) {
-        debugPrint('Tip Amount: ₱${_selectedTipAmount}');
+        debugPrint('Tip Amount: P${_selectedTipAmount}');
         debugPrint('Tip Reasons: ${_selectedTipReasons.join(", ")}');
         if (_selectedTipReasons.contains('Others') &&
             _otherTipReasonController.text.isNotEmpty) {
@@ -977,7 +977,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             hintText: 'Enter custom amount',
-                            prefixText: '₱ ',
+                            prefixText: 'P ',
                             hintStyle: const TextStyle(
                               fontSize: 14,
                               fontFamily: 'Regular',
