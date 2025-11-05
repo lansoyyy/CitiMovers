@@ -424,7 +424,7 @@ class _HomeTabState extends State<HomeTab> {
                             icon: Icons.history,
                             title: 'History',
                             subtitle: 'View past trips',
-                            color: Colors.orange,
+                            color: AppColors.primaryRed,
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -453,7 +453,7 @@ class _HomeTabState extends State<HomeTab> {
                             icon: Icons.support_agent,
                             title: 'Support',
                             subtitle: '24/7 help',
-                            color: Colors.purple,
+                            color: AppColors.primaryBlue,
                             onTap: () {
                               _launchPhoneSupport();
                             },
@@ -482,7 +482,7 @@ class _HomeTabState extends State<HomeTab> {
                               width: 4,
                               height: 24,
                               decoration: BoxDecoration(
-                                color: AppColors.primaryBlue,
+                                color: AppColors.primaryRed,
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
@@ -554,7 +554,7 @@ class _HomeTabState extends State<HomeTab> {
                           width: 4,
                           height: 24,
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: AppColors.primaryBlue,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -574,7 +574,7 @@ class _HomeTabState extends State<HomeTab> {
                       icon: Icons.verified_user,
                       title: 'Verified Drivers',
                       subtitle: 'Background-checked professionals',
-                      color: Colors.blue,
+                      color: AppColors.primaryBlue,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -594,7 +594,7 @@ class _HomeTabState extends State<HomeTab> {
                       icon: Icons.track_changes,
                       title: 'Real-time Tracking',
                       subtitle: 'Track delivery every step of the way',
-                      color: Colors.green,
+                      color: AppColors.primaryBlue,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -614,7 +614,7 @@ class _HomeTabState extends State<HomeTab> {
                       icon: Icons.payment,
                       title: 'Secure Payment',
                       subtitle: 'Multiple safe payment options',
-                      color: Colors.purple,
+                      color: AppColors.primaryRed,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -710,8 +710,8 @@ class _ScheduleServiceCard extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.primaryBlue,
-                    AppColors.primaryBlue.withOpacity(0.8),
+                    AppColors.primaryRed,
+                    AppColors.primaryRed.withOpacity(0.8),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -792,8 +792,8 @@ class _SavedLocationsCard extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.green,
-                    Colors.green.withOpacity(0.8),
+                    AppColors.primaryBlue,
+                    AppColors.primaryBlue.withOpacity(0.8),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -801,7 +801,7 @@ class _SavedLocationsCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withOpacity(0.2),
+                    color: AppColors.primaryBlue.withOpacity(0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -864,19 +864,19 @@ class __SavedLocationsBottomSheetState
       name: 'Mom\'s House',
       address: '789 Family Rd, Pasig City, Metro Manila',
       icon: Icons.favorite,
-      color: Colors.pink,
+      color: AppColors.primaryRed,
     ),
     SavedLocation(
       name: 'Gym',
       address: '321 Fitness Blvd, Mandaluyong City, Metro Manila',
       icon: Icons.fitness_center,
-      color: Colors.orange,
+      color: AppColors.primaryRed,
     ),
     SavedLocation(
       name: 'Grocery Store',
       address: '555 Market St, San Juan City, Metro Manila',
       icon: Icons.shopping_cart,
-      color: Colors.green,
+      color: AppColors.primaryBlue,
     ),
   ];
 
@@ -919,8 +919,8 @@ class __SavedLocationsBottomSheetState
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Colors.green,
-                        Colors.green.withOpacity(0.8),
+                        AppColors.primaryBlue,
+                        AppColors.primaryBlue.withOpacity(0.8),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -1068,8 +1068,8 @@ class __SavedLocationsBottomSheetState
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.green,
-                    Colors.green.withOpacity(0.8),
+                    AppColors.primaryBlue,
+                    AppColors.primaryBlue.withOpacity(0.8),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -1077,7 +1077,7 @@ class __SavedLocationsBottomSheetState
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withOpacity(0.3),
+                    color: AppColors.primaryBlue.withOpacity(0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -1168,8 +1168,8 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.primaryBlue,
-                        AppColors.primaryBlue.withOpacity(0.8),
+                        AppColors.primaryRed,
+                        AppColors.primaryRed.withOpacity(0.8),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -1253,7 +1253,7 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: selectedDate != null
-                            ? AppColors.primaryBlue.withOpacity(0.3)
+                            ? AppColors.primaryRed.withOpacity(0.3)
                             : AppColors.lightGrey.withOpacity(0.5),
                         width: 1,
                       ),
@@ -1280,19 +1280,19 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                             margin: const EdgeInsets.only(right: 12),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? AppColors.primaryBlue
+                                  ? AppColors.primaryRed
                                   : AppColors.white,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: isSelected
-                                    ? AppColors.primaryBlue
+                                    ? AppColors.primaryRed
                                     : AppColors.lightGrey.withOpacity(0.5),
                                 width: 1,
                               ),
                               boxShadow: isSelected
                                   ? [
                                       BoxShadow(
-                                        color: AppColors.primaryBlue
+                                        color: AppColors.primaryRed
                                             .withOpacity(0.2),
                                         blurRadius: 8,
                                         offset: const Offset(0, 4),
@@ -1388,20 +1388,20 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                         child: Container(
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppColors.primaryBlue
+                                ? AppColors.primaryRed
                                 : AppColors.white,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isSelected
-                                  ? AppColors.primaryBlue
+                                  ? AppColors.primaryRed
                                   : AppColors.lightGrey.withOpacity(0.5),
                               width: 1,
                             ),
                             boxShadow: isSelected
                                 ? [
                                     BoxShadow(
-                                      color: AppColors.primaryBlue
-                                          .withOpacity(0.2),
+                                      color:
+                                          AppColors.primaryRed.withOpacity(0.2),
                                       blurRadius: 8,
                                       offset: const Offset(0, 4),
                                     ),
@@ -1435,15 +1435,15 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            AppColors.primaryBlue.withOpacity(0.1),
-                            AppColors.primaryBlue.withOpacity(0.05),
+                            AppColors.primaryRed.withOpacity(0.1),
+                            AppColors.primaryRed.withOpacity(0.05),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: AppColors.primaryBlue.withOpacity(0.2),
+                          color: AppColors.primaryRed.withOpacity(0.2),
                           width: 1,
                         ),
                       ),
@@ -1454,8 +1454,8 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  AppColors.primaryBlue,
-                                  AppColors.primaryBlue.withOpacity(0.8),
+                                  AppColors.primaryRed,
+                                  AppColors.primaryRed.withOpacity(0.8),
                                 ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -1488,7 +1488,7 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontFamily: 'Bold',
-                                    color: AppColors.primaryBlue,
+                                    color: AppColors.primaryRed,
                                     height: 1.2,
                                   ),
                                 ),
@@ -1515,8 +1515,8 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                 gradient: isScheduleSet
                     ? LinearGradient(
                         colors: [
-                          AppColors.primaryBlue,
-                          AppColors.primaryBlue.withOpacity(0.8),
+                          AppColors.primaryRed,
+                          AppColors.primaryRed.withOpacity(0.8),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -1528,7 +1528,7 @@ class __ScheduleBottomSheetState extends State<_ScheduleBottomSheet> {
                 boxShadow: isScheduleSet
                     ? [
                         BoxShadow(
-                          color: AppColors.primaryBlue.withOpacity(0.3),
+                          color: AppColors.primaryRed.withOpacity(0.3),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -1689,8 +1689,8 @@ class _ServiceCard extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    color,
-                    color.withOpacity(0.8),
+                    AppColors.primaryRed,
+                    AppColors.primaryRed.withOpacity(0.8),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -1698,7 +1698,7 @@ class _ServiceCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.2),
+                    color: AppColors.primaryRed.withOpacity(0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -1785,8 +1785,8 @@ class _RecentBookingCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          AppColors.primaryRed,
-                          AppColors.primaryRed.withOpacity(0.8),
+                          AppColors.primaryBlue,
+                          AppColors.primaryBlue.withOpacity(0.8),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -1794,7 +1794,7 @@ class _RecentBookingCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryRed.withOpacity(0.2),
+                          color: AppColors.primaryBlue.withOpacity(0.2),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -1904,13 +1904,13 @@ class _RecentBookingCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryBlue.withOpacity(0.1),
+                            color: AppColors.primaryRed.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
                             Icons.location_on,
                             size: 14,
-                            color: AppColors.primaryBlue,
+                            color: AppColors.primaryRed,
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -1936,7 +1936,7 @@ class _RecentBookingCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryRed.withOpacity(0.08),
+                  color: AppColors.primaryBlue.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -1944,7 +1944,7 @@ class _RecentBookingCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 20,
                     fontFamily: 'Bold',
-                    color: AppColors.primaryRed,
+                    color: AppColors.primaryBlue,
                     height: 1.2,
                   ),
                 ),
@@ -2001,8 +2001,8 @@ class _FeatureItem extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    color,
-                    color.withOpacity(0.8),
+                    AppColors.primaryBlue,
+                    AppColors.primaryBlue.withOpacity(0.8),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -2010,7 +2010,7 @@ class _FeatureItem extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.2),
+                    color: AppColors.primaryBlue.withOpacity(0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -2128,8 +2128,8 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.primaryRed,
-                        AppColors.primaryRed.withOpacity(0.8),
+                        AppColors.primaryBlue,
+                        AppColors.primaryBlue.withOpacity(0.8),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -2137,7 +2137,7 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
-                    Icons.add_location,
+                    Icons.add_location_alt,
                     color: AppColors.white,
                     size: 24,
                   ),
@@ -2229,7 +2229,7 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: AppColors.primaryRed.withOpacity(0.5),
+                          color: AppColors.primaryBlue.withOpacity(0.5),
                           width: 1,
                         ),
                       ),
@@ -2342,7 +2342,7 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
                                     color:
-                                        AppColors.primaryRed.withOpacity(0.5),
+                                        AppColors.primaryBlue.withOpacity(0.5),
                                     width: 1,
                                   ),
                                 ),
@@ -2394,7 +2394,7 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
                                     color:
-                                        AppColors.primaryRed.withOpacity(0.5),
+                                        AppColors.primaryBlue.withOpacity(0.5),
                                     width: 1,
                                   ),
                                 ),
@@ -2441,8 +2441,8 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                AppColors.primaryRed,
-                                AppColors.primaryRed.withOpacity(0.8),
+                                AppColors.primaryBlue,
+                                AppColors.primaryBlue.withOpacity(0.8),
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
@@ -2450,7 +2450,7 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.3),
+                                color: AppColors.primaryBlue.withOpacity(0.3),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
