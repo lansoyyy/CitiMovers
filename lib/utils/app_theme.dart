@@ -13,7 +13,7 @@ class AppTheme {
     primaryColor: AppColors.primaryRed,
     scaffoldBackgroundColor: AppColors.scaffoldBackground,
     fontFamily: 'Regular',
-    
+
     // Color Scheme
     colorScheme: ColorScheme.light(
       primary: AppColors.primaryRed,
@@ -25,7 +25,7 @@ class AppTheme {
       onError: AppColors.white,
       onSurface: AppColors.textPrimary,
     ),
-    
+
     // AppBar Theme
     appBarTheme: AppBarTheme(
       backgroundColor: AppColors.primaryRed,
@@ -40,9 +40,9 @@ class AppTheme {
         fontWeight: FontWeight.w600,
       ),
     ),
-    
+
     // Card Theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.cardBackground,
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -50,7 +50,7 @@ class AppTheme {
       ),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     ),
-    
+
     // Elevated Button Theme
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -67,7 +67,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Outlined Button Theme
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
@@ -83,7 +83,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Text Button Theme
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
@@ -95,7 +95,7 @@ class AppTheme {
         ),
       ),
     ),
-    
+
     // Input Decoration Theme
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -124,20 +124,20 @@ class AppTheme {
       labelStyle: const TextStyle(color: AppColors.textSecondary),
       hintStyle: const TextStyle(color: AppColors.textHint),
     ),
-    
+
     // Icon Theme
     iconTheme: const IconThemeData(
       color: AppColors.textPrimary,
       size: 24,
     ),
-    
+
     // Floating Action Button Theme
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
       backgroundColor: AppColors.primaryBlue,
       foregroundColor: AppColors.white,
       elevation: 4,
     ),
-    
+
     // Bottom Navigation Bar Theme
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: AppColors.white,
@@ -147,7 +147,7 @@ class AppTheme {
       elevation: 8,
       selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600),
     ),
-    
+
     // Text Theme
     textTheme: const TextTheme(
       displayLarge: TextStyle(
@@ -226,14 +226,14 @@ class AppTheme {
         color: AppColors.textSecondary,
       ),
     ),
-    
+
     // Divider Theme
     dividerTheme: const DividerThemeData(
       color: AppColors.lightGrey,
       thickness: 1,
       space: 1,
     ),
-    
+
     // Progress Indicator Theme
     progressIndicatorTheme: const ProgressIndicatorThemeData(
       color: AppColors.primaryRed,
@@ -247,7 +247,7 @@ class AppTheme {
     primaryColor: AppColors.primaryRed,
     scaffoldBackgroundColor: const Color(0xFF121212),
     fontFamily: 'Regular',
-    
+
     // Color Scheme
     colorScheme: ColorScheme.dark(
       primary: AppColors.primaryRed,
@@ -259,7 +259,7 @@ class AppTheme {
       onError: AppColors.white,
       onSurface: AppColors.white,
     ),
-    
+
     // AppBar Theme
     appBarTheme: AppBarTheme(
       backgroundColor: const Color(0xFF1E1E1E),
@@ -274,9 +274,9 @@ class AppTheme {
         fontWeight: FontWeight.w600,
       ),
     ),
-    
+
     // Card Theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: const Color(0xFF1E1E1E),
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -284,7 +284,7 @@ class AppTheme {
       ),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     ),
-    
+
     // Text Theme
     textTheme: const TextTheme(
       displayLarge: TextStyle(

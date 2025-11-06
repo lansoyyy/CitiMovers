@@ -1,4 +1,5 @@
 import 'package:citimovers/rider/screens/auth/rider_splash_screen.dart';
+import 'package:citimovers/rider/screens/rider_home_screen.dart';
 import 'package:citimovers/screens/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,7 +30,7 @@ class CitiMoversApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const RiderSplashScreen(),
+      home: const RiderHomeScreen(),
     );
   }
 }
