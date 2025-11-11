@@ -16,11 +16,18 @@ class RiderHomeScreen extends StatefulWidget {
 class _RiderHomeScreenState extends State<RiderHomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _screens = [
+      RiderHomeTab(tabController: _tabController),
+      const RiderDeliveriesTab(),
+      const RiderEarningsTab(),
+      const RiderProfileTab(),
+    ];
   }
 
   @override
@@ -28,13 +35,6 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
     _tabController.dispose();
     super.dispose();
   }
-
-  final List<Widget> _screens = [
-    const RiderHomeTab(),
-    const RiderDeliveriesTab(),
-    const RiderEarningsTab(),
-    const RiderProfileTab(),
-  ];
 
   @override
   Widget build(BuildContext context) {

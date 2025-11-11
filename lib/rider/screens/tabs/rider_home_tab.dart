@@ -1,12 +1,19 @@
 import 'dart:async';
+import 'package:citimovers/rider/screens/rider_notifications_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
+import '../profile/rider_settings_screen.dart';
 
 class RiderHomeTab extends StatefulWidget {
-  const RiderHomeTab({super.key});
+  final TabController tabController;
+
+  const RiderHomeTab({
+    super.key,
+    required this.tabController,
+  });
 
   @override
   State<RiderHomeTab> createState() => _RiderHomeTabState();
@@ -140,16 +147,27 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                           ),
                         ),
                         // Notification Bell
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.notifications_outlined,
-                            color: AppColors.white,
-                            size: 22,
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const RiderNotificationsScreen(),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.notifications_outlined,
+                              color: AppColors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
                       ],
@@ -312,7 +330,8 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                             subtitle: 'View past deliveries',
                             color: AppColors.primaryBlue,
                             onTap: () {
-                              UIHelpers.showInfoToast('Coming soon');
+                              // Switch to deliveries tab
+                              widget.tabController.animateTo(1);
                             },
                           ),
                         ),
@@ -324,7 +343,8 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                             subtitle: 'Check balance',
                             color: AppColors.success,
                             onTap: () {
-                              UIHelpers.showInfoToast('Coming soon');
+                              // Switch to earnings tab
+                              widget.tabController.animateTo(2);
                             },
                           ),
                         ),
@@ -352,7 +372,14 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                             subtitle: 'App preferences',
                             color: AppColors.textSecondary,
                             onTap: () {
-                              UIHelpers.showInfoToast('Coming soon');
+                              // Navigate to settings screen
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const RiderSettingsScreen(),
+                                ),
+                              );
                             },
                           ),
                         ),

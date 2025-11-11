@@ -4,6 +4,12 @@ import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import '../auth/rider_login_screen.dart';
+import '../profile/rider_edit_profile_screen.dart';
+import '../profile/rider_vehicle_details_screen.dart';
+import '../profile/rider_documents_screen.dart';
+import '../profile/rider_delivery_history_screen.dart';
+import '../profile/rider_payment_methods_screen.dart';
+import '../profile/rider_settings_screen.dart';
 
 class RiderProfileTab extends StatefulWidget {
   const RiderProfileTab({super.key});
@@ -89,8 +95,9 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                                     width: 100,
                                     height: 100,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const Icon(
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            const Icon(
                                       Icons.person,
                                       size: 50,
                                       color: AppColors.primaryRed,
@@ -241,42 +248,63 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                       icon: FontAwesomeIcons.user,
                       title: 'Edit Profile',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const RiderEditProfileScreen(),
+                          ),
+                        );
                       },
                     ),
                     _MenuTile(
                       icon: FontAwesomeIcons.car,
                       title: 'Vehicle Details',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const RiderVehicleDetailsScreen(),
+                          ),
+                        );
                       },
                     ),
                     _MenuTile(
                       icon: FontAwesomeIcons.fileLines,
                       title: 'Documents',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
-                      },
-                    ),
-                    _MenuTile(
-                      icon: FontAwesomeIcons.clockRotateLeft,
-                      title: 'Delivery History',
-                      onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RiderDocumentsScreen(),
+                          ),
+                        );
                       },
                     ),
                     _MenuTile(
                       icon: FontAwesomeIcons.wallet,
                       title: 'Payment Methods',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const RiderPaymentMethodsScreen(),
+                          ),
+                        );
                       },
                     ),
                     _MenuTile(
                       icon: FontAwesomeIcons.gear,
                       title: 'Settings',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RiderSettingsScreen(),
+                          ),
+                        );
                       },
                     ),
                     _MenuTile(
