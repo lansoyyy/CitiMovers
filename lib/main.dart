@@ -1,11 +1,8 @@
-import 'package:citimovers/rider/screens/auth/rider_splash_screen.dart';
-import 'package:citimovers/rider/screens/rider_home_screen.dart';
-import 'package:citimovers/screens/home_screen.dart';
+import 'package:citimovers/screens/uber_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_constants.dart';
-import 'screens/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +27,8 @@ class CitiMoversApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const RiderHomeScreen(),
+      //  home: const RiderHomeScreen(),
+      home: const UberScreen(),
     );
   }
 }

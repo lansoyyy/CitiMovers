@@ -47,7 +47,8 @@ dependencies:
   http: ^1.1.0
   font_awesome_flutter:
   image_picker: ^1.0.4
-  shared_preferences: ^2.2.2 
+  shared_preferences: ^2.2.2
+  flutter_polyline_points: ^2.0.0 
 
 dev_dependencies:
   flutter_test:
@@ -87,16 +88,26 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
+  # fonts:
+  #   - family: Regular
+  #     fonts:
+  #       - asset: assets/fonts/Urbanist-Regular.ttf
+  #   - family: Medium
+  #     fonts:
+  #       - asset: assets/fonts/Urbanist-Medium.ttf
+  #   - family: Bold
+  #     fonts:
+  #       - asset: assets/fonts/Urbanist-Bold.ttf
   fonts:
     - family: Regular
       fonts:
-        - asset: assets/fonts/Urbanist-Regular.ttf
+        - asset: assets/fonts/SFPRODISPLAYREGULAR.OTF
     - family: Medium
       fonts:
-        - asset: assets/fonts/Urbanist-Medium.ttf
+        - asset: assets/fonts/SFPRODISPLAYMEDIUM.OTF
     - family: Bold
       fonts:
-        - asset: assets/fonts/Urbanist-Bold.ttf
+        - asset: assets/fonts/SFPRODISPLAYBOLD.OTF
   #   - family: Trajan Pro
   #     fonts:
   #       - asset: fonts/TrajanPro.ttf
