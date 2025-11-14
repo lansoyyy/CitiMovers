@@ -57,6 +57,24 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
     }
   }
 
+  void _showHelpSupportBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const HelpSupportBottomSheet(),
+    );
+  }
+
+  void _showPrivacyPolicyBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const PrivacyPolicyBottomSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final rider = _authService.currentRider;
@@ -311,14 +329,14 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                       icon: FontAwesomeIcons.circleQuestion,
                       title: 'Help & Support',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        _showHelpSupportBottomSheet(context);
                       },
                     ),
                     _MenuTile(
                       icon: FontAwesomeIcons.shield,
                       title: 'Privacy Policy',
                       onTap: () {
-                        UIHelpers.showInfoToast('Coming soon');
+                        _showPrivacyPolicyBottomSheet(context);
                       },
                     ),
                     _MenuTile(
@@ -482,6 +500,751 @@ class _MenuTile extends StatelessWidget {
           Icons.chevron_right,
           color: isDestructive ? AppColors.error : AppColors.textSecondary,
         ),
+      ),
+    );
+  }
+}
+
+// Help & Support Bottom Sheet
+class HelpSupportBottomSheet extends StatelessWidget {
+  const HelpSupportBottomSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          // Handle Bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textHint.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.redGradient,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    FontAwesomeIcons.circleQuestion,
+                    color: AppColors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'Help & Support',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.close,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Quick Help Section
+                  _buildSectionCard(
+                    'Quick Help',
+                    FontAwesomeIcons.bolt,
+                    [
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.book,
+                        title: 'User Guide',
+                        subtitle: 'Learn how to use the app',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Opening user guide...');
+                        },
+                      ),
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.video,
+                        title: 'Video Tutorials',
+                        subtitle: 'Watch step-by-step guides',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Opening video tutorials...');
+                        },
+                      ),
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.circleQuestion,
+                        title: 'FAQs',
+                        subtitle: 'Frequently asked questions',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Opening FAQs...');
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Contact Support Section
+                  _buildSectionCard(
+                    'Contact Support',
+                    FontAwesomeIcons.headset,
+                    [
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.phone,
+                        title: 'Call Support',
+                        subtitle: '+63 2 8123 4567',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Calling support...');
+                        },
+                      ),
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.envelope,
+                        title: 'Email Support',
+                        subtitle: 'support@citimovers.com',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Opening email app...');
+                        },
+                      ),
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.comments,
+                        title: 'Live Chat',
+                        subtitle: 'Chat with our support team',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Starting live chat...');
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Report Issue Section
+                  _buildSectionCard(
+                    'Report an Issue',
+                    FontAwesomeIcons.exclamationTriangle,
+                    [
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.bug,
+                        title: 'Report a Bug',
+                        subtitle: 'Help us improve the app',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast('Opening bug report form...');
+                        },
+                      ),
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.flag,
+                        title: 'Report a Driver',
+                        subtitle: 'Report driver misconduct',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast(
+                              'Opening driver report form...');
+                        },
+                      ),
+                      _buildHelpItem(
+                        icon: FontAwesomeIcons.fileContract,
+                        title: 'Report Delivery Issue',
+                        subtitle: 'Problems with your delivery',
+                        onTap: () {
+                          Navigator.pop(context);
+                          UIHelpers.showInfoToast(
+                              'Opening delivery issue form...');
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom Action Button
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              width: double.infinity,
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: AppColors.redGradient,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primaryRed.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  UIHelpers.showInfoToast(
+                      'Emergency support feature coming soon');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: AppColors.white,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(FontAwesomeIcons.phoneVolume, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Emergency Support',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'Bold',
+                        color: AppColors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(String title, IconData icon, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.lightGrey.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.scaffoldBackground,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.lightGrey.withValues(alpha: 0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: AppColors.primaryBlue,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                          color: AppColors.textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Privacy Policy Bottom Sheet
+class PrivacyPolicyBottomSheet extends StatelessWidget {
+  const PrivacyPolicyBottomSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          // Handle Bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textHint.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.redGradient,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    FontAwesomeIcons.shield,
+                    color: AppColors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'Privacy Policy',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.close,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Last Updated
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.scaffoldBackground,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.lightGrey.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today,
+                          color: AppColors.textSecondary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Last Updated: November 1, 2025',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Medium',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Privacy Sections
+                  _buildPrivacySection(
+                    'Information We Collect',
+                    FontAwesomeIcons.database,
+                    [
+                      'Personal identification information (name, phone number, email)',
+                      'Vehicle information (type, model, license plate)',
+                      'Location data for delivery tracking',
+                      'Payment and financial information',
+                      'Usage data and app interactions',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _buildPrivacySection(
+                    'How We Use Your Information',
+                    FontAwesomeIcons.cogs,
+                    [
+                      'To provide delivery services',
+                      'To process payments and manage earnings',
+                      'To verify your identity and vehicle',
+                      'To improve our services and user experience',
+                      'To communicate with you about your deliveries',
+                      'To ensure safety and security',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _buildPrivacySection(
+                    'Information Sharing',
+                    FontAwesomeIcons.shareAlt,
+                    [
+                      'We only share information with customers for delivery purposes',
+                      'Payment processors for transaction processing',
+                      'Law enforcement when required by law',
+                      'Service providers who help operate our platform',
+                      'We never sell your personal information to third parties',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _buildPrivacySection(
+                    'Data Security',
+                    FontAwesomeIcons.lock,
+                    [
+                      'Industry-standard encryption for data protection',
+                      'Secure servers and regular security audits',
+                      'Limited access to personal information',
+                      'Regular backup and disaster recovery procedures',
+                      'Compliance with data protection regulations',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _buildPrivacySection(
+                    'Your Rights',
+                    FontAwesomeIcons.userShield,
+                    [
+                      'Access to your personal information',
+                      'Correction of inaccurate information',
+                      'Deletion of your account and data',
+                      'Opt-out of marketing communications',
+                      'Data portability upon request',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _buildPrivacySection(
+                    'Contact Us',
+                    FontAwesomeIcons.envelope,
+                    [
+                      'For privacy concerns: privacy@citimovers.com',
+                      'For data requests: dpo@citimovers.com',
+                      'Hotline: +63 2 8123 4567',
+                      'Office: 123 Delivery Street, Manila, Philippines',
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom Action Buttons
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      UIHelpers.showInfoToast('Downloading privacy policy...');
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: AppColors.primaryRed.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.download,
+                          size: 18,
+                          color: AppColors.primaryRed,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Download',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Medium',
+                            color: AppColors.primaryRed,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.redGradient,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryRed.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: AppColors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'I Understand',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontFamily: 'Bold',
+                          color: AppColors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrivacySection(
+      String title, IconData icon, List<String> points) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.lightGrey.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...points
+              .map((point) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primaryRed,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            point,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Regular',
+                              color: AppColors.textPrimary,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
+        ],
       ),
     );
   }

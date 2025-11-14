@@ -21,9 +21,10 @@ class RiderHomeTab extends StatefulWidget {
 
 class _RiderHomeTabState extends State<RiderHomeTab> {
   final _authService = RiderAuthService();
-  bool _isOnline = false;
+  bool _isOnline = true;
   int _todayDeliveries = 0;
   double _todayEarnings = 0.0;
+  List<DeliveryRequest> _deliveryRequests = [];
 
   @override
   void initState() {
@@ -33,14 +34,103 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
 
   Future<void> _loadRiderData() async {
     final rider = await _authService.getCurrentRider();
-    if (rider != null && mounted) {
+    if (mounted) {
       setState(() {
-        _isOnline = rider.isOnline;
-        // Mock data for today's stats
-        _todayDeliveries = 5;
-        _todayEarnings = 1250.0;
+        // Always load delivery requests when online
+        if (_isOnline) {
+          _deliveryRequests = _getMockDeliveryRequests();
+        }
+
+        if (rider != null) {
+          _isOnline = rider.isOnline;
+          // Mock data for today's stats
+          _todayDeliveries = 5;
+          _todayEarnings = 1250.0;
+        }
       });
     }
+  }
+
+  List<DeliveryRequest> _getMockDeliveryRequests() {
+    return [
+      DeliveryRequest(
+        id: 'DR001',
+        customerName: 'Maria Santos',
+        customerPhone: '+63 912 345 6789',
+        pickupLocation: 'Makati City, Ayala Avenue',
+        deliveryLocation: 'Pasay City, Mall of Asia',
+        distance: '8.5 km',
+        estimatedTime: '25 mins',
+        fare: 'P180',
+        packageType: 'Small Package',
+        weight: '2 kg',
+        urgency: 'Normal',
+        specialInstructions: 'Handle with care - fragile items',
+        requestTime: '2 mins ago',
+      ),
+      DeliveryRequest(
+        id: 'DR002',
+        customerName: 'Juan Reyes',
+        customerPhone: '+63 923 456 7890',
+        pickupLocation: 'Quezon City, SM North',
+        deliveryLocation: 'Manila, Intramuros',
+        distance: '12.3 km',
+        estimatedTime: '35 mins',
+        fare: 'P250',
+        packageType: 'Medium Package',
+        weight: '5 kg',
+        urgency: 'Urgent',
+        specialInstructions: 'Food delivery - maintain temperature',
+        requestTime: '5 mins ago',
+      ),
+      DeliveryRequest(
+        id: 'DR003',
+        customerName: 'Ana Lopez',
+        customerPhone: '+63 934 567 8901',
+        pickupLocation: 'Pasig City, Ortigas Center',
+        deliveryLocation: 'Taguig City, BGC',
+        distance: '6.8 km',
+        estimatedTime: '20 mins',
+        fare: 'P150',
+        packageType: 'Document',
+        weight: '0.5 kg',
+        urgency: 'Normal',
+        specialInstructions: 'Important documents',
+        requestTime: '8 mins ago',
+      ),
+    ];
+  }
+
+  void _showDeliveryDetailsBottomSheet(
+      BuildContext context, DeliveryRequest request) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DeliveryRequestBottomSheet(
+        request: request,
+        onAccept: () => _acceptDelivery(request),
+        onReject: () => _rejectDelivery(request),
+      ),
+    );
+  }
+
+  void _acceptDelivery(DeliveryRequest request) {
+    Navigator.pop(context);
+    setState(() {
+      _deliveryRequests.removeWhere((r) => r.id == request.id);
+    });
+    UIHelpers.showSuccessToast(
+        'Delivery request accepted! Navigate to pickup location.');
+    // Navigate to delivery tracking screen or map
+  }
+
+  void _rejectDelivery(DeliveryRequest request) {
+    Navigator.pop(context);
+    setState(() {
+      _deliveryRequests.removeWhere((r) => r.id == request.id);
+    });
+    UIHelpers.showInfoToast('Delivery request rejected');
   }
 
   Future<void> _toggleOnlineStatus() async {
@@ -48,6 +138,13 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
     if (success && mounted) {
       setState(() {
         _isOnline = !_isOnline;
+        // Load delivery requests when going online
+        if (_isOnline) {
+          _deliveryRequests = _getMockDeliveryRequests();
+        } else {
+          // Clear delivery requests when going offline
+          _deliveryRequests = [];
+        }
       });
       UIHelpers.showSuccessToast(
         _isOnline ? 'You are now online' : 'You are now offline',
@@ -391,7 +488,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
 
               const SizedBox(height: 28),
 
-              // Active Delivery (if any)
+              // Delivery Requests (if any)
               if (_isOnline)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -404,14 +501,16 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                             width: 4,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: AppColors.success,
+                              color: AppColors.primaryRed,
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Text(
-                            'Waiting for Delivery Request',
-                            style: TextStyle(
+                          Text(
+                            _deliveryRequests.isEmpty
+                                ? 'Waiting for Delivery Request'
+                                : 'Available Delivery Requests (${_deliveryRequests.length})',
+                            style: const TextStyle(
                               fontSize: 20,
                               fontFamily: 'Bold',
                               color: AppColors.textPrimary,
@@ -420,57 +519,71 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppColors.success.withValues(alpha: 0.3),
+                      if (_deliveryRequests.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppColors.success.withValues(alpha: 0.3),
+                            ),
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.success,
-                                borderRadius: BorderRadius.circular(12),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.search,
+                                  color: AppColors.white,
+                                  size: 24,
+                                ),
                               ),
-                              child: const Icon(
-                                Icons.search,
-                                color: AppColors.white,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Looking for nearby deliveries...',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontFamily: 'Bold',
-                                      color: AppColors.textPrimary,
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Looking for nearby deliveries...',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontFamily: 'Bold',
+                                        color: AppColors.textPrimary,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'You\'ll be notified when a new delivery request arrives',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontFamily: 'Regular',
-                                      color: AppColors.textSecondary,
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'You\'ll be notified when a new delivery request arrives',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontFamily: 'Regular',
+                                        color: AppColors.textSecondary,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                        )
+                      else
+                        Column(
+                          children: _deliveryRequests.map((request) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: DeliveryRequestCard(
+                                request: request,
+                                onTap: () => _showDeliveryDetailsBottomSheet(
+                                    context, request),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -545,6 +658,865 @@ class _StatCard extends StatelessWidget {
               fontFamily: 'Bold',
               color: AppColors.textPrimary,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Delivery Request Model
+class DeliveryRequest {
+  final String id;
+  final String customerName;
+  final String customerPhone;
+  final String pickupLocation;
+  final String deliveryLocation;
+  final String distance;
+  final String estimatedTime;
+  final String fare;
+  final String packageType;
+  final String weight;
+  final String urgency;
+  final String specialInstructions;
+  final String requestTime;
+
+  DeliveryRequest({
+    required this.id,
+    required this.customerName,
+    required this.customerPhone,
+    required this.pickupLocation,
+    required this.deliveryLocation,
+    required this.distance,
+    required this.estimatedTime,
+    required this.fare,
+    required this.packageType,
+    required this.weight,
+    required this.urgency,
+    required this.specialInstructions,
+    required this.requestTime,
+  });
+}
+
+// Delivery Request Card Widget
+class DeliveryRequestCard extends StatelessWidget {
+  final DeliveryRequest request;
+  final VoidCallback onTap;
+
+  const DeliveryRequestCard({
+    super.key,
+    required this.request,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(
+            color: request.urgency == 'Urgent'
+                ? AppColors.error.withValues(alpha: 0.3)
+                : AppColors.primaryRed.withValues(alpha: 0.2),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with urgency badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          gradient: AppColors.redGradient,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.local_shipping,
+                          color: AppColors.white,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              request.customerName,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontFamily: 'Bold',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              request.requestTime,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Regular',
+                                color: AppColors.textSecondary,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: request.urgency == 'Urgent'
+                        ? AppColors.error.withValues(alpha: 0.1)
+                        : AppColors.primaryRed.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: request.urgency == 'Urgent'
+                          ? AppColors.error.withValues(alpha: 0.3)
+                          : AppColors.primaryRed.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    request.urgency,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'Bold',
+                      color: request.urgency == 'Urgent'
+                          ? AppColors.error
+                          : AppColors.primaryRed,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Route Information
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.scaffoldBackground,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.lightGrey.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryRed,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'From',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          request.pickupLocation,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textPrimary,
+                            height: 1.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    child: const Icon(
+                      Icons.arrow_forward,
+                      size: 16,
+                      color: AppColors.textHint,
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryBlue,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'To',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          request.deliveryLocation,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textPrimary,
+                            height: 1.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Delivery Details Row
+            Row(
+              children: [
+                Expanded(
+                  child: _DetailItem(
+                    icon: Icons.straighten,
+                    label: 'Distance',
+                    value: request.distance,
+                  ),
+                ),
+                Expanded(
+                  child: _DetailItem(
+                    icon: Icons.access_time,
+                    label: 'Time',
+                    value: request.estimatedTime,
+                  ),
+                ),
+                Expanded(
+                  child: _DetailItem(
+                    icon: Icons.monetization_on,
+                    label: 'Fare',
+                    value: request.fare,
+                    valueColor: AppColors.primaryRed,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Detail Item Widget
+class _DetailItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _DetailItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: AppColors.textSecondary,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontFamily: 'Regular',
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontFamily: 'Bold',
+            color: valueColor ?? AppColors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Delivery Request Bottom Sheet
+class DeliveryRequestBottomSheet extends StatelessWidget {
+  final DeliveryRequest request;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  const DeliveryRequestBottomSheet({
+    super.key,
+    required this.request,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          // Handle Bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textHint.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.redGradient,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.local_shipping,
+                    color: AppColors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Delivery Request',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Request ID: ${request.id}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: request.urgency == 'Urgent'
+                        ? AppColors.error.withValues(alpha: 0.1)
+                        : AppColors.primaryRed.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: request.urgency == 'Urgent'
+                          ? AppColors.error.withValues(alpha: 0.3)
+                          : AppColors.primaryRed.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    request.urgency,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Bold',
+                      color: request.urgency == 'Urgent'
+                          ? AppColors.error
+                          : AppColors.primaryRed,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.close,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Customer Information
+                  _buildSectionCard(
+                    'Customer Information',
+                    Icons.person,
+                    [
+                      _buildDetailRow('Name', request.customerName),
+                      _buildDetailRow('Phone', request.customerPhone),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Package Information
+                  _buildSectionCard(
+                    'Package Information',
+                    Icons.inventory_2,
+                    [
+                      _buildDetailRow('Type', request.packageType),
+                      _buildDetailRow('Weight', request.weight),
+                      _buildDetailRow(
+                          'Special Instructions', request.specialInstructions),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Route Details
+                  _buildRouteSection(),
+
+                  const SizedBox(height: 20),
+
+                  // Delivery Details
+                  _buildSectionCard(
+                    'Delivery Details',
+                    Icons.delivery_dining,
+                    [
+                      _buildDetailRow('Distance', request.distance),
+                      _buildDetailRow('Estimated Time', request.estimatedTime),
+                      _buildDetailRow('Fare', request.fare),
+                      _buildDetailRow('Request Time', request.requestTime),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom Action Buttons
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: onReject,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: AppColors.error,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.close, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Reject',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.redGradient,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryRed.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: onAccept,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: AppColors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Accept',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                              color: AppColors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(String title, IconData icon, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.lightGrey.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+                height: 1.3,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.lightGrey.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.route,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Route Details',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Pickup Location
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.radio_button_checked,
+                  size: 16,
+                  color: AppColors.primaryRed,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pickup Location',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      request.pickupLocation,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Route Line
+          Container(
+            margin: const EdgeInsets.only(left: 11),
+            height: 30,
+            child: const VerticalDivider(
+              color: AppColors.textHint,
+              thickness: 1,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Drop-off Location
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.location_on,
+                  size: 16,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Drop-off Location',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      request.deliveryLocation,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
