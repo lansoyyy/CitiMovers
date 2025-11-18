@@ -5,32 +5,30 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
 import '../home_screen.dart';
-import 'email_verification_screen.dart';
 
-class OTPVerificationScreen extends StatefulWidget {
-  final String phoneNumber;
+class EmailVerificationScreen extends StatefulWidget {
+  final String email;
+  final String? phoneNumber;
   final bool isSignup;
   final String? name;
-  final String? email;
-  final VoidCallback? onVerified;
   final bool isBookingFlow;
 
-  const OTPVerificationScreen({
+  const EmailVerificationScreen({
     super.key,
-    required this.phoneNumber,
+    required this.email,
+    this.phoneNumber,
     required this.isSignup,
     this.name,
-    this.email,
-    this.onVerified,
     this.isBookingFlow = false,
   });
 
   @override
-  State<OTPVerificationScreen> createState() => _OTPVerificationScreenState();
+  State<EmailVerificationScreen> createState() =>
+      _EmailVerificationScreenState();
 }
 
-class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
-  final List<TextEditingController> _otpControllers =
+class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
+  final List<TextEditingController> _codeControllers =
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
   final _authService = AuthService();
@@ -48,7 +46,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   @override
   void dispose() {
-    for (var controller in _otpControllers) {
+    for (var controller in _codeControllers) {
       controller.dispose();
     }
     for (var node in _focusNodes) {
@@ -71,67 +69,96 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
   }
 
-  Future<void> _resendOTP() async {
+  Future<void> _resendEmailCode() async {
     if (!_canResend) return;
 
     setState(() => _isLoading = true);
-    final success = await _authService.sendOTP(widget.phoneNumber);
+    final success = await _authService.sendEmailVerificationCode(widget.email);
     setState(() => _isLoading = false);
 
     if (success) {
-      UIHelpers.showSuccessToast('OTP resent successfully');
+      UIHelpers.showSuccessToast('Verification code resent to your email');
       _startResendTimer();
-      // Clear OTP fields
-      for (var controller in _otpControllers) {
+      // Clear code fields
+      for (var controller in _codeControllers) {
         controller.clear();
       }
       _focusNodes[0].requestFocus();
     } else {
-      UIHelpers.showErrorToast('Failed to resend OTP');
+      UIHelpers.showErrorToast('Failed to resend verification code');
     }
   }
 
-  String _getOTPCode() {
-    return _otpControllers.map((c) => c.text).join();
+  String _getVerificationCode() {
+    return _codeControllers.map((c) => c.text).join();
   }
 
-  Future<void> _verifyOTP() async {
-    final otpCode = _getOTPCode();
+  Future<void> _verifyEmailCode() async {
+    final code = _getVerificationCode();
 
-    if (otpCode.length != 6) {
-      UIHelpers.showWarningToast('Please enter complete OTP code');
+    if (code.length != 6) {
+      UIHelpers.showWarningToast('Please enter complete verification code');
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // Verify OTP
-    final isValid = await _authService.verifyOTP(widget.phoneNumber, otpCode);
+    // Verify email code
+    final isValid = await _authService.verifyEmailCode(widget.email, code);
 
     if (!mounted) return;
 
     if (!isValid) {
       setState(() => _isLoading = false);
-      UIHelpers.showErrorToast('Invalid OTP code. Please try again.');
+      UIHelpers.showErrorToast('Invalid verification code. Please try again.');
       return;
     }
 
-    setState(() => _isLoading = false);
+    // If signup, register user
+    if (widget.isSignup) {
+      final user = await _authService.registerUser(
+        name: widget.name!,
+        phoneNumber: widget.phoneNumber!,
+        email: widget.email,
+      );
 
-    // Navigate to email verification if email is provided
+      if (!mounted) return;
+      setState(() => _isLoading = false);
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EmailVerificationScreen(
-          email: 'johndoe@gmail.com',
-          phoneNumber: widget.phoneNumber,
-          isSignup: widget.isSignup,
-          name: widget.name,
-          isBookingFlow: widget.isBookingFlow,
-        ),
-      ),
-    );
+      if (user != null) {
+        UIHelpers.showSuccessToast('Account created successfully!');
+        _navigateToHome();
+      } else {
+        UIHelpers.showErrorToast('Failed to create account');
+      }
+    } else {
+      // If login, authenticate user
+      final user = await _authService.loginUser(widget.phoneNumber!);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (user != null) {
+        UIHelpers.showSuccessToast('Welcome back, ${user.name}!');
+        _navigateToHome();
+      } else {
+        UIHelpers.showErrorToast('Failed to login');
+      }
+    }
+  }
+
+  void _navigateToHome() {
+    if (widget.isBookingFlow) {
+      // For booking flow, just pop back to continue booking process
+      Navigator.pop(context);
+    } else {
+      // For login/signup flow, navigate to home
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
+      );
+    }
   }
 
   @override
@@ -164,7 +191,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    Icons.message_outlined,
+                    Icons.email_outlined,
                     size: 50,
                     color: AppColors.primaryBlue,
                   ),
@@ -176,7 +203,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               // Title
               const Center(
                 child: Text(
-                  'Verify Your Number',
+                  'Verify Your Email',
                   style: TextStyle(
                     fontSize: 28,
                     fontFamily: 'Bold',
@@ -190,7 +217,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               // Subtitle
               Center(
                 child: Text(
-                  'Enter the 6-digit code sent to\n${widget.phoneNumber}',
+                  'Enter the 6-digit code sent to\n${widget.email}',
                   style: const TextStyle(
                     fontSize: 15,
                     fontFamily: 'Regular',
@@ -202,7 +229,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
               const SizedBox(height: 48),
 
-              // OTP Input Fields
+              // Email Code Input Fields
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: List.generate(6, (index) {
@@ -210,7 +237,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     width: 50,
                     height: 60,
                     child: TextFormField(
-                      controller: _otpControllers[index],
+                      controller: _codeControllers[index],
                       focusNode: _focusNodes[index],
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
@@ -256,7 +283,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                         }
                         // Auto verify when all fields are filled
                         if (index == 5 && value.isNotEmpty) {
-                          _verifyOTP();
+                          _verifyEmailCode();
                         }
                       },
                     ),
@@ -266,13 +293,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
               const SizedBox(height: 32),
 
-              // Resend OTP
+              // Resend Email Code
               Center(
                 child: _canResend
                     ? TextButton(
-                        onPressed: _resendOTP,
+                        onPressed: _resendEmailCode,
                         child: const Text(
-                          'Resend OTP',
+                          'Resend Email Code',
                           style: TextStyle(
                             fontSize: 15,
                             fontFamily: 'Bold',
@@ -281,7 +308,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                         ),
                       )
                     : Text(
-                        'Resend OTP in $_resendTimer seconds',
+                        'Resend Email Code in $_resendTimer seconds',
                         style: const TextStyle(
                           fontSize: 14,
                           fontFamily: 'Regular',
@@ -297,7 +324,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _verifyOTP,
+                  onPressed: _isLoading ? null : _verifyEmailCode,
                   style: ElevatedButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -308,11 +335,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                           color: AppColors.white,
                           size: 20,
                         )
-                      : Text(
-                          widget.email != null && widget.email!.isNotEmpty
-                              ? 'Verify Phone & Continue'
-                              : 'Verify & Continue',
-                          style: const TextStyle(
+                      : const Text(
+                          'Verify & Continue',
+                          style: TextStyle(
                             fontSize: 18,
                             fontFamily: 'Bold',
                           ),
@@ -322,7 +347,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
               const SizedBox(height: 24),
 
-              // Change Number
+              // Change Email
               Center(
                 child: TextButton.icon(
                   onPressed: () => Navigator.pop(context),
@@ -332,7 +357,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     color: AppColors.textSecondary,
                   ),
                   label: const Text(
-                    'Change Phone Number',
+                    'Change Email Address',
                     style: TextStyle(
                       fontSize: 14,
                       fontFamily: 'Regular',

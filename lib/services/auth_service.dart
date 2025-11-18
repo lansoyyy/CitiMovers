@@ -10,7 +10,7 @@ class AuthService {
 
   // Current user (in-memory for now, will be replaced with Firebase)
   UserModel? _currentUser;
-  
+
   UserModel? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
 
@@ -20,7 +20,7 @@ class AuthService {
       // TODO: Implement Firebase phone authentication
       // For now, simulate API call
       await Future.delayed(const Duration(seconds: 2));
-      
+
       // Simulate success
       debugPrint('OTP sent to: $phoneNumber');
       return true;
@@ -35,7 +35,7 @@ class AuthService {
     try {
       // TODO: Implement Firebase OTP verification
       await Future.delayed(const Duration(seconds: 2));
-      
+
       // Simulate verification (accept any 6-digit code for now)
       if (otpCode.length == 6) {
         debugPrint('OTP verified for: $phoneNumber');
@@ -44,6 +44,40 @@ class AuthService {
       return false;
     } catch (e) {
       debugPrint('Error verifying OTP: $e');
+      return false;
+    }
+  }
+
+  /// Send email verification code
+  Future<bool> sendEmailVerificationCode(String email) async {
+    try {
+      // TODO: Implement Firebase email verification
+      // For now, simulate API call
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Simulate success
+      debugPrint('Email verification code sent to: $email');
+      return true;
+    } catch (e) {
+      debugPrint('Error sending email verification code: $e');
+      return false;
+    }
+  }
+
+  /// Verify email code
+  Future<bool> verifyEmailCode(String email, String code) async {
+    try {
+      // TODO: Implement Firebase email code verification
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Simulate verification (accept any 6-digit code for now)
+      if (code.length == 6) {
+        debugPrint('Email code verified for: $email');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error verifying email code: $e');
       return false;
     }
   }
@@ -57,7 +91,7 @@ class AuthService {
     try {
       // TODO: Implement Firebase user creation
       await Future.delayed(const Duration(seconds: 2));
-      
+
       final now = DateTime.now();
       final user = UserModel(
         userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
@@ -68,7 +102,7 @@ class AuthService {
         createdAt: now,
         updatedAt: now,
       );
-      
+
       _currentUser = user;
       debugPrint('User registered: ${user.name}');
       return user;
@@ -83,7 +117,7 @@ class AuthService {
     try {
       // TODO: Implement Firebase user login
       await Future.delayed(const Duration(seconds: 2));
-      
+
       // Simulate fetching user from database
       final now = DateTime.now();
       final user = UserModel(
@@ -96,7 +130,7 @@ class AuthService {
         createdAt: now.subtract(const Duration(days: 30)),
         updatedAt: now,
       );
-      
+
       _currentUser = user;
       debugPrint('User logged in: ${user.name}');
       return user;
@@ -111,7 +145,7 @@ class AuthService {
     try {
       // TODO: Implement Firebase phone check
       await Future.delayed(const Duration(seconds: 1));
-      
+
       // Simulate check (for demo, phone starting with +639 is registered)
       return phoneNumber.startsWith('+639');
     } catch (e) {
@@ -147,17 +181,17 @@ class AuthService {
   }) async {
     try {
       if (_currentUser == null) return false;
-      
+
       // TODO: Implement Firebase profile update
       await Future.delayed(const Duration(seconds: 1));
-      
+
       _currentUser = _currentUser!.copyWith(
         name: name,
         email: email,
         photoUrl: photoUrl,
         updatedAt: DateTime.now(),
       );
-      
+
       debugPrint('Profile updated');
       return true;
     } catch (e) {
@@ -174,7 +208,7 @@ class AuthService {
     try {
       // TODO: Implement Firebase password change
       await Future.delayed(const Duration(seconds: 1));
-      
+
       debugPrint('Password changed successfully');
       return true;
     } catch (e) {
@@ -188,7 +222,7 @@ class AuthService {
     try {
       // TODO: Implement account deletion request
       await Future.delayed(const Duration(seconds: 1));
-      
+
       debugPrint('Account deletion requested');
       return true;
     } catch (e) {

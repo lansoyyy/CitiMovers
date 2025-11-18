@@ -5,6 +5,7 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
 import 'otp_verification_screen.dart';
+import 'email_verification_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,12 +17,14 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -73,6 +76,9 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (context) => OTPVerificationScreen(
             phoneNumber: phoneNumber,
             isSignup: false,
+            email: _emailController.text.trim().isEmpty
+                ? null
+                : _emailController.text.trim(),
           ),
         ),
       );
@@ -189,6 +195,44 @@ class _LoginScreenState extends State<LoginScreen> {
                     return null;
                   },
                 ),
+
+                // const SizedBox(height: 16),
+
+                // // Email Field
+                // const Text(
+                //   'Email Address',
+                //   style: TextStyle(
+                //     fontSize: 14,
+                //     fontFamily: 'Medium',
+                //     color: AppColors.textPrimary,
+                //   ),
+                // ),
+
+                // const SizedBox(height: 8),
+
+                // TextFormField(
+                //   controller: _emailController,
+                //   keyboardType: TextInputType.emailAddress,
+                //   decoration: InputDecoration(
+                //     hintText: 'Enter your email address',
+                //     prefixIcon: const Icon(
+                //       Icons.email_outlined,
+                //       color: AppColors.textSecondary,
+                //     ),
+                //     filled: true,
+                //     fillColor: AppColors.white,
+                //   ),
+                //   validator: (value) {
+                //     // Email is optional for login
+                //     if (value != null && value.isNotEmpty) {
+                //       if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                //           .hasMatch(value)) {
+                //         return 'Please enter a valid email address';
+                //       }
+                //     }
+                //     return null;
+                //   },
+                // ),
 
                 const SizedBox(height: 32),
 

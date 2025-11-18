@@ -6,6 +6,9 @@ import '../../models/location_model.dart';
 import '../../models/vehicle_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
+import '../auth/otp_verification_screen.dart';
+import '../auth/email_verification_screen.dart';
+import '../terms_conditions_screen.dart';
 
 class BookingSummaryScreen extends StatefulWidget {
   final LocationModel pickupLocation;
@@ -35,6 +38,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   String _selectedPaymentMethod = 'Gcash'; // Default payment method
   bool _isLoading = false;
   int? _travelDurationMinutes; // Store travel duration
+  bool _termsAccepted = false; // Terms & Conditions checkbox state
 
   double get _estimatedFare => _mapsService.calculateFare(
         distanceKm: widget.distance,
@@ -88,6 +92,15 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   }
 
   Future<void> _confirmBooking() async {
+    // First show Terms & Conditions
+    final termsAccepted = await _showTermsAndConditions();
+    if (!termsAccepted) return;
+
+    // Then show confirmation dialog
+    final confirmed = await _showBookingConfirmationDialog();
+    if (!confirmed) return;
+
+    // Proceed with booking creation
     setState(() => _isLoading = true);
 
     final booking = await _bookingService.createBooking(
@@ -108,12 +121,379 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     setState(() => _isLoading = false);
 
     if (booking != null && mounted) {
-      UIHelpers.showSuccessToast('Booking created successfully!');
-      // Navigate to booking confirmation or home
-      Navigator.popUntil(context, (route) => route.isFirst);
+      // Navigate to OTP verification first, then email verification
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OTPVerificationScreen(
+            phoneNumber: '+639090104355', // TODO: Get from user profile
+            isSignup: false,
+            email: 'user@example.com', // TODO: Get from user profile
+            isBookingFlow: true,
+          ),
+        ),
+      );
     } else {
       UIHelpers.showErrorToast('Failed to create booking');
     }
+  }
+
+  Future<bool> _showTermsAndConditions() async {
+    return await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => DraggableScrollableSheet(
+            initialChildSize: 0.9,
+            maxChildSize: 0.95,
+            minChildSize: 0.5,
+            builder: (context, scrollController) => StatefulBuilder(
+              builder: (context, setState) => Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Handle bar
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.textHint.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Terms & Conditions',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontFamily: 'Bold',
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            icon: const Icon(
+                              Icons.close,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(height: 1),
+
+                    // Content
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Important Notice',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontFamily: 'Bold',
+                                color: AppColors.primaryRed,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'CitiMovers does not offer cash on delivery. All payments must be made through our digital payment methods before the delivery is completed.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            const Text(
+                              'Key Terms:',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontFamily: 'Bold',
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildTermPoint(
+                                '• Pre-payment required for all bookings'),
+                            _buildTermPoint(
+                                '• Cancellation fees apply after 5 minutes'),
+                            _buildTermPoint(
+                                '• Basic insurance coverage up to ₱5,000 included'),
+                            _buildTermPoint(
+                                '• Prohibited items: hazardous materials, illegal substances'),
+                            _buildTermPoint(
+                                '• Report damages within 24 hours of delivery'),
+                            _buildTermPoint(
+                                '• Dispute resolution within 24 hours of incident'),
+
+                            const SizedBox(height: 16),
+                            const Text(
+                              'By checking the box below, you acknowledge that you have read, understood, and agree to be bound by the complete Terms & Conditions of CitiMovers.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Regular',
+                                color: AppColors.textSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // Checkbox
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: _termsAccepted,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _termsAccepted = value ?? false;
+                                    });
+                                  },
+                                  activeColor: AppColors.primaryRed,
+                                ),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _termsAccepted = !_termsAccepted;
+                                      });
+                                    },
+                                    child: const Text(
+                                      'I accept the Terms & Conditions',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontFamily: 'Medium',
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // View Full Terms Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const TermsConditionsScreen(),
+                                    ),
+                                  );
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(
+                                      color: AppColors.primaryRed),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'View Full Terms & Conditions',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.primaryRed,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Bottom Button
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: _termsAccepted
+                              ? () => Navigator.pop(context, true)
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryRed,
+                            foregroundColor: AppColors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            disabledBackgroundColor:
+                                AppColors.textHint.withOpacity(0.3),
+                          ),
+                          child: const Text(
+                            'Continue',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ) ??
+        false;
+  }
+
+  Widget _buildTermPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontFamily: 'Regular',
+          color: AppColors.textSecondary,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _showBookingConfirmationDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text(
+              'Confirm Booking',
+              style: TextStyle(
+                fontSize: 18,
+                fontFamily: 'Bold',
+                color: AppColors.textPrimary,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Please review your booking details:',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Regular',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildConfirmRow('Vehicle:', widget.vehicle.name),
+                _buildConfirmRow('Payment:', _selectedPaymentMethod),
+                _buildConfirmRow(
+                    'Fare:', 'P${_estimatedFare.toStringAsFixed(0)}'),
+                if (_bookingType == 'scheduled' && _scheduledDateTime != null)
+                  _buildConfirmRow('Schedule:',
+                      '${_scheduledDateTime!.day}/${_scheduledDateTime!.month}/${_scheduledDateTime!.year} at ${_scheduledDateTime!.hour}:${_scheduledDateTime!.minute.toString().padLeft(2, '0')}'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                  foregroundColor: AppColors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Confirm',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Bold',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Widget _buildConfirmRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'Medium',
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const Text(': '),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -568,6 +948,39 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           label: 'Total Fare',
                           value: 'P${_estimatedFare.toStringAsFixed(0)}',
                           isBold: true,
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.primaryRed.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: AppColors.primaryRed,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Total fare is for distance and base fare only. Additional charges for loading/unloading will be added after delivery completion.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'Regular',
+                                    color: AppColors.primaryRed,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
