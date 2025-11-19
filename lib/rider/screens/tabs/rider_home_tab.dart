@@ -6,6 +6,8 @@ import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import '../profile/rider_settings_screen.dart';
+import '../../models/delivery_request_model.dart';
+import '../delivery/rider_delivery_progress_screen.dart';
 
 class RiderHomeTab extends StatefulWidget {
   final TabController tabController;
@@ -117,12 +119,19 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
 
   void _acceptDelivery(DeliveryRequest request) {
     Navigator.pop(context);
+
+    // Navigate to delivery process
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RiderDeliveryProgressScreen(request: request),
+      ),
+    );
+
     setState(() {
       _deliveryRequests.removeWhere((r) => r.id == request.id);
     });
-    UIHelpers.showSuccessToast(
-        'Delivery request accepted! Navigate to pickup location.');
-    // Navigate to delivery tracking screen or map
+    // UIHelpers.showSuccessToast('Delivery request accepted! Navigate to pickup location.');
   }
 
   void _rejectDelivery(DeliveryRequest request) {
@@ -663,39 +672,6 @@ class _StatCard extends StatelessWidget {
       ),
     );
   }
-}
-
-// Delivery Request Model
-class DeliveryRequest {
-  final String id;
-  final String customerName;
-  final String customerPhone;
-  final String pickupLocation;
-  final String deliveryLocation;
-  final String distance;
-  final String estimatedTime;
-  final String fare;
-  final String packageType;
-  final String weight;
-  final String urgency;
-  final String specialInstructions;
-  final String requestTime;
-
-  DeliveryRequest({
-    required this.id,
-    required this.customerName,
-    required this.customerPhone,
-    required this.pickupLocation,
-    required this.deliveryLocation,
-    required this.distance,
-    required this.estimatedTime,
-    required this.fare,
-    required this.packageType,
-    required this.weight,
-    required this.urgency,
-    required this.specialInstructions,
-    required this.requestTime,
-  });
 }
 
 // Delivery Request Card Widget
