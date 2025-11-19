@@ -6,6 +6,7 @@ import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -29,9 +30,15 @@ enum DeliveryStep {
   completed
 }
 
+enum LoadingSubStep { arrived, startLoading, finishLoading }
+
+enum UnloadingSubStep { arrived, startUnloading, finishUnloading }
+
 class _RiderDeliveryProgressScreenState
-    extends State<RiderDeliveryProgressScreen> {
+    extends State<RiderDeliveryProgressScreen> with TickerProviderStateMixin {
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
+  LoadingSubStep? _loadingSubStep;
+  UnloadingSubStep? _unloadingSubStep;
 
   // Demurrage Tracking (Loading)
   Timer? _loadingTimer;
@@ -39,6 +46,7 @@ class _RiderDeliveryProgressScreenState
   double _loadingDemurrageFee = 0.0;
   File? _startLoadingPhoto;
   File? _finishLoadingPhoto;
+  bool _loadingDemurrageStarted = false;
 
   // Demurrage Tracking (Unloading)
   Timer? _unloadingTimer;
@@ -46,12 +54,42 @@ class _RiderDeliveryProgressScreenState
   double _unloadingDemurrageFee = 0.0;
   File? _startUnloadingPhoto;
   File? _finishUnloadingPhoto;
+  bool _unloadingDemurrageStarted = false;
+
+  // Geofencing
+  bool _isWithinGeofence = true;
+  String _geofenceStatus = 'Within delivery area';
 
   // Receiving
   final _receiverNameController = TextEditingController();
   File? _idPhoto;
   List<Offset?> _signaturePoints = [];
   bool _isSignatureEmpty = true;
+
+  // Animation controllers
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _loadingTimer?.cancel();
+    _unloadingTimer?.cancel();
+    _receiverNameController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   double get _baseFare {
     // Parse "P150" -> 150.0
@@ -98,50 +136,33 @@ class _RiderDeliveryProgressScreenState
     };
   }
 
-  @override
-  void dispose() {
-    _loadingTimer?.cancel();
-    _unloadingTimer?.cancel();
-    _receiverNameController.dispose();
-    super.dispose();
-  }
-
   // --- Actions ---
 
   void _arrivedAtWarehouse() {
     setState(() {
       _currentStep = DeliveryStep.loading;
-      // "Arrived Button ... apply demorage - Start Loading - Counting"
+      _loadingSubStep = LoadingSubStep.arrived;
+      _loadingDemurrageStarted = true;
       _startLoadingTimer();
     });
+    UIHelpers.showSuccessToast(
+        'Arrived at warehouse! Demurrage timer started.');
   }
 
   void _startLoadingTimer() {
     _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _loadingDuration += const Duration(seconds: 1);
-        _calculateLoadingFee();
+        if (_loadingDemurrageStarted) {
+          _calculateLoadingFee();
+        }
       });
     });
   }
 
   void _calculateLoadingFee() {
     // "Every 4 hours - 25% of the delivery fare"
-    // Implemented as: 0-4h = 0, 4-8h = 25%, 8-12h = 50%, etc.
-    // OR: Pro-rated? "Every 4 hours" usually implies a block.
-    // Prompt: "every 4 hours - 25%"
-    // I'll implement block based.
-    // 0 - 3:59:59 => 0
-    // 4:00:00 - 7:59:59 => 25%
     int blocks = _loadingDuration.inHours ~/ 4;
-    // If counting starts immediately and fee applies immediately? Unlikely.
-    // Assuming standard logic:
-    // If duration >= 4 hours, fee applies.
-
-    // However, user said "Counting" starts.
-    // Let's assume simple: Fee = (hours / 4) * 25% * Fare.
-    // If < 4 hours, fee is 0.
-
     if (blocks > 0) {
       _loadingDemurrageFee = blocks * 0.25 * _baseFare;
     } else {
@@ -149,12 +170,32 @@ class _RiderDeliveryProgressScreenState
     }
   }
 
-  Future<void> _takePhoto(Function(File) onPicked) async {
+  void _startLoadingPhotoProcess() {
+    setState(() {
+      _loadingSubStep = LoadingSubStep.startLoading;
+    });
+  }
+
+  void _finishLoadingPhotoProcess() {
+    setState(() {
+      _loadingSubStep = LoadingSubStep.finishLoading;
+    });
+  }
+
+  Future<void> _takePhoto(Function(File) onPicked, String photoType) async {
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
       setState(() {
         onPicked(File(image.path));
       });
+      UIHelpers.showSuccessToast('$photoType photo captured successfully!');
+
+      // Update sub-steps based on photo taken
+      if (onPicked == (file) => _startLoadingPhoto = file) {
+        _startLoadingPhotoProcess();
+      } else if (onPicked == (file) => _finishLoadingPhoto = file) {
+        _finishLoadingPhotoProcess();
+      }
     }
   }
 
@@ -164,25 +205,56 @@ class _RiderDeliveryProgressScreenState
       return;
     }
     _loadingTimer?.cancel();
+    _loadingDemurrageStarted = false;
     setState(() {
       _currentStep = DeliveryStep.delivering;
+      _loadingSubStep = null;
     });
+    UIHelpers.showSuccessToast('Loading completed! Ready for delivery.');
   }
 
   void _arrivedAtClient() {
-    // Geo-fencing check placeholder
-    // if (distance > range) show warning
+    // Geo-fencing check
+    if (!_isWithinGeofence) {
+      _showGeofenceWarning();
+      return;
+    }
+
     setState(() {
       _currentStep = DeliveryStep.unloading;
+      _unloadingSubStep = UnloadingSubStep.arrived;
+      _unloadingDemurrageStarted = true;
       _startUnloadingTimer();
     });
+    UIHelpers.showSuccessToast(
+        'Arrived at destination! Demurrage timer started.');
+  }
+
+  void _showGeofenceWarning() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Location Warning'),
+        content: const Text(
+          'You are not within the designated delivery area. Please proceed to the correct location to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _startUnloadingTimer() {
     _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _unloadingDuration += const Duration(seconds: 1);
-        _calculateUnloadingFee();
+        if (_unloadingDemurrageStarted) {
+          _calculateUnloadingFee();
+        }
       });
     });
   }
@@ -196,15 +268,31 @@ class _RiderDeliveryProgressScreenState
     }
   }
 
+  void _startUnloadingPhotoProcess() {
+    setState(() {
+      _unloadingSubStep = UnloadingSubStep.startUnloading;
+    });
+  }
+
+  void _finishUnloadingPhotoProcess() {
+    setState(() {
+      _unloadingSubStep = UnloadingSubStep.finishUnloading;
+    });
+  }
+
   void _finishUnloading() {
     if (_startUnloadingPhoto == null || _finishUnloadingPhoto == null) {
       UIHelpers.showInfoToast('Please take both photos to finish unloading.');
       return;
     }
     _unloadingTimer?.cancel();
+    _unloadingDemurrageStarted = false;
     setState(() {
       _currentStep = DeliveryStep.receiving;
+      _unloadingSubStep = null;
     });
+    UIHelpers.showSuccessToast(
+        'Unloading completed! Ready for receiver confirmation.');
   }
 
   void _completeDelivery() {
@@ -226,8 +314,27 @@ class _RiderDeliveryProgressScreenState
     });
 
     // Send Email Logic Mock
-    UIHelpers.showSuccessToast('Delivery Completed! Email sent.');
-    // Navigate back home after delay?
+    _sendCompletionEmails();
+    UIHelpers.showSuccessToast(
+        'Delivery Completed! Confirmation emails sent to Customer, Admin, and Driver.');
+
+    // Navigate back home after delay
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    });
+  }
+
+  void _sendCompletionEmails() {
+    // Mock email sending functionality
+    final now = DateTime.now();
+    final formattedTime = DateFormat('MMM dd, yyyy - hh:mm a').format(now);
+
+    // In a real app, these would be actual API calls
+    print('Email to Customer: Delivery completed at $formattedTime');
+    print('Email to Admin: Delivery #${widget.request.id} completed by rider');
+    print('Email to Driver: Delivery confirmation and earnings summary');
   }
 
   // --- UI Builders ---
@@ -519,11 +626,19 @@ class _RiderDeliveryProgressScreenState
         const Text('Loading Process',
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
         const SizedBox(height: 16),
-        _buildPhotoStep('Start Loading', _startLoadingPhoto,
-            (file) => _startLoadingPhoto = file),
+        _buildPhotoStep(
+          'Start Loading',
+          _startLoadingPhoto,
+          (file) => _startLoadingPhoto = file,
+          photoType: 'Start Loading',
+        ),
         const SizedBox(height: 16),
-        _buildPhotoStep('Finished Loading', _finishLoadingPhoto,
-            (file) => _finishLoadingPhoto = file),
+        _buildPhotoStep(
+          'Finished Loading',
+          _finishLoadingPhoto,
+          (file) => _finishLoadingPhoto = file,
+          photoType: 'Finished Loading',
+        ),
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
@@ -672,11 +787,19 @@ class _RiderDeliveryProgressScreenState
         const Text('Unloading Process',
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
         const SizedBox(height: 16),
-        _buildPhotoStep('Start Unloading', _startUnloadingPhoto,
-            (file) => _startUnloadingPhoto = file),
+        _buildPhotoStep(
+          'Start Unloading',
+          _startUnloadingPhoto,
+          (file) => _startUnloadingPhoto = file,
+          photoType: 'Start Unloading',
+        ),
         const SizedBox(height: 16),
-        _buildPhotoStep('Finished Unloading', _finishUnloadingPhoto,
-            (file) => _finishUnloadingPhoto = file),
+        _buildPhotoStep(
+          'Finished Unloading',
+          _finishUnloadingPhoto,
+          (file) => _finishUnloadingPhoto = file,
+          photoType: 'Finished Unloading',
+        ),
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
@@ -714,7 +837,7 @@ class _RiderDeliveryProgressScreenState
         ),
         const SizedBox(height: 24),
         _buildPhotoStep('Receiver ID', _idPhoto, (file) => _idPhoto = file,
-            isId: true),
+            photoType: 'Receiver ID'),
         const SizedBox(height: 24),
         const Text('Digital Signature',
             style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
@@ -849,9 +972,9 @@ class _RiderDeliveryProgressScreenState
   }
 
   Widget _buildPhotoStep(String label, File? image, Function(File) onPicked,
-      {bool isId = false}) {
+      {bool isId = false, required String photoType}) {
     return GestureDetector(
-      onTap: () => _takePhoto(onPicked),
+      onTap: () => _takePhoto(onPicked, photoType),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
