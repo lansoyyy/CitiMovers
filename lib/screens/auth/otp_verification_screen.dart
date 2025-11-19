@@ -1,3 +1,4 @@
+import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
@@ -14,12 +15,14 @@ class OTPVerificationScreen extends StatefulWidget {
   final String? email;
   final VoidCallback? onVerified;
   final bool isBookingFlow;
+  final BookingData? booking;
 
   const OTPVerificationScreen({
     super.key,
     required this.phoneNumber,
     required this.isSignup,
     this.name,
+    this.booking,
     this.email,
     this.onVerified,
     this.isBookingFlow = false,
@@ -37,7 +40,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   bool _isLoading = false;
   bool _canResend = false;
-  int _resendTimer = 60;
+  int _resendTimer = 30;
   Timer? _timer;
 
   @override
@@ -60,7 +63,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   void _startResendTimer() {
     _canResend = false;
-    _resendTimer = 60;
+    _resendTimer = 30;
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_resendTimer > 0) {
         setState(() => _resendTimer--);
@@ -124,6 +127,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => EmailVerificationScreen(
+          booking: widget.booking,
           email: 'johndoe@gmail.com',
           phoneNumber: widget.phoneNumber,
           isSignup: widget.isSignup,

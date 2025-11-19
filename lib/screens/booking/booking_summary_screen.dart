@@ -1,3 +1,4 @@
+import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../utils/app_colors.dart';
@@ -130,6 +131,19 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
             isSignup: false,
             email: 'user@example.com', // TODO: Get from user profile
             isBookingFlow: true,
+            booking: BookingData(
+                id: booking.bookingId!,
+                vehicleType: booking.vehicle.name,
+                driverName: 'John Doe',
+                driverRating: 4.5,
+                from: booking.pickupLocation.address,
+                to: booking.dropoffLocation.address,
+                date: booking.scheduledDateTime.toString(),
+                time: booking.scheduledDateTime.toString(),
+                fare: booking.estimatedFare.toString(),
+                status: booking.status,
+                statusColor: Colors.green,
+                estimatedTime: '1 hour'),
           ),
         ),
       );

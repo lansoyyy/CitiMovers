@@ -1,3 +1,5 @@
+import 'package:citimovers/screens/delivery/delivery_tracking_screen.dart';
+import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
@@ -12,6 +14,7 @@ class EmailVerificationScreen extends StatefulWidget {
   final bool isSignup;
   final String? name;
   final bool isBookingFlow;
+  final BookingData? booking;
 
   const EmailVerificationScreen({
     super.key,
@@ -19,6 +22,7 @@ class EmailVerificationScreen extends StatefulWidget {
     this.phoneNumber,
     required this.isSignup,
     this.name,
+    this.booking,
     this.isBookingFlow = false,
   });
 
@@ -35,7 +39,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
 
   bool _isLoading = false;
   bool _canResend = false;
-  int _resendTimer = 60;
+  int _resendTimer = 30;
   Timer? _timer;
 
   @override
@@ -58,7 +62,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
 
   void _startResendTimer() {
     _canResend = false;
-    _resendTimer = 60;
+    _resendTimer = 30;
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_resendTimer > 0) {
         setState(() => _resendTimer--);
@@ -150,13 +154,18 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   void _navigateToHome() {
     if (widget.isBookingFlow) {
       // For booking flow, just pop back to continue booking process
-      Navigator.pop(context);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => DeliveryTrackingScreen(
+                  booking: widget.booking!,
+                )),
+      );
     } else {
       // For login/signup flow, navigate to home
-      Navigator.pushAndRemoveUntil(
+      Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const HomeScreen()),
-        (route) => false,
       );
     }
   }
