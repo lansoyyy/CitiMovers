@@ -36,7 +36,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   late GoogleMapController _mapController;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
-  Timer? _simulationTimer;
   Timer? _locationUpdateTimer;
   Timer? _loadingTimer;
   Timer? _unloadingTimer;
@@ -80,7 +79,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   int _currentRouteIndex = 0;
   bool _isDelivered = false;
-  bool _showDeliveryDetails = false;
 
   @override
   void initState() {
@@ -145,8 +143,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   Future<BitmapDescriptor> _getVehicleIcon() async {
-    // Use a vehicle-like icon for the driver marker
-    // For now, we'll use the default marker with green hue to represent a vehicle
+    // Use a vehicle-like icon for driver marker
+    // For now, we'll use default marker with green hue to represent a vehicle
     // In a real app, you would use custom asset images for truck/van icons
     return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
   }
@@ -393,343 +391,194 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       ),
       body: Column(
         children: [
-          // Progress Header
-          Container(
-            color: AppColors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildStepIcon(
-                    DeliveryStep.headingToWarehouse, Icons.warehouse, 'Pickup'),
-                _buildStepLine(DeliveryStep.loading),
-                _buildStepIcon(
-                    DeliveryStep.delivering, Icons.local_shipping, 'Transit'),
-                _buildStepLine(DeliveryStep.unloading),
-                _buildStepIcon(
-                    DeliveryStep.receiving, Icons.person_pin, 'Dropoff'),
-              ],
-            ),
-          ),
-
-          // Status Card
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: _isDelivered
-                            ? AppColors.success.withOpacity(0.1)
-                            : AppColors.primaryRed.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        _isDelivered
-                            ? Icons.check_circle
-                            : Icons.local_shipping,
-                        color: _isDelivered
-                            ? AppColors.success
-                            : AppColors.primaryRed,
-                        size: 24,
-                      ),
+          // Main scrollable / flexible content
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Progress Header
+                  Container(
+                    color: AppColors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildStepIcon(DeliveryStep.headingToWarehouse,
+                            Icons.warehouse, 'Pickup'),
+                        _buildStepLine(DeliveryStep.loading),
+                        _buildStepIcon(DeliveryStep.delivering,
+                            Icons.local_shipping, 'Transit'),
+                        _buildStepLine(DeliveryStep.unloading),
+                        _buildStepIcon(DeliveryStep.receiving, Icons.person_pin,
+                            'Drop-off'),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _getDeliveryStatusText(),
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Bold',
-                              color: _isDelivered
-                                  ? AppColors.success
-                                  : AppColors.primaryRed,
+                  ),
+
+                  // Status Card
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: _isDelivered
+                                    ? AppColors.success.withOpacity(0.1)
+                                    : AppColors.primaryRed.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                _isDelivered
+                                    ? Icons.check_circle
+                                    : Icons.local_shipping,
+                                color: _isDelivered
+                                    ? AppColors.success
+                                    : AppColors.primaryRed,
+                                size: 24,
+                              ),
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _getDeliveryStatusText(),
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontFamily: 'Bold',
+                                      color: _isDelivered
+                                          ? AppColors.success
+                                          : AppColors.primaryRed,
+                                    ),
+                                  ),
+                                  Text(
+                                    widget.booking.vehicleType,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'Regular',
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryRed.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${(_currentRouteIndex / _routePoints.length * 100).toInt()}%',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Bold',
+                                  color: AppColors.primaryRed,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value: _currentRouteIndex / _routePoints.length,
+                          backgroundColor: AppColors.lightGrey,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _isDelivered
+                                ? AppColors.success
+                                : AppColors.primaryRed,
                           ),
-                          Text(
-                            widget.booking.vehicleType,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Regular',
-                              color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Driver: ${widget.booking.driverName}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
                             ),
+                            Text(
+                              _isDelivered
+                                  ? 'Completed'
+                                  : 'Est. ${widget.booking.estimatedTime}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Demurrage Summary
+                  _buildDemurrageSummaryCard(),
+                  const SizedBox(height: 10),
+
+                  // Current Step Details
+                  if (_currentStep != DeliveryStep.completed)
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
+                      child: _buildCurrentStepDetails(),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${(_currentRouteIndex / _routePoints.length * 100).toInt()}%',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Bold',
-                          color: AppColors.primaryRed,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(
-                  value: _currentRouteIndex / _routePoints.length,
-                  backgroundColor: AppColors.lightGrey,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    _isDelivered ? AppColors.success : AppColors.primaryRed,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Driver: ${widget.booking.driverName}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Medium',
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      _isDelivered
-                          ? 'Completed'
-                          : 'Est. ${widget.booking.estimatedTime}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Medium',
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
 
-          // Current Step Details
-          if (_currentStep != DeliveryStep.completed)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
+                  const SizedBox(height: 10),
+
+                  // Map (fixed height inside scroll view)
+                  SizedBox(
+                    height: 260,
+                    child: GoogleMap(
+                      onMapCreated: _onMapCreated,
+                      initialCameraPosition: CameraPosition(
+                        target: _driverLocation,
+                        zoom: 13.0,
+                      ),
+                      markers: _markers,
+                      polylines: _polylines,
+                      myLocationEnabled: false,
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: true,
+                      mapToolbarEnabled: false,
+                      compassEnabled: true,
+                    ),
                   ),
                 ],
               ),
-              child: _buildCurrentStepDetails(),
-            ),
-
-          const SizedBox(height: 10),
-
-          // Delivery Details Toggle Button
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _showDeliveryDetails = !_showDeliveryDetails;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.info_outline,
-                          color: AppColors.primaryRed,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Delivery Details',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontFamily: 'Bold',
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const Spacer(),
-                      Icon(
-                        _showDeliveryDetails
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
-                        color: AppColors.textSecondary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Collapsible Delivery Details Card
-          if (_showDeliveryDetails)
-            Container(
-              margin: const EdgeInsets.only(left: 16, right: 16, top: 8),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDeliveryDetailRow('Booking ID', widget.booking.id),
-                  _buildDeliveryDetailRow('Date', widget.booking.date),
-                  _buildDeliveryDetailRow('Time', widget.booking.time),
-                  _buildDeliveryDetailRow(
-                      'Vehicle', widget.booking.vehicleType),
-                  _buildDeliveryDetailRow('Driver', widget.booking.driverName),
-                  _buildDeliveryDetailRow(
-                      'Rating', '${widget.booking.driverRating} ⭐'),
-                  _buildDeliveryDetailRow('Fare', widget.booking.fare),
-                  _buildDeliveryDetailRow('Payment', 'Cash on Delivery'),
-                  _buildDeliveryDetailRow('Package Type', 'Standard Delivery'),
-                  _buildDeliveryDetailRow('Weight', 'Up to 500kg'),
-                  _buildDeliveryDetailRow('Insurance', 'Basic Coverage'),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.scaffoldBackground,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Pickup',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'Medium',
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                widget.booking.from,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'Medium',
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.scaffoldBackground,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Drop-off',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'Medium',
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                widget.booking.to,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'Medium',
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-          // Map
-          Expanded(
-            child: GoogleMap(
-              onMapCreated: _onMapCreated,
-              initialCameraPosition: CameraPosition(
-                target: _driverLocation,
-                zoom: 13.0,
-              ),
-              markers: _markers,
-              polylines: _polylines,
-              myLocationEnabled: false,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: true,
-              mapToolbarEnabled: false,
-              compassEnabled: true,
             ),
           ),
 
@@ -898,68 +747,33 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
-  Widget _buildDeliveryDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontFamily: 'Regular',
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          const Text(
-            ':',
-            style: TextStyle(
-              fontSize: 12,
-              fontFamily: 'Regular',
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 12,
-                fontFamily: 'Medium',
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _getDeliveryStatusText() {
     switch (_currentStep) {
       case DeliveryStep.headingToWarehouse:
         return 'Heading to Warehouse';
       case DeliveryStep.loading:
-        if (_loadingSubStep == LoadingSubStep.arrived)
+        if (_loadingSubStep == LoadingSubStep.arrived) {
           return 'Arrived at Warehouse';
-        if (_loadingSubStep == LoadingSubStep.startLoading)
+        }
+        if (_loadingSubStep == LoadingSubStep.startLoading) {
           return 'Loading Started';
-        if (_loadingSubStep == LoadingSubStep.finishLoading)
+        }
+        if (_loadingSubStep == LoadingSubStep.finishLoading) {
           return 'Loading Completed';
+        }
         return 'Loading';
       case DeliveryStep.delivering:
         return 'On the Way';
       case DeliveryStep.unloading:
-        if (_unloadingSubStep == UnloadingSubStep.arrived)
+        if (_unloadingSubStep == UnloadingSubStep.arrived) {
           return 'Arrived at Destination';
-        if (_unloadingSubStep == UnloadingSubStep.startUnloading)
+        }
+        if (_unloadingSubStep == UnloadingSubStep.startUnloading) {
           return 'Unloading Started';
-        if (_unloadingSubStep == UnloadingSubStep.finishUnloading)
+        }
+        if (_unloadingSubStep == UnloadingSubStep.finishUnloading) {
           return 'Unloading Completed';
+        }
         return 'Unloading';
       case DeliveryStep.receiving:
         return 'Receiving Package';
@@ -1000,6 +814,93 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         height: 2,
         color: isActive ? AppColors.primaryRed : AppColors.lightGrey,
         margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
+      ),
+    );
+  }
+
+  Widget _buildDemurrageSummaryCard() {
+    final double totalDemurrage = _loadingDemurrageFee + _unloadingDemurrageFee;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.timer,
+                  color: AppColors.warning,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Demurrage Summary',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildDemurrageInfo(
+              'Loading', _loadingDuration, _loadingDemurrageFee),
+          const SizedBox(height: 8),
+          _buildDemurrageInfo(
+              'Unloading', _unloadingDuration, _unloadingDemurrageFee),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total Demurrage',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'Medium',
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              Text(
+                'P${totalDemurrage.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.primaryRed,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Demurrage is charged every 4 hours at 25% of delivery fare.',
+            style: TextStyle(
+              fontSize: 10,
+              fontFamily: 'Regular',
+              color: AppColors.textHint,
+            ),
+          ),
+        ],
       ),
     );
   }
