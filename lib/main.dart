@@ -30,7 +30,7 @@ class CitiMoversApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const HomeScreen(),
+      home: const RiderHomeScreen(),
     );
   }
 }
