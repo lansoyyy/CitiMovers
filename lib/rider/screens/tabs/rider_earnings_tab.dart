@@ -26,15 +26,22 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   final int _totalDeliveries = 150;
   final double _averageRating = 4.8;
 
+  // Earnings distribution constants
+  static const double _operatorPercentage = 0.80;
+  static const double _adminPercentage = 0.18;
+  static const double _birPercentage = 0.02;
+
   // Chart data
   final List<double> _weeklyEarnings = [850, 1200, 950, 1400, 1100, 1350, 1250];
   final List<double> _monthlyEarnings = [8500, 9200, 10500, 11200, 9800, 11500];
   final List<int> _weeklyDeliveries = [5, 8, 6, 9, 7, 8, 7];
   final List<int> _monthlyDeliveries = [45, 52, 58, 62, 54, 60];
 
-  // Top-up form controllers
+  // Load wallet form controllers
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _recipientController = TextEditingController();
   String _selectedPaymentMethod = 'gcash';
+  String _selectedLoadMethod = 'gcash';
 
   @override
   Widget build(BuildContext context) {
@@ -106,33 +113,44 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _showTopUpDialog,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.white,
-                              foregroundColor: AppColors.success,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.add_circle_outline, size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Top Up',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontFamily: 'Bold',
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _showLoadWalletDialog,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryBlue,
+                                    foregroundColor: AppColors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.add_circle_outline,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Load Wallet',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontFamily: 'Bold',
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -250,6 +268,77 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
 
               const SizedBox(height: 28),
 
+              // Earnings Distribution Card
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryBlue,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Earnings Distribution',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontFamily: 'Bold',
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _DistributionRow(
+                        title: 'Operator (80%)',
+                        amount:
+                            'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}',
+                        color: AppColors.success,
+                        icon: Icons.account_balance,
+                      ),
+                      const SizedBox(height: 12),
+                      _DistributionRow(
+                        title: 'Admin (18%)',
+                        amount:
+                            'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}',
+                        color: AppColors.primaryBlue,
+                        icon: Icons.admin_panel_settings,
+                      ),
+                      const SizedBox(height: 12),
+                      _DistributionRow(
+                        title: 'BIR (2%)',
+                        amount:
+                            'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}',
+                        color: AppColors.warning,
+                        icon: Icons.receipt_long,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
               // Earnings Chart
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -350,6 +439,84 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
 
               const SizedBox(height: 28),
 
+              // Earnings Distribution Chart
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: AppColors.warning,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Earnings Distribution Breakdown',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      height: 250,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: _buildDistributionChart(),
+                    ),
+                    const SizedBox(height: 16),
+                    // Distribution Legend
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          _buildLegendItem('Operator (80%)', AppColors.success,
+                              'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}'),
+                          const SizedBox(height: 8),
+                          _buildLegendItem('Admin (18%)', AppColors.primaryBlue,
+                              'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}'),
+                          const SizedBox(height: 8),
+                          _buildLegendItem('BIR (2%)', AppColors.warning,
+                              'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
               // Recent Transactions
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -379,40 +546,64 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                     ),
                     const SizedBox(height: 16),
                     _TransactionCard(
-                      title: 'Delivery Payment',
+                      title: 'Delivery Earnings',
                       date: 'Nov 6, 2025',
                       amount: '+P350',
                       isPositive: true,
                       onTap: () => _showTransactionDetails(
-                          'Delivery Payment',
+                          'Delivery Earnings',
                           'Nov 6, 2025',
                           '+P350',
                           'BK001',
-                          'Completed delivery from Makati to Pasig'),
+                          'Completed delivery from Makati to Pasig\n\nDistribution:\nOperator (80%): P280.00\nAdmin (18%): P63.00\nBIR (2%): P7.00'),
                     ),
                     _TransactionCard(
-                      title: 'Delivery Payment',
+                      title: 'Delivery Earnings',
                       date: 'Nov 5, 2025',
                       amount: '+P420',
                       isPositive: true,
                       onTap: () => _showTransactionDetails(
-                          'Delivery Payment',
+                          'Delivery Earnings',
                           'Nov 5, 2025',
                           '+P420',
                           'BK002',
-                          'Completed delivery from Quezon City to Mandaluyong'),
+                          'Completed delivery from Quezon City to Mandaluyong\n\nDistribution:\nOperator (80%): P336.00\nAdmin (18%): P75.60\nBIR (2%): P8.40'),
+                    ),
+                    _TransactionCard(
+                      title: 'Load Wallet',
+                      date: 'Nov 4, 2025',
+                      amount: '-P500',
+                      isPositive: false,
+                      onTap: () => _showTransactionDetails(
+                          'Load Wallet',
+                          'Nov 4, 2025',
+                          '-P500',
+                          'LW001',
+                          'Load wallet to 09123456789 via GCash\n\nRecipient: 09123456789\nMethod: GCash\nStatus: Completed'),
+                    ),
+                    _TransactionCard(
+                      title: 'Load Wallet',
+                      date: 'Nov 3, 2025',
+                      amount: '-P750',
+                      isPositive: false,
+                      onTap: () => _showTransactionDetails(
+                          'Load Wallet',
+                          'Nov 3, 2025',
+                          '-P750',
+                          'LW002',
+                          'Load wallet to 09876543210 via PayMaya\n\nRecipient: 09876543210\nMethod: PayMaya\nStatus: Completed'),
                     ),
                     _TransactionCard(
                       title: 'Top Up',
-                      date: 'Nov 4, 2025',
+                      date: 'Nov 2, 2025',
                       amount: '+P1000',
                       isPositive: true,
                       onTap: () => _showTransactionDetails(
                           'Top Up',
-                          'Nov 4, 2025',
+                          'Nov 2, 2025',
                           '+P1000',
                           'TOP001',
-                          'Wallet top-up via GCash'),
+                          'Wallet top-up via GCash\n\nMethod: GCash\nStatus: Completed'),
                     ),
                   ],
                 ),
@@ -663,6 +854,250 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
     );
   }
 
+  void _showLoadWalletDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.7,
+        maxChildSize: 0.95,
+        builder: (_, controller) => Container(
+          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.send_to_mobile,
+                        color: AppColors.primaryBlue,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Load Wallet',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Available Balance
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryBlue.withValues(alpha: 0.1),
+                        AppColors.primaryBlue.withValues(alpha: 0.05),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Available Balance',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontFamily: 'Bold',
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Recipient Information
+                const Text(
+                  'Recipient Information',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _recipientController,
+                  decoration: InputDecoration(
+                    labelText: 'Mobile Number / Account Number',
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: AppColors.scaffoldBackground,
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+
+                // Amount Input
+                const Text(
+                  'Amount to Load',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _amountController,
+                  decoration: InputDecoration(
+                    labelText: 'Amount (P)',
+                    prefixText: 'P ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: AppColors.scaffoldBackground,
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 24),
+
+                // Load Methods
+                const Text(
+                  'Load Method',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _LoadMethodCard(
+                  icon: FontAwesomeIcons.g,
+                  title: 'GCash',
+                  subtitle: 'Send to GCash number',
+                  isSelected: _selectedLoadMethod == 'gcash',
+                  onTap: () => setState(() => _selectedLoadMethod = 'gcash'),
+                ),
+                const SizedBox(height: 12),
+                _LoadMethodCard(
+                  icon: FontAwesomeIcons.creditCard,
+                  title: 'PayMaya',
+                  subtitle: 'Send to PayMaya account',
+                  isSelected: _selectedLoadMethod == 'paymaya',
+                  onTap: () => setState(() => _selectedLoadMethod = 'paymaya'),
+                ),
+                const SizedBox(height: 12),
+                _LoadMethodCard(
+                  icon: FontAwesomeIcons.creditCard,
+                  title: 'Debit Card',
+                  subtitle: 'Transfer to debit card',
+                  isSelected: _selectedLoadMethod == 'debit',
+                  onTap: () => setState(() => _selectedLoadMethod = 'debit'),
+                ),
+                const SizedBox(height: 12),
+                _LoadMethodCard(
+                  icon: FontAwesomeIcons.creditCard,
+                  title: 'Credit Card',
+                  subtitle: 'Transfer to credit card',
+                  isSelected: _selectedLoadMethod == 'credit',
+                  onTap: () => setState(() => _selectedLoadMethod = 'credit'),
+                ),
+                const SizedBox(height: 12),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          if (_amountController.text.isNotEmpty &&
+                              _recipientController.text.isNotEmpty) {
+                            Navigator.of(context).pop();
+                            UIHelpers.showSuccessToast(
+                                'Load wallet request of P${_amountController.text} to ${_recipientController.text} via ${_selectedLoadMethod.toUpperCase()}');
+                            _amountController.clear();
+                            _recipientController.clear();
+                          } else {
+                            UIHelpers.showErrorToast('Please fill all fields');
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Send Load',
+                          style: TextStyle(color: AppColors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showTransactionDetails(String title, String date, String amount,
       String transactionId, String description) {
     showModalBottomSheet(
@@ -742,14 +1177,72 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      description,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Regular',
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                    // Handle multiline description with distribution details
+                    ...description.split('\n\n').map((section) {
+                      if (section.startsWith('Distribution:')) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Distribution:',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Bold',
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            ...section
+                                .substring(13)
+                                .split('\n')
+                                .map((line) => Padding(
+                                      padding: const EdgeInsets.only(
+                                          left: 8, top: 2),
+                                      child: Text(
+                                        line.trim(),
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontFamily: 'Regular',
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    )),
+                            const SizedBox(height: 8),
+                          ],
+                        );
+                      } else if (section.startsWith('Recipient:') ||
+                          section.startsWith('Method:')) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ...section.split('\n').map((line) => Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    line.trim(),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontFamily: 'Regular',
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                )),
+                            const SizedBox(height: 8),
+                          ],
+                        );
+                      } else {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            section,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        );
+                      }
+                    }).toList(),
                   ],
                 ),
               ),
@@ -944,6 +1437,84 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDistributionChart() {
+    return PieChart(
+      PieChartData(
+        sectionsSpace: 2,
+        centerSpaceRadius: 60,
+        sections: [
+          PieChartSectionData(
+            color: AppColors.success,
+            value: _operatorPercentage * 100,
+            title: '${(_operatorPercentage * 100).toInt()}%',
+            radius: 50,
+            titleStyle: const TextStyle(
+              fontSize: 16,
+              fontFamily: 'Bold',
+              color: AppColors.white,
+            ),
+          ),
+          PieChartSectionData(
+            color: AppColors.primaryBlue,
+            value: _adminPercentage * 100,
+            title: '${(_adminPercentage * 100).toInt()}%',
+            radius: 50,
+            titleStyle: const TextStyle(
+              fontSize: 16,
+              fontFamily: 'Bold',
+              color: AppColors.white,
+            ),
+          ),
+          PieChartSectionData(
+            color: AppColors.warning,
+            value: _birPercentage * 100,
+            title: '${(_birPercentage * 100).toInt()}%',
+            radius: 50,
+            titleStyle: const TextStyle(
+              fontSize: 16,
+              fontFamily: 'Bold',
+              color: AppColors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendItem(String title, Color color, String amount) {
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontFamily: 'Medium',
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+        Text(
+          amount,
+          style: const TextStyle(
+            fontSize: 14,
+            fontFamily: 'Bold',
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1322,6 +1893,164 @@ class _TransactionCard extends StatelessWidget {
                 fontFamily: 'Bold',
                 color: isPositive ? AppColors.success : AppColors.error,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DistributionRow extends StatelessWidget {
+  final String title;
+  final String amount;
+  final Color color;
+  final IconData icon;
+
+  const _DistributionRow({
+    required this.title,
+    required this.amount,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  amount,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontFamily: 'Bold',
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadMethodCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _LoadMethodCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primaryBlue.withValues(alpha: 0.1)
+              : AppColors.scaffoldBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.primaryBlue
+                : AppColors.textSecondary.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primaryBlue
+                    : AppColors.textSecondary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? AppColors.white : AppColors.textSecondary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'Bold',
+                      color: isSelected
+                          ? AppColors.primaryBlue
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color:
+                  isSelected ? AppColors.primaryBlue : AppColors.textSecondary,
             ),
           ],
         ),
