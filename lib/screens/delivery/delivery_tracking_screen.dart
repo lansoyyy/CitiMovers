@@ -607,6 +607,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                               MaterialPageRoute(
                                 builder: (context) => DeliveryCompletionScreen(
                                   booking: widget.booking,
+                                  loadingDemurrage: _loadingDemurrageFee,
+                                  unloadingDemurrage: _unloadingDemurrageFee,
                                 ),
                               ),
                             );

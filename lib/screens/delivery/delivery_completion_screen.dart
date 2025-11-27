@@ -7,10 +7,14 @@ import '../tabs/bookings_tab.dart';
 
 class DeliveryCompletionScreen extends StatefulWidget {
   final BookingData booking;
+  final double loadingDemurrage;
+  final double unloadingDemurrage;
 
   const DeliveryCompletionScreen({
     super.key,
     required this.booking,
+    required this.loadingDemurrage,
+    required this.unloadingDemurrage,
   });
 
   @override
@@ -49,6 +53,16 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     {'icon': Icons.star, 'label': 'Excellent service'},
     {'icon': Icons.more_horiz, 'label': 'Others'},
   ];
+
+  double get _baseFare {
+    final fareString = widget.booking.fare.replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(fareString) ?? 0.0;
+  }
+
+  double get _totalDemurrage =>
+      widget.loadingDemurrage + widget.unloadingDemurrage;
+
+  double get _totalAmount => _baseFare + _totalDemurrage;
 
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -365,6 +379,147 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   _buildSummaryRow(
                       Icons.access_time, 'Time', widget.booking.time),
                   _buildSummaryRow(Icons.payments, 'Fare', widget.booking.fare),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Fare & Demurrage Breakdown',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildAmountRow(
+                      'Base Fare', 'P${_baseFare.toStringAsFixed(2)}'),
+                  _buildAmountRow('Loading Demurrage',
+                      'P${widget.loadingDemurrage.toStringAsFixed(2)}'),
+                  _buildAmountRow('Unloading Demurrage',
+                      'P${widget.unloadingDemurrage.toStringAsFixed(2)}'),
+                  const Divider(height: 24),
+                  _buildAmountRow('Total Demurrage',
+                      'P${_totalDemurrage.toStringAsFixed(2)}'),
+                  _buildAmountRow(
+                    'Total Amount',
+                    'P${_totalAmount.toStringAsFixed(2)}',
+                    isTotal: true,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Proof of Delivery',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Loading Photos',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildProofImageBox('Start Loading'),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildProofImageBox('Finished Loading'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Unloading Photos',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildProofImageBox('Start Unloading'),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildProofImageBox('Finished Unloading'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Receiver ID Photo',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildProofImageBox('Receiver ID'),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Receiver Signature',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSignaturePlaceholderBox(),
                 ],
               ),
             ),
@@ -1145,6 +1300,129 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAmountRow(String label, String value, {bool isTotal = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isTotal ? 14 : 13,
+              fontFamily: isTotal ? 'Medium' : 'Regular',
+              color: isTotal ? AppColors.textPrimary : AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 14,
+              fontFamily: 'Bold',
+              color: isTotal ? AppColors.primaryRed : AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProofImageBox(String title) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.image_outlined,
+                color: AppColors.textHint,
+                size: 28,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              fontFamily: 'Medium',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'No image available',
+            style: TextStyle(
+              fontSize: 10,
+              fontFamily: 'Regular',
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignaturePlaceholderBox() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.border_color,
+                color: AppColors.textHint,
+                size: 28,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Signature',
+            style: TextStyle(
+              fontSize: 12,
+              fontFamily: 'Medium',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'No signature available',
+            style: TextStyle(
+              fontSize: 10,
+              fontFamily: 'Regular',
+              color: AppColors.textSecondary,
             ),
           ),
         ],

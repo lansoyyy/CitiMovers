@@ -901,9 +901,13 @@ class _RiderDeliveryProgressScreenState
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 40),
           _buildSummaryRow('Base Fare', 'P${_baseFare.toStringAsFixed(2)}'),
-          _buildSummaryRow(
-              'Demurrage Fee', 'P${_totalDemurrageFee.toStringAsFixed(2)}'),
+          _buildSummaryRow('Loading Demurrage',
+              'P${_loadingDemurrageFee.toStringAsFixed(2)}'),
+          _buildSummaryRow('Unloading Demurrage',
+              'P${_unloadingDemurrageFee.toStringAsFixed(2)}'),
           const Divider(height: 32),
+          _buildSummaryRow(
+              'Total Demurrage', 'P${_totalDemurrageFee.toStringAsFixed(2)}'),
           _buildSummaryRow(
               'Total Earnings', 'P${_totalEarnings.toStringAsFixed(2)}',
               isTotal: true),
