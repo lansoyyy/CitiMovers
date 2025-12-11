@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "212204568146",
+    "project_id": "citimovers-346f2",
+    "storage_bucket": "citimovers-346f2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:212204568146:android:3c503703fc00ca6b76e98b",
+        "android_client_info": {
+          "package_name": "com.algovision.citimovers"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAGwJrSHeJzIpgWd0YyIrOH4Vn6mo08H5s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

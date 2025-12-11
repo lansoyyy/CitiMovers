@@ -1,4 +1,4 @@
-package com.example.citimovers
+package com.algovision.citimovers
 
 import io.flutter.embedding.android.FlutterActivity
 
