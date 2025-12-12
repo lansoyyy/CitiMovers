@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../../models/vehicle_model.dart';
@@ -25,6 +28,20 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   bool _isLoading = false;
   bool _agreedToTerms = false;
   String _selectedVehicleType = 'AUV';
+
+  final ImagePicker _imagePicker = ImagePicker();
+  final Map<String, String?> _documentImagePaths = {
+    "Driver's License": null,
+    'Vehicle Registration (OR/CR)': null,
+    'NBI Clearance': null,
+    'Insurance': null,
+  };
+
+  final Set<String> _requiredDocuments = {
+    "Driver's License",
+    'Vehicle Registration (OR/CR)',
+    'NBI Clearance',
+  };
 
   // Get vehicle types from VehicleModel
   final List<String> _vehicleTypes =
@@ -52,8 +69,214 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
     return '+$digits';
   }
 
+  bool _hasAllRequiredDocuments() {
+    for (final docName in _requiredDocuments) {
+      final path = _documentImagePaths[docName];
+      if (path == null || path.isEmpty) return false;
+    }
+    return true;
+  }
+
+  Future<ImageSource?> _selectImageSource() async {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textHint.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt),
+                  title: const Text('Camera'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('Gallery'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickDocument(String documentName) async {
+    try {
+      final source = await _selectImageSource();
+      if (source == null) return;
+
+      final XFile? image = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+
+      if (!mounted) return;
+
+      if (image == null) return;
+
+      setState(() {
+        _documentImagePaths[documentName] = image.path;
+      });
+
+      UIHelpers.showSuccessToast('$documentName selected');
+    } catch (e) {
+      UIHelpers.showErrorToast('Failed to pick document. Please try again.');
+    }
+  }
+
+  Widget _buildDocumentTile(String documentName) {
+    final imagePath = _documentImagePaths[documentName];
+    final isRequired = _requiredDocuments.contains(documentName);
+    final hasImage = imagePath != null && imagePath.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasImage
+              ? AppColors.success.withValues(alpha: 0.35)
+              : AppColors.lightGrey,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: hasImage
+                  ? AppColors.success.withValues(alpha: 0.12)
+                  : AppColors.textHint.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: hasImage
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.file(
+                      File(imagePath),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.description,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  )
+                : const Icon(
+                    Icons.upload_file,
+                    color: AppColors.textSecondary,
+                  ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        documentName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (isRequired)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          'Required',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'Bold',
+                            color: AppColors.primaryRed,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  hasImage ? 'Selected' : 'Not uploaded',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Medium',
+                    color:
+                        hasImage ? AppColors.success : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: _isLoading ? null : () => _pickDocument(documentName),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryRed,
+              side: const BorderSide(color: AppColors.primaryRed),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            child: Text(
+              hasImage ? 'Change' : 'Upload',
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Bold',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (!_hasAllRequiredDocuments()) {
+      UIHelpers.showErrorToast('Please upload all required documents');
+      return;
+    }
 
     if (!_agreedToTerms) {
       UIHelpers.showErrorToast('Please agree to the terms and conditions');
@@ -432,6 +655,53 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
                 ),
 
                 const SizedBox(height: 24),
+
+                const Text(
+                  'Required Documents',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: AppColors.primaryBlue,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Upload clear photos of your documents. These are required to complete your registration.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Regular',
+                            color: AppColors.textPrimary,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildDocumentTile("Driver's License"),
+                _buildDocumentTile('Vehicle Registration (OR/CR)'),
+                _buildDocumentTile('NBI Clearance'),
+                _buildDocumentTile('Insurance'),
+
+                const SizedBox(height: 10),
 
                 // Terms and Conditions Checkbox
                 Row(
