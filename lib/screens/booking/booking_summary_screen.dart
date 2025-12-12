@@ -7,8 +7,8 @@ import '../../models/location_model.dart';
 import '../../models/vehicle_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
+import '../../services/auth_service.dart';
 import '../auth/otp_verification_screen.dart';
-import '../auth/email_verification_screen.dart';
 import '../terms_conditions_screen.dart';
 
 class BookingSummaryScreen extends StatefulWidget {
@@ -93,6 +93,14 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   }
 
   Future<void> _confirmBooking() async {
+    final authService = AuthService();
+    final user = authService.currentUser;
+
+    if (user == null) {
+      UIHelpers.showErrorToast('Please login to continue');
+      return;
+    }
+
     // First show Terms & Conditions
     final termsAccepted = await _showTermsAndConditions();
     if (!termsAccepted) return;
@@ -105,7 +113,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     setState(() => _isLoading = true);
 
     final booking = await _bookingService.createBooking(
-      customerId: 'customer_001', // TODO: Get from auth
+      customerId: user.userId,
       pickupLocation: widget.pickupLocation,
       dropoffLocation: widget.dropoffLocation,
       vehicle: widget.vehicle,
@@ -119,17 +127,28 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
           : _notesController.text.trim(),
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (booking != null && mounted) {
+      setState(() => _isLoading = true);
+      final otpSent = await authService.sendOTP(user.phoneNumber);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (!otpSent) {
+        UIHelpers.showErrorToast('Failed to send OTP. Please try again.');
+        return;
+      }
+
       // Navigate to OTP verification first, then email verification
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => OTPVerificationScreen(
-            phoneNumber: '+639090104355', // TODO: Get from user profile
+            phoneNumber: user.phoneNumber,
             isSignup: false,
-            email: 'user@example.com', // TODO: Get from user profile
+            email: user.email,
             isBookingFlow: true,
             booking: BookingData(
                 id: booking.bookingId!,

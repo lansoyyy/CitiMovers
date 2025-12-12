@@ -1,5 +1,6 @@
 import 'package:citimovers/screens/tabs/notifications_tab.dart';
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
 import '../../utils/app_colors.dart';
 import 'edit_profile_screen.dart';
 import '../help_center_screen.dart';
@@ -33,13 +34,16 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
 
-    if (confirm == true && context.mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-        (route) => false,
-      );
-    }
+    if (confirm != true) return;
+
+    await AuthService().logout();
+    if (!context.mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _handleDeleteAccount(BuildContext context) async {
@@ -78,6 +82,8 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = AuthService().currentUser;
+
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: AppBar(
@@ -111,9 +117,9 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Name
-            const Text(
-              'Juan Dela Cruz',
-              style: TextStyle(
+            Text(
+              user?.name ?? 'Guest',
+              style: const TextStyle(
                 fontSize: 22,
                 fontFamily: 'Bold',
                 color: AppColors.textPrimary,
@@ -123,9 +129,9 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 4),
 
             // Phone
-            const Text(
-              '+63 912 345 6789',
-              style: TextStyle(
+            Text(
+              user?.phoneNumber ?? '',
+              style: const TextStyle(
                 fontSize: 14,
                 fontFamily: 'Regular',
                 color: AppColors.textSecondary,

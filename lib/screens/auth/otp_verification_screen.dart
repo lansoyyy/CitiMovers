@@ -6,7 +6,7 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
 import '../home_screen.dart';
-import 'email_verification_screen.dart';
+import '../delivery/delivery_tracking_screen.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -116,25 +116,95 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     if (!isValid) {
       setState(() => _isLoading = false);
       UIHelpers.showErrorToast('Invalid OTP code. Please try again.');
+
+      for (var controller in _otpControllers) {
+        controller.clear();
+      }
+      _focusNodes[0].requestFocus();
       return;
+    }
+
+    if (widget.isBookingFlow) {
+      setState(() => _isLoading = false);
+
+      widget.onVerified?.call();
+
+      if (widget.booking != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                DeliveryTrackingScreen(booking: widget.booking!),
+          ),
+        );
+      } else {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+        );
+      }
+
+      return;
+    }
+
+    if (widget.isSignup) {
+      if (widget.name == null || widget.name!.trim().isEmpty) {
+        setState(() => _isLoading = false);
+        UIHelpers.showErrorToast('Missing name. Please go back and try again.');
+        return;
+      }
+
+      final user = await _authService.registerUser(
+        name: widget.name!.trim(),
+        phoneNumber: widget.phoneNumber,
+        email: (widget.email != null && widget.email!.trim().isNotEmpty)
+            ? widget.email!.trim()
+            : null,
+      );
+
+      if (!mounted) return;
+
+      if (user == null) {
+        setState(() => _isLoading = false);
+        UIHelpers.showErrorToast('Registration failed. Please try again.');
+        return;
+      }
+
+      UIHelpers.showSuccessToast('Registration successful!');
+    } else {
+      final user = await _authService.loginUser(widget.phoneNumber);
+
+      if (!mounted) return;
+
+      if (user == null) {
+        setState(() => _isLoading = false);
+        UIHelpers.showErrorToast('Login failed. Please try again.');
+        return;
+      }
+
+      UIHelpers.showSuccessToast('Login successful!');
     }
 
     setState(() => _isLoading = false);
 
-    // Navigate to email verification if email is provided
+    widget.onVerified?.call();
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EmailVerificationScreen(
-          booking: widget.booking,
-          email: 'johndoe@gmail.com',
-          phoneNumber: widget.phoneNumber,
-          isSignup: widget.isSignup,
-          name: widget.name,
-          isBookingFlow: widget.isBookingFlow,
+    if (widget.isBookingFlow && widget.booking != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              DeliveryTrackingScreen(booking: widget.booking!),
         ),
-      ),
+      );
+      return;
+    }
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
     );
   }
 
