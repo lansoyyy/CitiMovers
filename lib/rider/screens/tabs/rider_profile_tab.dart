@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:intl/intl.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
@@ -7,7 +9,6 @@ import '../auth/rider_login_screen.dart';
 import '../profile/rider_edit_profile_screen.dart';
 import '../profile/rider_vehicle_details_screen.dart';
 import '../profile/rider_documents_screen.dart';
-import '../profile/rider_delivery_history_screen.dart';
 import '../profile/rider_payment_methods_screen.dart';
 import '../profile/rider_settings_screen.dart';
 
@@ -20,6 +21,153 @@ class RiderProfileTab extends StatefulWidget {
 
 class _RiderProfileTabState extends State<RiderProfileTab> {
   final _authService = RiderAuthService();
+
+  static const Map<String, String> _documentKeyToLabel = {
+    'drivers_license': "Driver's License",
+    'vehicle_registration': 'Vehicle Registration (OR/CR)',
+    'nbi_clearance': 'NBI Clearance',
+    'insurance': 'Insurance',
+  };
+
+  String _formatDateTime(DateTime? value) {
+    if (value == null) return '';
+    return DateFormat('yyyy-MM-dd HH:mm').format(value.toLocal());
+  }
+
+  Color _documentStatusColor(String status) {
+    switch (status) {
+      case 'approved':
+        return AppColors.success;
+      case 'pending':
+        return AppColors.warning;
+      case 'rejected':
+        return AppColors.error;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String _documentStatusText(String status) {
+    switch (status) {
+      case 'approved':
+        return 'Approved';
+      case 'pending':
+        return 'Pending Review';
+      case 'rejected':
+        return 'Rejected';
+      default:
+        return 'Not Uploaded';
+    }
+  }
+
+  void _showDocumentViewer({
+    required BuildContext context,
+    required String title,
+    required String url,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          backgroundColor: AppColors.white,
+          child: SizedBox(
+            width: double.infinity,
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(8),
+                    ),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: AppColors.lightGrey.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.close,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    color: AppColors.scaffoldBackground,
+                    child: InteractiveViewer(
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: Center(
+                        child: Image.network(
+                          url,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return UIHelpers.loadingThreeBounce(
+                              color: AppColors.primaryRed,
+                              size: 20,
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.broken_image,
+                                    size: 42,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Unable to preview this file.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontFamily: 'Medium',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> _handleLogout() async {
     final confirm = await showDialog<bool>(
@@ -170,6 +318,19 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                         color: AppColors.white,
                       ),
                     ),
+
+                    if (rider?.email != null && rider!.email!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        rider.email!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Regular',
+                          color: AppColors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     // Rating and Stats
                     Row(
@@ -256,6 +417,283 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
               ),
 
               const SizedBox(height: 20),
+
+              // Account Info
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.badge,
+                            color: AppColors.primaryRed,
+                            size: 24,
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Account Information',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontFamily: 'Bold',
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _InfoRow(
+                        label: 'Rider ID',
+                        value: rider?.riderId.isNotEmpty == true
+                            ? rider!.riderId
+                            : 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Email',
+                        value:
+                            (rider?.email != null && rider!.email!.isNotEmpty)
+                                ? rider.email!
+                                : 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Status',
+                        value: rider?.status ?? 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Online',
+                        value: rider?.isOnline == true ? 'Yes' : 'No',
+                      ),
+                      _InfoRow(
+                        label: 'Total Earnings',
+                        value: rider != null
+                            ? 'P${rider.totalEarnings.toStringAsFixed(2)}'
+                            : 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Latitude',
+                        value: rider?.currentLatitude != null
+                            ? rider!.currentLatitude!.toStringAsFixed(6)
+                            : 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Longitude',
+                        value: rider?.currentLongitude != null
+                            ? rider!.currentLongitude!.toStringAsFixed(6)
+                            : 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Created At',
+                        value: rider != null
+                            ? _formatDateTime(rider.createdAt)
+                            : 'N/A',
+                      ),
+                      _InfoRow(
+                        label: 'Updated At',
+                        value: rider != null
+                            ? _formatDateTime(rider.updatedAt)
+                            : 'N/A',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.description,
+                            color: AppColors.primaryRed,
+                            size: 24,
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Uploaded Documents',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontFamily: 'Bold',
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (rider == null)
+                        const Text(
+                          'Please login as rider first.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Regular',
+                            color: AppColors.textSecondary,
+                          ),
+                        )
+                      else
+                        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance
+                              .collection('riders')
+                              .doc(rider.riderId)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return Center(
+                                child: UIHelpers.loadingThreeBounce(
+                                  color: AppColors.primaryRed,
+                                  size: 18,
+                                ),
+                              );
+                            }
+
+                            final data = snapshot.data?.data();
+                            final documents = (data?['documents'] as Map?)?.map(
+                                    (k, v) => MapEntry(k.toString(), v)) ??
+                                <String, dynamic>{};
+
+                            return Column(
+                              children: _documentKeyToLabel.entries.map((e) {
+                                final key = e.key;
+                                final label = e.value;
+                                final doc = documents[key];
+                                final docMap = doc is Map
+                                    ? doc.map(
+                                        (k, v) => MapEntry(k.toString(), v),
+                                      )
+                                    : null;
+                                final url = (docMap?['url'] ?? '').toString();
+                                final status = (docMap?['status'] ??
+                                        (url.isNotEmpty
+                                            ? 'pending'
+                                            : 'not_uploaded'))
+                                    .toString();
+                                final color = _documentStatusColor(status);
+                                final statusText = _documentStatusText(status);
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.scaffoldBackground,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: color.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: color.withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.description,
+                                          color: color,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              label,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontFamily: 'Bold',
+                                                color: AppColors.textPrimary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              statusText,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontFamily: 'Medium',
+                                                color: color,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      OutlinedButton(
+                                        onPressed: url.isEmpty
+                                            ? null
+                                            : () => _showDocumentViewer(
+                                                  context: context,
+                                                  title: label,
+                                                  url: url,
+                                                ),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: AppColors.primaryRed,
+                                          side: const BorderSide(
+                                            color: AppColors.primaryRed,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'View',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontFamily: 'Bold',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(growable: false),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
 
               // Menu Options
               Padding(
@@ -654,7 +1092,7 @@ class HelpSupportBottomSheet extends StatelessWidget {
                   // Report Issue Section
                   _buildSectionCard(
                     'Report an Issue',
-                    FontAwesomeIcons.exclamationTriangle,
+                    FontAwesomeIcons.triangleExclamation,
                     [
                       _buildHelpItem(
                         icon: FontAwesomeIcons.bug,
@@ -1004,7 +1442,7 @@ class PrivacyPolicyBottomSheet extends StatelessWidget {
 
                   _buildPrivacySection(
                     'How We Use Your Information',
-                    FontAwesomeIcons.cogs,
+                    FontAwesomeIcons.gears,
                     [
                       'To provide delivery services',
                       'To process payments and manage earnings',
@@ -1019,7 +1457,7 @@ class PrivacyPolicyBottomSheet extends StatelessWidget {
 
                   _buildPrivacySection(
                     'Information Sharing',
-                    FontAwesomeIcons.shareAlt,
+                    FontAwesomeIcons.shareNodes,
                     [
                       'We only share information with customers for delivery purposes',
                       'Payment processors for transaction processing',
@@ -1213,37 +1651,35 @@ class PrivacyPolicyBottomSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          ...points
-              .map((point) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 6),
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: AppColors.primaryRed,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            point,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'Regular',
-                              color: AppColors.textPrimary,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
+          ...points.map((point) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 6),
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primaryRed,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ))
-              .toList(),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        point,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Regular',
+                          color: AppColors.textPrimary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
         ],
       ),
     );

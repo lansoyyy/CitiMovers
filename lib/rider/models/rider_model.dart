@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Model class for Rider/Driver in CitiMovers
 class RiderModel {
   final String riderId;
@@ -109,25 +111,47 @@ class RiderModel {
 
   // Create from JSON
   factory RiderModel.fromJson(Map<String, dynamic> json) {
+    DateTime parseDateTime(dynamic value) {
+      if (value is DateTime) return value;
+      if (value is Timestamp) return value.toDate();
+      if (value is String) {
+        return DateTime.tryParse(value) ?? DateTime.now();
+      }
+      return DateTime.now();
+    }
+
+    double parseDouble(dynamic value, {double fallback = 0.0}) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? fallback;
+      return fallback;
+    }
+
+    int parseInt(dynamic value, {int fallback = 0}) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? fallback;
+      return fallback;
+    }
+
     return RiderModel(
-      riderId: json['riderId'] as String,
-      name: json['name'] as String,
-      phoneNumber: json['phoneNumber'] as String,
+      riderId: (json['riderId'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      phoneNumber: (json['phoneNumber'] ?? '').toString(),
       email: json['email'] as String?,
       photoUrl: json['photoUrl'] as String?,
-      vehicleType: json['vehicleType'] as String,
+      vehicleType: (json['vehicleType'] ?? 'AUV').toString(),
       vehiclePlateNumber: json['vehiclePlateNumber'] as String?,
       vehicleModel: json['vehicleModel'] as String?,
       vehicleColor: json['vehicleColor'] as String?,
-      status: json['status'] as String,
-      isOnline: json['isOnline'] as bool,
-      rating: (json['rating'] as num).toDouble(),
-      totalDeliveries: json['totalDeliveries'] as int,
-      totalEarnings: (json['totalEarnings'] as num).toDouble(),
-      currentLatitude: json['currentLatitude'] as double?,
-      currentLongitude: json['currentLongitude'] as double?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      status: (json['status'] ?? 'pending').toString(),
+      isOnline: (json['isOnline'] as bool?) ?? false,
+      rating: parseDouble(json['rating']),
+      totalDeliveries: parseInt(json['totalDeliveries']),
+      totalEarnings: parseDouble(json['totalEarnings']),
+      currentLatitude: (json['currentLatitude'] as num?)?.toDouble(),
+      currentLongitude: (json['currentLongitude'] as num?)?.toDouble(),
+      createdAt: parseDateTime(json['createdAt']),
+      updatedAt: parseDateTime(json['updatedAt']),
     );
   }
 

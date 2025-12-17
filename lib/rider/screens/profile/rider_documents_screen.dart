@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
+import '../../services/rider_auth_service.dart';
 
 class RiderDocumentsScreen extends StatefulWidget {
   const RiderDocumentsScreen({super.key});
@@ -11,14 +12,26 @@ class RiderDocumentsScreen extends StatefulWidget {
 }
 
 class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
+  final _authService = RiderAuthService();
+  bool _isUploading = false;
+
   final Map<String, DocumentStatus> _documents = {
     'Driver\'s License': DocumentStatus(status: 'pending', imagePath: null),
-    'Vehicle Registration (OR/CR)': DocumentStatus(status: 'pending', imagePath: null),
+    'Vehicle Registration (OR/CR)':
+        DocumentStatus(status: 'pending', imagePath: null),
     'Insurance': DocumentStatus(status: 'not_uploaded', imagePath: null),
     'NBI Clearance': DocumentStatus(status: 'not_uploaded', imagePath: null),
   };
 
   Future<void> _pickDocument(String documentName) async {
+    if (_isUploading) return;
+
+    final rider = _authService.currentRider;
+    if (rider == null) {
+      UIHelpers.showErrorToast('Please login as rider first');
+      return;
+    }
+
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
@@ -27,12 +40,32 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
 
     if (image != null) {
       setState(() {
-        _documents[documentName] = DocumentStatus(
-          status: 'pending',
-          imagePath: image.path,
-        );
+        _documents[documentName] =
+            DocumentStatus(status: 'pending', imagePath: image.path);
+        _isUploading = true;
       });
-      UIHelpers.showSuccessToast('$documentName uploaded');
+
+      final success = await _authService.uploadRiderDocuments({
+        documentName: image.path,
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        _isUploading = false;
+        if (!success) {
+          _documents[documentName] = DocumentStatus(
+            status: 'not_uploaded',
+            imagePath: null,
+          );
+        }
+      });
+
+      if (success) {
+        UIHelpers.showSuccessToast('$documentName uploaded');
+      } else {
+        UIHelpers.showErrorToast('Failed to upload $documentName');
+      }
     }
   }
 
@@ -142,7 +175,7 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
                   statusIcon: _getStatusIcon(entry.value.status),
                   onUpload: () => _pickDocument(entry.key),
                 );
-              }).toList(),
+              }),
 
               const SizedBox(height: 24),
 

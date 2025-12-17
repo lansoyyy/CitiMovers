@@ -323,6 +323,7 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
             vehicleColor: _vehicleColorController.text.isEmpty
                 ? null
                 : _vehicleColorController.text,
+            documentImagePaths: Map<String, String?>.from(_documentImagePaths),
           ),
         ),
       );

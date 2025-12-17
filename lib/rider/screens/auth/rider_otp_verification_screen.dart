@@ -15,6 +15,7 @@ class RiderOTPVerificationScreen extends StatefulWidget {
   final String? vehiclePlateNumber;
   final String? vehicleModel;
   final String? vehicleColor;
+  final Map<String, String?>? documentImagePaths;
 
   const RiderOTPVerificationScreen({
     super.key,
@@ -26,6 +27,7 @@ class RiderOTPVerificationScreen extends StatefulWidget {
     this.vehiclePlateNumber,
     this.vehicleModel,
     this.vehicleColor,
+    this.documentImagePaths,
   });
 
   @override
@@ -37,8 +39,7 @@ class _RiderOTPVerificationScreenState
     extends State<RiderOTPVerificationScreen> {
   final List<TextEditingController> _otpControllers =
       List.generate(6, (index) => TextEditingController());
-  final List<FocusNode> _focusNodes =
-      List.generate(6, (index) => FocusNode());
+  final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
   final _authService = RiderAuthService();
 
   bool _isLoading = false;
@@ -126,6 +127,7 @@ class _RiderOTPVerificationScreenState
           vehiclePlateNumber: widget.vehiclePlateNumber,
           vehicleModel: widget.vehicleModel,
           vehicleColor: widget.vehicleColor,
+          documentImagePaths: widget.documentImagePaths,
         );
 
         if (!mounted) return;

@@ -1,12 +1,11 @@
 import 'package:citimovers/rider/screens/auth/rider_login_screen.dart';
 import 'package:citimovers/rider/screens/auth/rider_onboarding_screen.dart';
 import 'package:citimovers/rider/screens/rider_home_screen.dart';
-import 'package:citimovers/services/auth_service.dart';
+import 'package:citimovers/rider/services/rider_auth_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
 import 'package:citimovers/utils/app_constants.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -56,43 +55,20 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
   Future<void> _navigateToHome() async {
     await Future.delayed(const Duration(seconds: 3));
 
-    if (mounted) {
-      // Check if user has seen onboarding
-      final prefs = await SharedPreferences.getInstance();
-      final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
+    if (!mounted) return;
 
-      // If first time, show onboarding
-      if (!hasSeenOnboarding) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                const RiderOnboardingScreen(),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
-            transitionDuration: const Duration(milliseconds: 500),
-          ),
-        );
-        return;
-      }
+    // Check if user has seen onboarding
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
 
-      // Check if user is logged in
-      final authService = AuthService();
-      final isLoggedIn = authService.isLoggedIn;
-
-      // Navigate to appropriate screen
-      final destination =
-          isLoggedIn ? const RiderHomeScreen() : const RiderLoginScreen();
-
+    // If first time, show onboarding
+    if (!hasSeenOnboarding) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => destination,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              const RiderOnboardingScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(
               opacity: animation,
@@ -102,7 +78,30 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
           transitionDuration: const Duration(milliseconds: 500),
         ),
       );
+      return;
     }
+
+    // Check if user is logged in
+    final authService = RiderAuthService();
+    final isLoggedIn = authService.isLoggedIn;
+
+    // Navigate to appropriate screen
+    final destination =
+        isLoggedIn ? const RiderHomeScreen() : const RiderLoginScreen();
+
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => destination,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
   }
 
   @override
