@@ -209,14 +209,6 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
               child: Column(
                 children: [
                   _ActionTile(
-                    icon: FontAwesomeIcons.key,
-                    title: 'Change Password',
-                    onTap: () {
-                      UIHelpers.showInfoToast('Coming soon');
-                    },
-                  ),
-                  const Divider(height: 1),
-                  _ActionTile(
                     icon: FontAwesomeIcons.trashCan,
                     title: 'Clear Cache',
                     onTap: () => _showClearCacheDialog(),

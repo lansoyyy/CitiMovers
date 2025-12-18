@@ -12,7 +12,6 @@ class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
   final bool isSignup;
   final String? name;
-  final String? email;
   final VoidCallback? onVerified;
   final bool isBookingFlow;
   final BookingData? booking;
@@ -23,7 +22,6 @@ class OTPVerificationScreen extends StatefulWidget {
     required this.isSignup,
     this.name,
     this.booking,
-    this.email,
     this.onVerified,
     this.isBookingFlow = false,
   });
@@ -158,9 +156,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       final user = await _authService.registerUser(
         name: widget.name!.trim(),
         phoneNumber: widget.phoneNumber,
-        email: (widget.email != null && widget.email!.trim().isNotEmpty)
-            ? widget.email!.trim()
-            : null,
       );
 
       if (!mounted) return;
@@ -234,7 +229,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryBlue.withOpacity(0.1),
+                    color: AppColors.primaryBlue.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -383,9 +378,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                           size: 20,
                         )
                       : Text(
-                          widget.email != null && widget.email!.isNotEmpty
-                              ? 'Verify Phone & Continue'
-                              : 'Verify & Continue',
+                          'Verify & Continue',
                           style: const TextStyle(
                             fontSize: 18,
                             fontFamily: 'Bold',

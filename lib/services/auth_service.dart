@@ -21,7 +21,15 @@ class AuthService {
   UserModel? _currentUser;
 
   UserModel? get currentUser => _currentUser;
-  bool get isLoggedIn => _currentUser != null;
+  bool get isLoggedIn {
+    if (_currentUser != null) return true;
+    final userId = _storage.read('userId') as String?;
+    final phoneNumber = _storage.read('userPhoneNumber') as String?;
+    return userId != null &&
+        userId.isNotEmpty &&
+        phoneNumber != null &&
+        phoneNumber.isNotEmpty;
+  }
 
   String _toIsoString(dynamic value, DateTime fallback) {
     if (value is String && value.isNotEmpty) return value;
@@ -66,51 +74,33 @@ class AuthService {
     return query.limit(1).get();
   }
 
+  DocumentReference<Map<String, dynamic>> _userDocByPhone(
+    String phoneNumber,
+  ) {
+    final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+    return _firestore.collection('users').doc(normalizedPhoneNumber);
+  }
+
   void _loadUserFromStorage() {
     try {
       final userId = _storage.read('userId') as String?;
-      final name = _storage.read('userName') as String?;
       final phoneNumber = _storage.read('userPhoneNumber') as String?;
-      final email = _storage.read('userEmail') as String?;
-      final createdAtString = _storage.read('userCreatedAt') as String?;
-      final updatedAtString = _storage.read('userUpdatedAt') as String?;
-      final walletBalanceValue = _storage.read('userWalletBalance');
-      final favoriteLocationsValue = _storage.read('userFavoriteLocations');
 
-      if (userId == null ||
-          userId.isEmpty ||
-          name == null ||
-          name.isEmpty ||
-          phoneNumber == null ||
-          phoneNumber.isEmpty ||
-          createdAtString == null ||
-          createdAtString.isEmpty ||
-          updatedAtString == null ||
-          updatedAtString.isEmpty) {
+      if (userId != null &&
+          userId.isNotEmpty &&
+          phoneNumber != null &&
+          phoneNumber.isNotEmpty) {
         return;
       }
 
-      final walletBalance = switch (walletBalanceValue) {
-        num v => v.toDouble(),
-        _ => 0.0,
-      };
-
-      List<String> favoriteLocations = const [];
-      if (favoriteLocationsValue is List) {
-        favoriteLocations =
-            favoriteLocationsValue.map((e) => e.toString()).toList();
+      final legacyPhone = phoneNumber;
+      if ((userId == null || userId.isEmpty) &&
+          legacyPhone != null &&
+          legacyPhone.isNotEmpty) {
+        final normalized = _normalizePhoneNumber(legacyPhone);
+        _storage.write('userId', normalized);
+        _storage.write('userPhoneNumber', normalized);
       }
-
-      _currentUser = UserModel(
-        userId: userId,
-        name: name,
-        phoneNumber: phoneNumber,
-        email: (email != null && email.isEmpty) ? null : email,
-        walletBalance: walletBalance,
-        favoriteLocations: favoriteLocations,
-        createdAt: DateTime.tryParse(createdAtString) ?? DateTime.now(),
-        updatedAt: DateTime.tryParse(updatedAtString) ?? DateTime.now(),
-      );
     } catch (e) {
       debugPrint('Error loading user from storage: $e');
     }
@@ -118,19 +108,14 @@ class AuthService {
 
   Future<void> _saveUserToStorage(UserModel user) async {
     await _storage.write('userId', user.userId);
-    await _storage.write('userName', user.name);
     await _storage.write('userPhoneNumber', user.phoneNumber);
-    await _storage.write('userEmail', user.email ?? '');
-    await _storage.write('userCreatedAt', user.createdAt.toIso8601String());
-    await _storage.write('userUpdatedAt', user.updatedAt.toIso8601String());
-    await _storage.write('userWalletBalance', user.walletBalance);
-    await _storage.write('userFavoriteLocations', user.favoriteLocations);
   }
 
   Future<void> _clearUserFromStorage() async {
     await _storage.remove('userId');
-    await _storage.remove('userName');
     await _storage.remove('userPhoneNumber');
+
+    await _storage.remove('userName');
     await _storage.remove('userEmail');
     await _storage.remove('userCreatedAt');
     await _storage.remove('userUpdatedAt');
@@ -214,45 +199,50 @@ class AuthService {
 
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
 
-      final existingSnapshot = await _findUserByPhone(normalizedPhoneNumber);
+      final userDocRef = _userDocByPhone(normalizedPhoneNumber);
+      final userDoc = await userDocRef.get();
 
-      if (existingSnapshot.docs.isNotEmpty) {
-        final doc = existingSnapshot.docs.first;
-        await doc.reference.update({
-          'userId': doc.id,
-          'name': name,
-          'phoneNumber': normalizedPhoneNumber,
-          'email': email,
-          'updatedAt': now.toIso8601String(),
-        });
-
-        final data = Map<String, dynamic>.from(doc.data());
-        data['userId'] = doc.id;
-        data['name'] = name;
-        data['phoneNumber'] = normalizedPhoneNumber;
-        data['email'] = email;
-        data['createdAt'] = _toIsoString(data['createdAt'], now);
-        data['updatedAt'] = now.toIso8601String();
-
-        final user = UserModel.fromMap(data);
-        _currentUser = user;
-        await _saveUserToStorage(user);
-        debugPrint('User registered: ${user.name}');
-        return user;
+      Map<String, dynamic>? existingData;
+      if (userDoc.exists) {
+        existingData = userDoc.data();
+      } else {
+        final existingSnapshot = await _findUserByPhone(normalizedPhoneNumber);
+        if (existingSnapshot.docs.isNotEmpty) {
+          existingData = existingSnapshot.docs.first.data();
+        }
       }
 
-      final docRef = _firestore.collection('users').doc();
+      final createdAtIso = _toIsoString(existingData?['createdAt'], now);
+
       final user = UserModel(
-        userId: docRef.id,
+        userId: normalizedPhoneNumber,
         name: name,
         phoneNumber: normalizedPhoneNumber,
         email: email,
-        userType: 'customer',
-        createdAt: now,
+        userType: (existingData?['userType'] ?? 'customer').toString(),
+        walletBalance: switch (existingData?['walletBalance']) {
+          num v => v.toDouble(),
+          String v => double.tryParse(v) ?? 0.0,
+          _ => 0.0,
+        },
+        favoriteLocations: (existingData?['favoriteLocations'] is List)
+            ? List<String>.from(existingData?['favoriteLocations'] as List)
+            : const [],
+        createdAt: DateTime.tryParse(createdAtIso) ?? now,
         updatedAt: now,
       );
 
-      await docRef.set(user.toMap());
+      await userDocRef.set(
+        {
+          ...?existingData,
+          ...user.toMap(),
+          'userId': normalizedPhoneNumber,
+          'phoneNumber': normalizedPhoneNumber,
+          'updatedAt': now.toIso8601String(),
+          'createdAt': createdAtIso,
+        },
+        SetOptions(merge: true),
+      );
 
       _currentUser = user;
       await _saveUserToStorage(user);
@@ -268,16 +258,35 @@ class AuthService {
   Future<UserModel?> loginUser(String phoneNumber) async {
     try {
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
-      final snapshot = await _findUserByPhone(normalizedPhoneNumber);
-
-      if (snapshot.docs.isEmpty) return null;
-
-      final doc = snapshot.docs.first;
-      final data = Map<String, dynamic>.from(doc.data());
-      data['userId'] = doc.id;
       final now = DateTime.now();
+
+      final userDocRef = _userDocByPhone(normalizedPhoneNumber);
+      final docSnap = await userDocRef.get();
+
+      Map<String, dynamic>? data;
+      if (docSnap.exists) {
+        data = docSnap.data();
+      } else {
+        final snapshot = await _findUserByPhone(normalizedPhoneNumber);
+        if (snapshot.docs.isEmpty) return null;
+        data = Map<String, dynamic>.from(snapshot.docs.first.data());
+      }
+
+      data ??= <String, dynamic>{};
+      data['userId'] = normalizedPhoneNumber;
+      data['phoneNumber'] = normalizedPhoneNumber;
       data['createdAt'] = _toIsoString(data['createdAt'], now);
       data['updatedAt'] = _toIsoString(data['updatedAt'], now);
+
+      await userDocRef.set(
+        {
+          ...data,
+          'userId': normalizedPhoneNumber,
+          'phoneNumber': normalizedPhoneNumber,
+          'updatedAt': now.toIso8601String(),
+        },
+        SetOptions(merge: true),
+      );
 
       final user = UserModel.fromMap(data);
 
@@ -295,6 +304,10 @@ class AuthService {
   Future<bool> isPhoneRegistered(String phoneNumber) async {
     try {
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+
+      final doc = await _userDocByPhone(normalizedPhoneNumber).get();
+      if (doc.exists) return true;
+
       final snapshot = await _findUserByPhone(normalizedPhoneNumber);
       return snapshot.docs.isNotEmpty;
     } catch (e) {

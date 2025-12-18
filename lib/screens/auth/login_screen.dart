@@ -16,14 +16,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
-  final _emailController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -75,9 +73,6 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (context) => OTPVerificationScreen(
             phoneNumber: phoneNumber,
             isSignup: false,
-            email: _emailController.text.trim().isEmpty
-                ? null
-                : _emailController.text.trim(),
           ),
         ),
       );
@@ -262,60 +257,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
 
                 const SizedBox(height: 24),
-
-                // Divider
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'OR',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Regular',
-                          color: AppColors.textSecondary.withOpacity(0.6),
-                        ),
-                      ),
-                    ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                // Social Login Buttons
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      UIHelpers.showInfoToast('Google login coming soon');
-                    },
-                    icon: Image.network(
-                      'https://www.google.com/favicon.ico',
-                      width: 24,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.g_mobiledata, size: 24),
-                    ),
-                    label: const Text(
-                      'Continue with Google',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontFamily: 'Medium',
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textPrimary,
-                      side: const BorderSide(color: AppColors.lightGrey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 32),
 
                 // Sign Up Link
                 Center(

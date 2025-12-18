@@ -7,7 +7,6 @@ import 'edit_profile_screen.dart';
 import '../help_center_screen.dart';
 import '../terms_conditions_screen.dart';
 import '../privacy_policy_screen.dart';
-import 'change_password_screen.dart';
 import '../auth/welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -275,19 +274,6 @@ class ProfileScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const EditProfileScreen(),
-                  ),
-                );
-              },
-            ),
-            _ProfileMenuItem(
-              icon: Icons.lock_outline,
-              title: 'Change Password',
-              subtitle: 'Update your password',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ChangePasswordScreen(),
                   ),
                 );
               },

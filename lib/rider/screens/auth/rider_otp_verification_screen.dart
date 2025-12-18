@@ -10,7 +10,6 @@ class RiderOTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
   final bool isSignup;
   final String? name;
-  final String? email;
   final String? vehicleType;
   final String? vehiclePlateNumber;
   final String? vehicleModel;
@@ -22,7 +21,6 @@ class RiderOTPVerificationScreen extends StatefulWidget {
     required this.phoneNumber,
     required this.isSignup,
     this.name,
-    this.email,
     this.vehicleType,
     this.vehiclePlateNumber,
     this.vehicleModel,
@@ -122,7 +120,6 @@ class _RiderOTPVerificationScreenState
         final rider = await _authService.registerRider(
           name: widget.name!,
           phoneNumber: widget.phoneNumber,
-          email: widget.email,
           vehicleType: widget.vehicleType!,
           vehiclePlateNumber: widget.vehiclePlateNumber,
           vehicleModel: widget.vehicleModel,

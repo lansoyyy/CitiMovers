@@ -20,7 +20,6 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _emailController = TextEditingController();
   final _plateNumberController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehicleColorController = TextEditingController();
@@ -51,7 +50,6 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _emailController.dispose();
     _plateNumberController.dispose();
     _vehicleModelController.dispose();
     _vehicleColorController.dispose();
@@ -314,7 +312,6 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
             phoneNumber: phoneNumber,
             isSignup: true,
             name: _nameController.text,
-            email: _emailController.text.isEmpty ? null : _emailController.text,
             vehicleType: _selectedVehicleType,
             vehiclePlateNumber: _plateNumberController.text,
             vehicleModel: _vehicleModelController.text.isEmpty
@@ -507,37 +504,6 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
                     }
                     if (value.length < 10) {
                       return 'Please enter a valid mobile number';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 20),
-
-                // Email Field (Optional)
-                const Text(
-                  'Email Address (Optional)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontFamily: 'Medium',
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    hintText: 'juan@example.com',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    filled: true,
-                    fillColor: AppColors.white,
-                  ),
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      if (!value.contains('@') || !value.contains('.')) {
-                        return 'Please enter a valid email';
-                      }
                     }
                     return null;
                   },

@@ -25,7 +25,15 @@ class RiderAuthService {
   RiderModel? _currentRider;
 
   RiderModel? get currentRider => _currentRider;
-  bool get isLoggedIn => _currentRider != null;
+  bool get isLoggedIn {
+    if (_currentRider != null) return true;
+    final riderId = _storage.read('riderId') as String?;
+    final phoneNumber = _storage.read('riderPhoneNumber') as String?;
+    return riderId != null &&
+        riderId.isNotEmpty &&
+        phoneNumber != null &&
+        phoneNumber.isNotEmpty;
+  }
 
   String _normalizePhoneNumber(String phoneNumber) {
     String normalizedPhoneNumber = phoneNumber.replaceAll(RegExp(r'[\s-]'), '');
@@ -63,12 +71,38 @@ class RiderAuthService {
     return query.limit(1).get();
   }
 
+  DocumentReference<Map<String, dynamic>> _riderDocByPhone(
+    String phoneNumber,
+  ) {
+    final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+    return _firestore.collection('riders').doc(normalizedPhoneNumber);
+  }
+
   void _loadRiderFromStorage() {
     try {
-      final stored = _storage.read('riderData');
-      if (stored is Map) {
-        final data = Map<String, dynamic>.from(stored);
-        _currentRider = RiderModel.fromJson(data);
+      final riderId = _storage.read('riderId') as String?;
+      final phoneNumber = _storage.read('riderPhoneNumber') as String?;
+
+      if (riderId != null &&
+          riderId.isNotEmpty &&
+          phoneNumber != null &&
+          phoneNumber.isNotEmpty) {
+        return;
+      }
+
+      // Legacy migration: if an older build stored riderData, derive riderId.
+      if ((riderId == null || riderId.isEmpty) ||
+          (phoneNumber == null || phoneNumber.isEmpty)) {
+        final stored = _storage.read('riderData');
+        if (stored is Map) {
+          final data = Map<String, dynamic>.from(stored);
+          final legacyPhone = data['phoneNumber']?.toString();
+          if (legacyPhone != null && legacyPhone.isNotEmpty) {
+            final normalized = _normalizePhoneNumber(legacyPhone);
+            _storage.write('riderId', normalized);
+            _storage.write('riderPhoneNumber', normalized);
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error loading rider from storage: $e');
@@ -76,10 +110,15 @@ class RiderAuthService {
   }
 
   Future<void> _saveRiderToStorage(RiderModel rider) async {
-    await _storage.write('riderData', rider.toJson());
+    await _storage.write('riderId', rider.riderId);
+    await _storage.write('riderPhoneNumber', rider.phoneNumber);
   }
 
   Future<void> _clearRiderFromStorage() async {
+    await _storage.remove('riderId');
+    await _storage.remove('riderPhoneNumber');
+
+    // Clean up legacy keys from previous auth implementations
     await _storage.remove('riderData');
   }
 
@@ -232,60 +271,28 @@ class RiderAuthService {
       final now = DateTime.now();
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
 
-      final existingSnapshot = await _findRiderByPhone(normalizedPhoneNumber);
-      if (existingSnapshot.docs.isNotEmpty) {
-        final doc = existingSnapshot.docs.first;
-        final data = Map<String, dynamic>.from(doc.data());
-        data['riderId'] = doc.id;
+      final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
+      final riderDoc = await riderDocRef.get();
 
-        final rider = RiderModel.fromJson({
-          ...data,
-          'riderId': doc.id,
-          'name': name,
-          'phoneNumber': normalizedPhoneNumber,
-          'email': email,
-          'vehicleType': vehicleType,
-          'vehiclePlateNumber': vehiclePlateNumber,
-          'vehicleModel': vehicleModel,
-          'vehicleColor': vehicleColor,
-          'updatedAt': now.toIso8601String(),
-        });
-
-        await doc.reference.set(rider.toJson(), SetOptions(merge: true));
-
-        if (documentImagePaths != null && documentImagePaths.isNotEmpty) {
-          final docs = await _uploadRiderDocuments(
-            riderId: doc.id,
-            documentImagePaths: documentImagePaths,
-          );
-
-          final existingDocuments = (data['documents'] as Map?)
-                  ?.map((key, value) => MapEntry(key.toString(), value)) ??
-              <String, dynamic>{};
-
-          final mergedDocuments = <String, dynamic>{
-            ...existingDocuments,
-            ...docs,
-          };
-
-          await doc.reference.set(
-            {
-              'documents': mergedDocuments,
-              'documentsUpdatedAt': now.toIso8601String(),
-            },
-            SetOptions(merge: true),
-          );
+      Map<String, dynamic>? existingData;
+      if (riderDoc.exists) {
+        existingData = riderDoc.data();
+      } else {
+        final existingSnapshot = await _findRiderByPhone(normalizedPhoneNumber);
+        if (existingSnapshot.docs.isNotEmpty) {
+          existingData = existingSnapshot.docs.first.data();
         }
-
-        _currentRider = rider;
-        await _saveRiderToStorage(rider);
-        debugPrint('Rider registered: ${rider.name}');
-        return rider;
       }
 
-      final docRef = _firestore.collection('riders').doc();
+      final createdAtIso = switch (existingData?['createdAt']) {
+        String v when v.isNotEmpty => v,
+        Timestamp v => v.toDate().toIso8601String(),
+        DateTime v => v.toIso8601String(),
+        _ => now.toIso8601String(),
+      };
+
       final rider = RiderModel(
-        riderId: docRef.id,
+        riderId: normalizedPhoneNumber,
         name: name,
         phoneNumber: normalizedPhoneNumber,
         email: email,
@@ -295,24 +302,59 @@ class RiderAuthService {
         vehicleColor: vehicleColor,
         status: 'pending', // pending, approved, active, inactive
         isOnline: false,
-        rating: 0.0,
-        totalDeliveries: 0,
-        totalEarnings: 0.0,
-        createdAt: now,
+        rating: switch (existingData?['rating']) {
+          num v => v.toDouble(),
+          String v => double.tryParse(v) ?? 0.0,
+          _ => 0.0,
+        },
+        totalDeliveries: switch (existingData?['totalDeliveries']) {
+          int v => v,
+          num v => v.toInt(),
+          String v => int.tryParse(v) ?? 0,
+          _ => 0,
+        },
+        totalEarnings: switch (existingData?['totalEarnings']) {
+          num v => v.toDouble(),
+          String v => double.tryParse(v) ?? 0.0,
+          _ => 0.0,
+        },
+        currentLatitude: (existingData?['currentLatitude'] as num?)?.toDouble(),
+        currentLongitude:
+            (existingData?['currentLongitude'] as num?)?.toDouble(),
+        createdAt: DateTime.tryParse(createdAtIso) ?? now,
         updatedAt: now,
       );
 
-      await docRef.set(rider.toJson());
+      await riderDocRef.set(
+        {
+          ...?existingData,
+          ...rider.toJson(),
+          'riderId': normalizedPhoneNumber,
+          'phoneNumber': normalizedPhoneNumber,
+          'createdAt': createdAtIso,
+          'updatedAt': now.toIso8601String(),
+        },
+        SetOptions(merge: true),
+      );
 
       if (documentImagePaths != null && documentImagePaths.isNotEmpty) {
         final docs = await _uploadRiderDocuments(
-          riderId: docRef.id,
+          riderId: riderDocRef.id,
           documentImagePaths: documentImagePaths,
         );
 
-        await docRef.set(
+        final existingDocuments = (existingData?['documents'] as Map?)
+                ?.map((key, value) => MapEntry(key.toString(), value)) ??
+            <String, dynamic>{};
+
+        final mergedDocuments = <String, dynamic>{
+          ...existingDocuments,
+          ...docs,
+        };
+
+        await riderDocRef.set(
           {
-            'documents': docs,
+            'documents': mergedDocuments,
             'documentsUpdatedAt': now.toIso8601String(),
           },
           SetOptions(merge: true),
@@ -333,13 +375,32 @@ class RiderAuthService {
   Future<RiderModel?> loginRider(String phoneNumber) async {
     try {
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
-      final snapshot = await _findRiderByPhone(normalizedPhoneNumber);
 
-      if (snapshot.docs.isEmpty) return null;
+      final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
+      final docSnap = await riderDocRef.get();
 
-      final doc = snapshot.docs.first;
-      final data = Map<String, dynamic>.from(doc.data());
-      data['riderId'] = doc.id;
+      Map<String, dynamic>? data;
+      if (docSnap.exists) {
+        data = docSnap.data();
+      } else {
+        final snapshot = await _findRiderByPhone(normalizedPhoneNumber);
+        if (snapshot.docs.isEmpty) return null;
+        data = Map<String, dynamic>.from(snapshot.docs.first.data());
+      }
+
+      data ??= <String, dynamic>{};
+      data['riderId'] = normalizedPhoneNumber;
+      data['phoneNumber'] = normalizedPhoneNumber;
+
+      await riderDocRef.set(
+        {
+          ...data,
+          'riderId': normalizedPhoneNumber,
+          'phoneNumber': normalizedPhoneNumber,
+          'updatedAt': DateTime.now().toIso8601String(),
+        },
+        SetOptions(merge: true),
+      );
 
       final rider = RiderModel.fromJson(data);
 
@@ -357,6 +418,10 @@ class RiderAuthService {
   Future<bool> isPhoneRegistered(String phoneNumber) async {
     try {
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+
+      final doc = await _riderDocByPhone(normalizedPhoneNumber).get();
+      if (doc.exists) return true;
+
       final snapshot = await _findRiderByPhone(normalizedPhoneNumber);
       return snapshot.docs.isNotEmpty;
     } catch (e) {
@@ -380,14 +445,12 @@ class RiderAuthService {
       _loadRiderFromStorage();
       if (_currentRider != null) return _currentRider;
 
-      final stored = _storage.read('riderData');
-      if (stored is! Map) return null;
+      final storedPhoneNumber = _storage.read('riderPhoneNumber') as String?;
+      if (storedPhoneNumber == null || storedPhoneNumber.isEmpty) {
+        return null;
+      }
 
-      final data = Map<String, dynamic>.from(stored);
-      final phoneNumber = data['phoneNumber'] as String?;
-      if (phoneNumber == null || phoneNumber.isEmpty) return null;
-
-      return await loginRider(phoneNumber);
+      return await loginRider(storedPhoneNumber);
     } catch (e) {
       debugPrint('Error getting current rider: $e');
       return null;

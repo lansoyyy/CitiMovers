@@ -148,7 +148,6 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
           builder: (context) => OTPVerificationScreen(
             phoneNumber: user.phoneNumber,
             isSignup: false,
-            email: user.email,
             isBookingFlow: true,
             booking: BookingData(
                 id: booking.bookingId!,
@@ -197,7 +196,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                       height: 4,
                       margin: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        color: AppColors.textHint.withOpacity(0.3),
+                        color: AppColors.textHint.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -369,7 +368,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                         color: AppColors.white,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 10,
                             offset: const Offset(0, -2),
                           ),
@@ -390,7 +389,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             disabledBackgroundColor:
-                                AppColors.textHint.withOpacity(0.3),
+                                AppColors.textHint.withValues(alpha: 0.3),
                           ),
                           child: const Text(
                             'Continue',
@@ -705,7 +704,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryRed.withOpacity(0.1),
+                            color: AppColors.primaryRed.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(
@@ -769,7 +768,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: AppColors.textHint.withOpacity(0.2),
+                          color: AppColors.textHint.withValues(alpha: 0.2),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -986,10 +985,11 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryRed.withOpacity(0.1),
+                            color: AppColors.primaryRed.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: AppColors.primaryRed.withOpacity(0.2),
+                              color:
+                                  AppColors.primaryRed.withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -1030,7 +1030,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
               color: AppColors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -2),
                 ),
@@ -1050,7 +1050,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     disabledBackgroundColor:
-                        AppColors.textHint.withOpacity(0.3),
+                        AppColors.textHint.withValues(alpha: 0.3),
                   ),
                   child: _isLoading
                       ? const SizedBox(
@@ -1104,13 +1104,13 @@ class _PaymentOption extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primaryRed.withOpacity(0.1)
+              ? AppColors.primaryRed.withValues(alpha: 0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected
                 ? AppColors.primaryRed
-                : AppColors.textHint.withOpacity(0.3),
+                : AppColors.textHint.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -1120,8 +1120,8 @@ class _PaymentOption extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.primaryRed.withOpacity(0.2)
-                    : AppColors.textHint.withOpacity(0.1),
+                    ? AppColors.primaryRed.withValues(alpha: 0.2)
+                    : AppColors.textHint.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(

@@ -85,6 +85,11 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
     final authService = RiderAuthService();
     final isLoggedIn = authService.isLoggedIn;
 
+    if (isLoggedIn) {
+      await authService.getCurrentRider();
+      if (!mounted) return;
+    }
+
     // Navigate to appropriate screen
     final destination =
         isLoggedIn ? const RiderHomeScreen() : const RiderLoginScreen();

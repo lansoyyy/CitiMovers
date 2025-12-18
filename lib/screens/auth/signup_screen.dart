@@ -17,7 +17,6 @@ class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _emailController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
   bool _agreedToTerms = false;
@@ -26,7 +25,6 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -82,7 +80,6 @@ class _SignupScreenState extends State<SignupScreen> {
             phoneNumber: phoneNumber,
             isSignup: true,
             name: _nameController.text,
-            email: _emailController.text.isEmpty ? null : _emailController.text,
           ),
         ),
       );
@@ -235,42 +232,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   },
                 ),
 
-                const SizedBox(height: 20),
-
-                // Email Field (Optional)
-                const Text(
-                  'Email Address (Optional)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontFamily: 'Medium',
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    hintText: 'juan@example.com',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    filled: true,
-                    fillColor: AppColors.white,
-                  ),
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      final emailRegex = RegExp(
-                        r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                      );
-                      if (!emailRegex.hasMatch(value)) {
-                        return 'Please enter a valid email';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-
                 const SizedBox(height: 24),
 
                 // Terms and Conditions Checkbox
@@ -348,60 +309,6 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
 
                 const SizedBox(height: 24),
-
-                // Divider
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'OR',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Regular',
-                          color: AppColors.textSecondary.withOpacity(0.6),
-                        ),
-                      ),
-                    ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                // Social Sign Up
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      UIHelpers.showInfoToast('Google signup coming soon');
-                    },
-                    icon: Image.network(
-                      'https://www.google.com/favicon.ico',
-                      width: 24,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.g_mobiledata, size: 24),
-                    ),
-                    label: const Text(
-                      'Sign up with Google',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontFamily: 'Medium',
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textPrimary,
-                      side: const BorderSide(color: AppColors.lightGrey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 32),
 
                 // Login Link
                 Center(
