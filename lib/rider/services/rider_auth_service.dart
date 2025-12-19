@@ -460,7 +460,7 @@ class RiderAuthService {
   /// Update rider profile
   Future<bool> updateProfile({
     String? name,
-    String? email,
+    String? phoneNumber,
     String? photoUrl,
     String? vehicleType,
     String? vehiclePlateNumber,
@@ -468,19 +468,37 @@ class RiderAuthService {
     try {
       if (_currentRider == null) return false;
 
+      final normalizedPhone = phoneNumber != null
+          ? _normalizePhoneNumber(phoneNumber)
+          : _currentRider!.phoneNumber;
+
       final updatedRider = _currentRider!.copyWith(
         name: name,
-        email: email,
+        phoneNumber: normalizedPhone,
         photoUrl: photoUrl,
         vehicleType: vehicleType,
         vehiclePlateNumber: vehiclePlateNumber,
         updatedAt: DateTime.now(),
       );
 
-      await _firestore
-          .collection('riders')
-          .doc(updatedRider.riderId)
-          .set(updatedRider.toJson(), SetOptions(merge: true));
+      if (phoneNumber != null && phoneNumber != _currentRider!.phoneNumber) {
+        await _firestore
+            .collection('riders')
+            .doc(_currentRider!.riderId)
+            .delete();
+
+        await _firestore
+            .collection('riders')
+            .doc(normalizedPhone)
+            .set(updatedRider.toJson(), SetOptions(merge: true));
+
+        await _saveRiderToStorage(updatedRider);
+      } else {
+        await _firestore
+            .collection('riders')
+            .doc(updatedRider.riderId)
+            .set(updatedRider.toJson(), SetOptions(merge: true));
+      }
 
       _currentRider = updatedRider;
       await _saveRiderToStorage(updatedRider);

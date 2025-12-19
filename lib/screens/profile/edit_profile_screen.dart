@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
+import '../../services/auth_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -12,15 +13,33 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
 
-  final TextEditingController _nameController =
-      TextEditingController(text: 'Juan Dela Cruz');
-  final TextEditingController _phoneController =
-      TextEditingController(text: '9123456789');
-  final TextEditingController _emailController =
-      TextEditingController(text: 'juan@example.com');
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
 
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  void _loadUserData() {
+    final user = _authService.currentUser;
+    if (user != null) {
+      _nameController.text = user.name;
+      _phoneController.text = user.phoneNumber;
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) {
@@ -29,13 +48,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isLoading = true);
 
-    // Simulate save
-    await Future.delayed(const Duration(seconds: 1));
+    final success = await _authService.updateProfile(
+      name: _nameController.text.trim(),
+      phoneNumber: _phoneController.text.trim(),
+    );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      UIHelpers.showSuccessToast('Profile updated successfully');
-      Navigator.pop(context);
+      if (success) {
+        UIHelpers.showSuccessToast('Profile updated successfully');
+        Navigator.pop(context);
+      } else {
+        UIHelpers.showErrorToast('Failed to update profile');
+      }
     }
   }
 
@@ -92,14 +117,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _emailController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
@@ -150,7 +167,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           color: AppColors.primaryRed,
                           width: 3,
                         ),
-                        color: AppColors.primaryRed.withOpacity(0.1),
+                        color: AppColors.primaryRed.withValues(alpha: 0.1),
                       ),
                       child: const Icon(
                         Icons.person,
@@ -170,7 +187,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
+                                color: Colors.black.withValues(alpha: 0.2),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -219,7 +236,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                      color: AppColors.textHint.withOpacity(0.2),
+                      color: AppColors.textHint.withValues(alpha: 0.2),
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -289,7 +306,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         Container(
                           width: 1,
                           height: 24,
-                          color: AppColors.textHint.withOpacity(0.3),
+                          color: AppColors.textHint.withValues(alpha: 0.3),
                         ),
                       ],
                     ),
@@ -303,7 +320,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                      color: AppColors.textHint.withOpacity(0.2),
+                      color: AppColors.textHint.withValues(alpha: 0.2),
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -328,60 +345,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 },
               ),
 
-              const SizedBox(height: 20),
-
-              // Email Field
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Email Address (Optional)',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontFamily: 'Medium',
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: 'your.email@example.com',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  filled: true,
-                  fillColor: AppColors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppColors.textHint.withOpacity(0.2),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: AppColors.primaryRed,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                validator: (value) {
-                  if (value != null && value.isNotEmpty) {
-                    final emailRegex = RegExp(
-                      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                    );
-                    if (!emailRegex.hasMatch(value)) {
-                      return 'Please enter a valid email';
-                    }
-                  }
-                  return null;
-                },
-              ),
-
               const SizedBox(height: 40),
 
               // Save Button
@@ -398,7 +361,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     disabledBackgroundColor:
-                        AppColors.textHint.withOpacity(0.3),
+                        AppColors.textHint.withValues(alpha: 0.3),
                   ),
                   child: _isLoading
                       ? const SizedBox(

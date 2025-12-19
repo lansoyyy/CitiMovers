@@ -346,23 +346,38 @@ class AuthService {
   /// Update user profile
   Future<bool> updateProfile({
     String? name,
-    String? email,
+    String? phoneNumber,
     String? photoUrl,
   }) async {
     try {
       if (_currentUser == null) return false;
 
+      final normalizedPhone = phoneNumber != null
+          ? _normalizePhoneNumber(phoneNumber)
+          : _currentUser!.phoneNumber;
+
       final updatedUser = _currentUser!.copyWith(
         name: name,
-        email: email,
+        phoneNumber: normalizedPhone,
         photoUrl: photoUrl,
         updatedAt: DateTime.now(),
       );
 
-      await _firestore
-          .collection('users')
-          .doc(updatedUser.userId)
-          .set(updatedUser.toMap(), SetOptions(merge: true));
+      if (phoneNumber != null && phoneNumber != _currentUser!.phoneNumber) {
+        await _firestore.collection('users').doc(_currentUser!.userId).delete();
+
+        await _firestore
+            .collection('users')
+            .doc(normalizedPhone)
+            .set(updatedUser.toMap(), SetOptions(merge: true));
+
+        await _saveUserToStorage(updatedUser);
+      } else {
+        await _firestore
+            .collection('users')
+            .doc(updatedUser.userId)
+            .set(updatedUser.toMap(), SetOptions(merge: true));
+      }
 
       _currentUser = updatedUser;
       await _saveUserToStorage(updatedUser);

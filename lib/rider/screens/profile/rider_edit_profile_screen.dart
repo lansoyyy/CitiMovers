@@ -15,8 +15,9 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _authService = RiderAuthService();
   final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _vehicleTypeController = TextEditingController();
+  final _vehiclePlateController = TextEditingController();
   bool _isLoading = false;
   String? _profileImagePath;
 
@@ -30,16 +31,18 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
     final rider = _authService.currentRider;
     if (rider != null) {
       _nameController.text = rider.name;
-      _emailController.text = rider.email ?? '';
       _phoneController.text = rider.phoneNumber;
+      _vehicleTypeController.text = rider.vehicleType;
+      _vehiclePlateController.text = rider.vehiclePlateNumber ?? '';
     }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
+    _vehicleTypeController.dispose();
+    _vehiclePlateController.dispose();
     super.dispose();
   }
 
@@ -65,13 +68,21 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
 
     setState(() => _isLoading = true);
 
-    // TODO: Implement profile update with Firebase
-    await Future.delayed(const Duration(seconds: 2));
+    final success = await _authService.updateProfile(
+      name: _nameController.text.trim(),
+      phoneNumber: _phoneController.text.trim(),
+      vehicleType: _vehicleTypeController.text.trim(),
+      vehiclePlateNumber: _vehiclePlateController.text.trim(),
+    );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      UIHelpers.showSuccessToast('Profile updated successfully');
-      Navigator.pop(context);
+      if (success) {
+        UIHelpers.showSuccessToast('Profile updated successfully');
+        Navigator.pop(context);
+      } else {
+        UIHelpers.showErrorToast('Failed to update profile');
+      }
     }
   }
 
@@ -130,7 +141,8 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primaryRed.withValues(alpha: 0.3),
+                              color:
+                                  AppColors.primaryRed.withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -189,38 +201,7 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Email
-                    const Text(
-                      'Email Address',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter your email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        filled: true,
-                        fillColor: AppColors.white,
-                      ),
-                      validator: (value) {
-                        if (value != null && value.isNotEmpty) {
-                          if (!value.contains('@') || !value.contains('.')) {
-                            return 'Please enter a valid email';
-                          }
-                        }
-                        return null;
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Phone Number (Read-only)
+                    // Phone Number
                     const Text(
                       'Phone Number',
                       style: TextStyle(
@@ -232,22 +213,74 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _phoneController,
-                      enabled: false,
+                      keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                        hintText: 'Phone number',
+                        hintText: '9XXXXXXXXX',
                         prefixIcon: Icon(Icons.phone_outlined),
                         filled: true,
-                        fillColor: AppColors.lightGrey,
+                        fillColor: AppColors.white,
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your mobile number';
+                        }
+                        if (value.length != 10) {
+                          return 'Mobile number must be 10 digits';
+                        }
+                        if (!value.startsWith('9')) {
+                          return 'Mobile number must start with 9';
+                        }
+                        return null;
+                      },
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 20),
+
+                    // Vehicle Type
                     const Text(
-                      'Phone number cannot be changed',
+                      'Vehicle Type',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Regular',
-                        color: AppColors.textSecondary,
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _vehicleTypeController,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g., Motorcycle, Van, Truck',
+                        prefixIcon: Icon(Icons.local_shipping),
+                        filled: true,
+                        fillColor: AppColors.white,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter vehicle type';
+                        }
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Vehicle Plate Number
+                    const Text(
+                      'Vehicle Plate Number',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _vehiclePlateController,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g., ABC 1234',
+                        prefixIcon: Icon(Icons.confirmation_number),
+                        filled: true,
+                        fillColor: AppColors.white,
                       ),
                     ),
 
