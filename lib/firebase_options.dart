@@ -58,13 +58,10 @@ class DefaultFirebaseOptions {
       appId: "1:212204568146:web:2e9d8c15d433ba9976e98b");
 
   static const FirebaseOptions ios = FirebaseOptions(
-      apiKey: "AIzaSyCCGYr3FVuoD9965IC3ut189jYA9UoQy6Q",
-      authDomain: "para-d353b.firebaseapp.com",
-      databaseURL: "https://para-d353b-default-rtdb.firebaseio.com",
-      projectId: "para-d353b",
-      storageBucket: "para-d353b.firebasestorage.app",
-      messagingSenderId: "895103763881",
-      appId: "1:895103763881:ios:fad825b3b597eeaecbb0b8",
-      iosClientId: "895103763881-.apps.googleusercontent.com",
-      iosBundleId: "com.algovision.sakaypassengers");
+      apiKey: "AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278",
+      authDomain: "citimovers-346f2.firebaseapp.com",
+      projectId: "citimovers-346f2",
+      storageBucket: "citimovers-346f2.firebasestorage.app",
+      messagingSenderId: "212204568146",
+      appId: "1:212204568146:web:2e9d8c15d433ba9976e98b");
 }

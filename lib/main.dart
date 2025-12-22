@@ -13,6 +13,7 @@ void main() async {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   await Firebase.initializeApp(
+    name: 'citimovers-346f2',
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
