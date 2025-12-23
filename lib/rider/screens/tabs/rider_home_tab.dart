@@ -2,11 +2,13 @@ import 'dart:async';
 import 'package:citimovers/rider/screens/rider_notifications_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import '../profile/rider_settings_screen.dart';
 import '../../models/delivery_request_model.dart';
+import '../../../models/booking_model.dart';
 import '../delivery/rider_delivery_progress_screen.dart';
 
 class RiderHomeTab extends StatefulWidget {
@@ -23,10 +25,14 @@ class RiderHomeTab extends StatefulWidget {
 
 class _RiderHomeTabState extends State<RiderHomeTab> {
   final _authService = RiderAuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   bool _isOnline = true;
   int _todayDeliveries = 0;
   double _todayEarnings = 0.0;
   List<DeliveryRequest> _deliveryRequests = [];
+  StreamSubscription<QuerySnapshot>? _bookingsSubscription;
+  StreamSubscription<QuerySnapshot>? _requestsSubscription;
 
   @override
   void initState() {
@@ -34,73 +40,137 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
     _loadRiderData();
   }
 
+  @override
+  void dispose() {
+    _bookingsSubscription?.cancel();
+    _requestsSubscription?.cancel();
+    super.dispose();
+  }
+
   Future<void> _loadRiderData() async {
     final rider = await _authService.getCurrentRider();
-    if (mounted) {
+    if (mounted && rider != null) {
       setState(() {
-        // Always load delivery requests when online
-        if (_isOnline) {
-          _deliveryRequests = _getMockDeliveryRequests();
-        }
-
-        if (rider != null) {
-          _isOnline = rider.isOnline;
-          // Mock data for today's stats
-          _todayDeliveries = 5;
-          _todayEarnings = 1250.0;
-        }
+        _isOnline = rider.isOnline;
       });
+
+      // Listen to today's bookings for stats
+      _listenToTodayStats(rider.riderId);
+
+      // Listen to delivery requests when online
+      if (_isOnline) {
+        _listenToDeliveryRequests();
+      }
     }
   }
 
-  List<DeliveryRequest> _getMockDeliveryRequests() {
-    return [
-      DeliveryRequest(
-        id: 'DR001',
-        customerName: 'Maria Santos',
-        customerPhone: '+63 912 345 6789',
-        pickupLocation: 'Makati City, Ayala Avenue',
-        deliveryLocation: 'Pasay City, Mall of Asia',
-        distance: '8.5 km',
-        estimatedTime: '25 mins',
-        fare: 'P180',
-        packageType: 'Small Package',
-        weight: '2 kg',
-        urgency: 'Normal',
-        specialInstructions: 'Handle with care - fragile items',
-        requestTime: '2 mins ago',
-      ),
-      DeliveryRequest(
-        id: 'DR002',
-        customerName: 'Juan Reyes',
-        customerPhone: '+63 923 456 7890',
-        pickupLocation: 'Quezon City, SM North',
-        deliveryLocation: 'Manila, Intramuros',
-        distance: '12.3 km',
-        estimatedTime: '35 mins',
-        fare: 'P250',
-        packageType: 'Medium Package',
-        weight: '5 kg',
-        urgency: 'Urgent',
-        specialInstructions: 'Food delivery - maintain temperature',
-        requestTime: '5 mins ago',
-      ),
-      DeliveryRequest(
-        id: 'DR003',
-        customerName: 'Ana Lopez',
-        customerPhone: '+63 934 567 8901',
-        pickupLocation: 'Pasig City, Ortigas Center',
-        deliveryLocation: 'Taguig City, BGC',
-        distance: '6.8 km',
-        estimatedTime: '20 mins',
-        fare: 'P150',
-        packageType: 'Document',
-        weight: '0.5 kg',
-        urgency: 'Normal',
-        specialInstructions: 'Important documents',
-        requestTime: '8 mins ago',
-      ),
-    ];
+  void _listenToTodayStats(String riderId) {
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    _bookingsSubscription = _firestore
+        .collection('bookings')
+        .where('driverId', isEqualTo: riderId)
+        .where('status', whereIn: ['completed', 'in_progress'])
+        .where('createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .snapshots()
+        .listen((snapshot) {
+          if (mounted) {
+            setState(() {
+              _todayDeliveries = snapshot.docs.length;
+              _todayEarnings = snapshot.docs.fold<double>(
+                0.0,
+                (sum, doc) {
+                  final data = doc.data();
+                  return sum + ((data['fare'] as num?)?.toDouble() ?? 0.0);
+                },
+              );
+            });
+          }
+        });
+  }
+
+  void _listenToDeliveryRequests() {
+    // Listen to bookings with status 'pending' and no driver assigned
+    _requestsSubscription = _firestore
+        .collection('bookings')
+        .where('status', isEqualTo: 'pending')
+        .where('driverId', isNull: true)
+        .orderBy('createdAt', descending: true)
+        .limit(10)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _deliveryRequests = snapshot.docs
+              .map((doc) => _bookingToDeliveryRequest(doc.id, doc.data()))
+              .toList();
+        });
+      }
+    });
+  }
+
+  DeliveryRequest _bookingToDeliveryRequest(
+      String bookingId, Map<String, dynamic> data) {
+    // Calculate request time
+    final createdAt =
+        (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final now = DateTime.now();
+    final difference = now.difference(createdAt);
+
+    String requestTime;
+    if (difference.inMinutes < 1) {
+      requestTime = 'Just now';
+    } else if (difference.inMinutes < 60) {
+      requestTime = '${difference.inMinutes} mins ago';
+    } else if (difference.inHours < 24) {
+      requestTime = '${difference.inHours} hours ago';
+    } else {
+      requestTime = '${difference.inDays} days ago';
+    }
+
+    // Get customer info
+    final customerName = data['customerName'] as String? ?? 'Unknown';
+    final customerPhone = data['customerPhone'] as String? ?? 'N/A';
+
+    // Get locations
+    final pickupLocation = data['pickupLocation'] as String? ?? '';
+    final deliveryLocation = data['deliveryLocation'] as String? ?? '';
+
+    // Get distance and time
+    final distance = data['distance'] as num? ?? 0;
+    final estimatedDuration = data['estimatedDuration'] as num? ?? 0;
+
+    // Get fare
+    final fare = data['fare'] as num? ?? 0;
+
+    // Get package info
+    final packageType = data['packageType'] as String? ?? 'Standard';
+    final weight = data['weight'] as num? ?? 0;
+    final specialInstructions =
+        data['specialInstructions'] as String? ?? 'None';
+
+    // Get urgency
+    final urgency = data['urgency'] as String? ?? 'Normal';
+
+    return DeliveryRequest(
+      id: bookingId,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      pickupLocation: pickupLocation,
+      deliveryLocation: deliveryLocation,
+      distance: '${distance.toStringAsFixed(1)} km',
+      estimatedTime: '${estimatedDuration.toStringAsFixed(0)} mins',
+      fare: 'P${fare.toStringAsFixed(0)}',
+      packageType: packageType,
+      weight: '${weight.toStringAsFixed(1)} kg',
+      urgency: urgency,
+      specialInstructions: specialInstructions,
+      requestTime: requestTime,
+    );
   }
 
   void _showDeliveryDetailsBottomSheet(
@@ -147,14 +217,18 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
     if (success && mounted) {
       setState(() {
         _isOnline = !_isOnline;
-        // Load delivery requests when going online
-        if (_isOnline) {
-          _deliveryRequests = _getMockDeliveryRequests();
-        } else {
-          // Clear delivery requests when going offline
-          _deliveryRequests = [];
-        }
       });
+
+      // Start or stop listening to delivery requests
+      if (_isOnline) {
+        _listenToDeliveryRequests();
+      } else {
+        _requestsSubscription?.cancel();
+        setState(() {
+          _deliveryRequests = [];
+        });
+      }
+
       UIHelpers.showSuccessToast(
         _isOnline ? 'You are now online' : 'You are now offline',
       );

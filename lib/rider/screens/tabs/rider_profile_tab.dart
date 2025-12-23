@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../utils/app_colors.dart';
+import '../../../utils/app_constants.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import '../auth/rider_login_screen.dart';
@@ -1060,16 +1061,20 @@ class HelpSupportBottomSheet extends StatelessWidget {
                       _buildHelpItem(
                         icon: FontAwesomeIcons.phone,
                         title: 'Call Support',
-                        subtitle: '+63 2 8123 4567',
+                        subtitle: AppConstants.hotlinePhone,
                         onTap: () {
                           Navigator.pop(context);
-                          UIHelpers.showInfoToast('Calling support...');
+                          final uri =
+                              Uri.parse('tel:${AppConstants.supportPhone}');
+                          // Note: url_launcher would be needed to actually make the call
+                          UIHelpers.showInfoToast(
+                              'Calling ${AppConstants.supportPhone}...');
                         },
                       ),
                       _buildHelpItem(
                         icon: FontAwesomeIcons.envelope,
                         title: 'Email Support',
-                        subtitle: 'support@citimovers.com',
+                        subtitle: AppConstants.supportEmail,
                         onTap: () {
                           Navigator.pop(context);
                           UIHelpers.showInfoToast('Opening email app...');
@@ -1501,10 +1506,10 @@ class PrivacyPolicyBottomSheet extends StatelessWidget {
                     'Contact Us',
                     FontAwesomeIcons.envelope,
                     [
-                      'For privacy concerns: privacy@citimovers.com',
-                      'For data requests: dpo@citimovers.com',
-                      'Hotline: +63 2 8123 4567',
-                      'Office: 123 Delivery Street, Manila, Philippines',
+                      'For privacy concerns: ${AppConstants.privacyEmail}',
+                      'For data requests: ${AppConstants.dpoEmail}',
+                      'Hotline: ${AppConstants.hotlinePhone}',
+                      'Office: ${AppConstants.officeAddress}',
                     ],
                   ),
 

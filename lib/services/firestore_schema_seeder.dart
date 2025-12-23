@@ -74,19 +74,91 @@ class FirestoreSchemaSeeder {
             },
           },
           'saved_locations': {
-            'parent': 'users/{userId}',
-            'collectionId': 'saved_locations',
+            'docId': 'locationId',
             'fields': {
-              'id': 'string',
-              'label': 'string?',
+              'userId': 'string',
+              'name': 'string',
               'address': 'string',
               'latitude': 'number',
               'longitude': 'number',
-              'city': 'string?',
-              'province': 'string?',
-              'country': 'string?',
-              'isFavorite': 'bool',
-              'createdAt': 'string(iso8601)?',
+              'type': 'string?', // 'home', 'office', 'other'
+              'createdAt': 'timestamp',
+              'updatedAt': 'timestamp',
+            },
+          },
+          'email_notifications': {
+            'docId': 'id',
+            'fields': {
+              'to': 'string',
+              'subject': 'string',
+              'htmlBody': 'string',
+              'textBody': 'string?',
+              'templateId': 'string?',
+              'templateData': 'map?',
+              'type':
+                  'string', // 'booking', 'payment', 'verification', 'promotional', 'system'
+              'referenceId': 'string?',
+              'isSent': 'bool',
+              'sentAt': 'timestamp?',
+              'errorMessage': 'string?',
+              'createdAt': 'timestamp',
+            },
+          },
+          'rider_settings': {
+            'docId': 'riderId',
+            'fields': {
+              'riderId': 'string',
+              'pushNotifications': 'bool',
+              'emailNotifications': 'bool',
+              'smsNotifications': 'bool',
+              'soundEffects': 'bool',
+              'vibration': 'bool',
+              'locationServices': 'bool',
+              'autoAcceptDeliveries': 'bool',
+              'language': 'string', // 'English', 'Filipino'
+              'theme': 'string', // 'Light', 'Dark', 'System'
+              'createdAt': 'timestamp',
+              'updatedAt': 'timestamp',
+            },
+          },
+          'promo_banners': {
+            'docId': 'bannerId',
+            'fields': {
+              'title': 'string',
+              'description': 'string',
+              'imageUrl': 'string',
+              'actionUrl': 'string?',
+              'isActive': 'bool',
+              'startDate': 'timestamp?',
+              'endDate': 'timestamp?',
+              'displayOrder': 'number',
+              'createdAt': 'timestamp',
+              'updatedAt': 'timestamp',
+            },
+          },
+          'payment_methods': {
+            'docId': 'paymentMethodId',
+            'fields': {
+              'userId': 'string',
+              'type': 'string', // 'bank', 'gcash', 'paymaya'
+              'name': 'string',
+              'accountNumber': 'string',
+              'accountName': 'string',
+              'isDefault': 'bool',
+              'createdAt': 'timestamp',
+              'updatedAt': 'timestamp',
+            },
+          },
+          'wallet_transactions': {
+            'docId': 'transactionId',
+            'fields': {
+              'userId': 'string',
+              'type': 'string', // 'top_up', 'payment', 'earning'
+              'amount': 'number',
+              'balance': 'number',
+              'description': 'string',
+              'referenceId': 'string?',
+              'createdAt': 'timestamp',
             },
           },
           'vehicles': {
@@ -334,6 +406,111 @@ class FirestoreSchemaSeeder {
         'createdAt': 0,
         'completedAt': null,
         'cancellationReason': '',
+      },
+      SetOptions(merge: true),
+    );
+
+    // Saved Locations Schema
+    await _firestore.collection('saved_locations').doc('_schema').set(
+      {
+        '__schema': true,
+        'userId': '',
+        'name': 'SCHEMA_PLACEHOLDER',
+        'address': '',
+        'latitude': 0.0,
+        'longitude': 0.0,
+        'type': null,
+        'createdAt': DateTime.now(),
+        'updatedAt': DateTime.now(),
+      },
+      SetOptions(merge: true),
+    );
+
+    // Promo Banners Schema
+    await _firestore.collection('promo_banners').doc('_schema').set(
+      {
+        '__schema': true,
+        'title': 'SCHEMA_PLACEHOLDER',
+        'description': '',
+        'imageUrl': '',
+        'actionUrl': null,
+        'isActive': true,
+        'startDate': null,
+        'endDate': null,
+        'displayOrder': 0,
+        'createdAt': DateTime.now(),
+        'updatedAt': DateTime.now(),
+      },
+      SetOptions(merge: true),
+    );
+
+    // Payment Methods Schema
+    await _firestore.collection('payment_methods').doc('_schema').set(
+      {
+        '__schema': true,
+        'userId': '',
+        'type': 'schema',
+        'name': 'SCHEMA_PLACEHOLDER',
+        'accountNumber': '',
+        'accountName': '',
+        'isDefault': false,
+        'createdAt': DateTime.now(),
+        'updatedAt': DateTime.now(),
+      },
+      SetOptions(merge: true),
+    );
+
+    // Wallet Transactions Schema
+    await _firestore.collection('wallet_transactions').doc('_schema').set(
+      {
+        '__schema': true,
+        'userId': '',
+        'type': 'schema',
+        'amount': 0.0,
+        'balance': 0.0,
+        'description': '',
+        'referenceId': null,
+        'createdAt': DateTime.now(),
+      },
+      SetOptions(merge: true),
+    );
+
+    // Email Notifications Schema
+    await _firestore.collection('email_notifications').doc('_schema').set(
+      {
+        '__schema': true,
+        'to': '',
+        'subject': '',
+        'htmlBody': '',
+        'textBody': null,
+        'templateId': null,
+        'templateData': null,
+        'type': 'schema',
+        'referenceId': null,
+        'isSent': false,
+        'sentAt': null,
+        'errorMessage': null,
+        'createdAt': DateTime.now(),
+      },
+      SetOptions(merge: true),
+    );
+
+    // Rider Settings Schema
+    await _firestore.collection('rider_settings').doc('_schema').set(
+      {
+        '__schema': true,
+        'riderId': '_schema',
+        'pushNotifications': true,
+        'emailNotifications': false,
+        'smsNotifications': true,
+        'soundEffects': true,
+        'vibration': true,
+        'locationServices': true,
+        'autoAcceptDeliveries': false,
+        'language': 'English',
+        'theme': 'Light',
+        'createdAt': DateTime.now(),
+        'updatedAt': DateTime.now(),
       },
       SetOptions(merge: true),
     );

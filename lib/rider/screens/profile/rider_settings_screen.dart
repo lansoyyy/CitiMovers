@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
+import '../../../services/auth_service.dart';
+import '../../models/rider_settings_model.dart';
+import '../../services/rider_settings_service.dart';
 
 class RiderSettingsScreen extends StatefulWidget {
   const RiderSettingsScreen({super.key});
@@ -11,18 +14,80 @@ class RiderSettingsScreen extends StatefulWidget {
 }
 
 class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
-  bool _pushNotifications = true;
-  bool _emailNotifications = false;
-  bool _smsNotifications = true;
-  bool _soundEffects = true;
-  bool _vibration = true;
-  bool _locationServices = true;
-  bool _autoAcceptDeliveries = false;
-  String _language = 'English';
-  String _theme = 'Light';
+  final AuthService _authService = AuthService();
+  final RiderSettingsService _settingsService = RiderSettingsService.instance;
+
+  bool _isLoading = true;
+  RiderSettingsModel? _settings;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final riderId = _authService.currentUser?.userId;
+    if (riderId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final settings = await _settingsService.getRiderSettings(riderId);
+
+      if (settings == null) {
+        // Initialize default settings
+        final defaultSettings =
+            await _settingsService.initializeDefaultSettings(riderId);
+        setState(() {
+          _settings = defaultSettings;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _settings = settings;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading settings: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    if (_settings == null) return;
+
+    try {
+      await _settingsService.saveRiderSettings(_settings!);
+    } catch (e) {
+      debugPrint('Error saving settings: $e');
+      UIHelpers.showErrorToast('Failed to save settings');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.scaffoldBackground,
+        appBar: AppBar(
+          title: const Text(
+            'Settings',
+            style: TextStyle(
+              fontFamily: 'Bold',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          backgroundColor: AppColors.white,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: AppBar(
@@ -62,9 +127,13 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.bell,
                     title: 'Push Notifications',
                     subtitle: 'Receive delivery requests and updates',
-                    value: _pushNotifications,
+                    value: _settings?.pushNotifications ?? true,
                     onChanged: (value) {
-                      setState(() => _pushNotifications = value);
+                      setState(() {
+                        _settings =
+                            _settings?.copyWith(pushNotifications: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                   const Divider(height: 1),
@@ -72,9 +141,13 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.envelope,
                     title: 'Email Notifications',
                     subtitle: 'Get updates via email',
-                    value: _emailNotifications,
+                    value: _settings?.emailNotifications ?? false,
                     onChanged: (value) {
-                      setState(() => _emailNotifications = value);
+                      setState(() {
+                        _settings =
+                            _settings?.copyWith(emailNotifications: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                   const Divider(height: 1),
@@ -82,9 +155,13 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.message,
                     title: 'SMS Notifications',
                     subtitle: 'Receive SMS for important updates',
-                    value: _smsNotifications,
+                    value: _settings?.smsNotifications ?? true,
                     onChanged: (value) {
-                      setState(() => _smsNotifications = value);
+                      setState(() {
+                        _settings =
+                            _settings?.copyWith(smsNotifications: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                 ],
@@ -114,9 +191,12 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.volumeHigh,
                     title: 'Sound Effects',
                     subtitle: 'Play sounds for notifications',
-                    value: _soundEffects,
+                    value: _settings?.soundEffects ?? true,
                     onChanged: (value) {
-                      setState(() => _soundEffects = value);
+                      setState(() {
+                        _settings = _settings?.copyWith(soundEffects: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                   const Divider(height: 1),
@@ -124,23 +204,26 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.mobile,
                     title: 'Vibration',
                     subtitle: 'Vibrate for notifications',
-                    value: _vibration,
+                    value: _settings?.vibration ?? true,
                     onChanged: (value) {
-                      setState(() => _vibration = value);
+                      setState(() {
+                        _settings = _settings?.copyWith(vibration: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                   const Divider(height: 1),
                   _SelectTile(
                     icon: FontAwesomeIcons.language,
                     title: 'Language',
-                    value: _language,
+                    value: _settings?.language ?? 'English',
                     onTap: () => _showLanguageDialog(),
                   ),
                   const Divider(height: 1),
                   _SelectTile(
                     icon: FontAwesomeIcons.palette,
                     title: 'Theme',
-                    value: _theme,
+                    value: _settings?.theme ?? 'Light',
                     onTap: () => _showThemeDialog(),
                   ),
                 ],
@@ -170,9 +253,13 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.locationDot,
                     title: 'Location Services',
                     subtitle: 'Allow app to access your location',
-                    value: _locationServices,
+                    value: _settings?.locationServices ?? true,
                     onChanged: (value) {
-                      setState(() => _locationServices = value);
+                      setState(() {
+                        _settings =
+                            _settings?.copyWith(locationServices: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                   const Divider(height: 1),
@@ -180,9 +267,13 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
                     icon: FontAwesomeIcons.circleCheck,
                     title: 'Auto-Accept Deliveries',
                     subtitle: 'Automatically accept nearby deliveries',
-                    value: _autoAcceptDeliveries,
+                    value: _settings?.autoAcceptDeliveries ?? false,
                     onChanged: (value) {
-                      setState(() => _autoAcceptDeliveries = value);
+                      setState(() {
+                        _settings =
+                            _settings?.copyWith(autoAcceptDeliveries: value);
+                      });
+                      _saveSettings();
                     },
                   ),
                 ],
@@ -269,19 +360,25 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
             _RadioOption(
               title: 'English',
               value: 'English',
-              groupValue: _language,
+              groupValue: _settings?.language ?? 'English',
               onChanged: (value) {
-                setState(() => _language = value!);
+                setState(() {
+                  _settings = _settings?.copyWith(language: value!);
+                });
                 Navigator.pop(context);
+                _saveSettings();
               },
             ),
             _RadioOption(
               title: 'Filipino',
               value: 'Filipino',
-              groupValue: _language,
+              groupValue: _settings?.language ?? 'English',
               onChanged: (value) {
-                setState(() => _language = value!);
+                setState(() {
+                  _settings = _settings?.copyWith(language: value!);
+                });
                 Navigator.pop(context);
+                _saveSettings();
               },
             ),
           ],
@@ -301,28 +398,37 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
             _RadioOption(
               title: 'Light',
               value: 'Light',
-              groupValue: _theme,
+              groupValue: _settings?.theme ?? 'Light',
               onChanged: (value) {
-                setState(() => _theme = value!);
+                setState(() {
+                  _settings = _settings?.copyWith(theme: value!);
+                });
                 Navigator.pop(context);
+                _saveSettings();
               },
             ),
             _RadioOption(
               title: 'Dark',
               value: 'Dark',
-              groupValue: _theme,
+              groupValue: _settings?.theme ?? 'Light',
               onChanged: (value) {
-                setState(() => _theme = value!);
+                setState(() {
+                  _settings = _settings?.copyWith(theme: value!);
+                });
                 Navigator.pop(context);
+                _saveSettings();
               },
             ),
             _RadioOption(
               title: 'System',
               value: 'System',
-              groupValue: _theme,
+              groupValue: _settings?.theme ?? 'Light',
               onChanged: (value) {
-                setState(() => _theme = value!);
+                setState(() {
+                  _settings = _settings?.copyWith(theme: value!);
+                });
                 Navigator.pop(context);
+                _saveSettings();
               },
             ),
           ],
@@ -368,9 +474,20 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              UIHelpers.showErrorToast('Account deletion requested');
+              final success = await _authService.requestAccountDeletion();
+              if (success) {
+                // Navigate to login screen after deletion
+                if (mounted) {
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    '/',
+                    (route) => false,
+                  );
+                }
+              } else {
+                UIHelpers.showErrorToast('Failed to delete account');
+              }
             },
             child: const Text(
               'Delete',

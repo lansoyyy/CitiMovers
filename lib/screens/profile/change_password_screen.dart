@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
+import '../../services/auth_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -31,11 +32,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // TODO: Implement actual password change with Firebase
+      // Note: This app uses phone-based authentication with OTP, not email/password.
+      // Password change is not applicable for this authentication method.
+      // If you want to add password-based authentication, you'll need to:
+      // 1. Enable Email/Password authentication in Firebase
+      // 2. Link email/password credential to the phone number
+      // 3. Implement password reset functionality
+
       await Future.delayed(const Duration(seconds: 1)); // Simulate API call
 
       if (mounted) {
-        UIHelpers.showSuccessToast('Password changed successfully');
+        UIHelpers.showInfoToast(
+          'Password change is not available for phone-based authentication. '
+          'Your account uses phone number and OTP for login.',
+        );
         Navigator.pop(context);
       }
     } catch (e) {
@@ -338,11 +348,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               Center(
                 child: TextButton(
                   onPressed: () {
-                    // TODO: Navigate to forgot password
-                    UIHelpers.showInfoToast('Forgot password feature coming soon');
+                    // Note: This app uses phone-based authentication with OTP, not email/password.
+                    // Forgot password is handled through OTP verification.
+                    // Users can login with their phone number and receive OTP.
+                    UIHelpers.showInfoToast(
+                      'Your account uses phone-based authentication. '
+                      'To login, enter your phone number and verify with OTP.',
+                    );
                   },
                   child: const Text(
-                    'Forgot your current password?',
+                    'Trouble logging in?',
                     style: TextStyle(
                       fontSize: 14,
                       fontFamily: 'Medium',

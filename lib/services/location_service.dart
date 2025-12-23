@@ -1,48 +1,73 @@
 import 'dart:math';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/location_model.dart';
+import 'auth_service.dart';
 
 /// Location Service for CitiMovers
 /// Handles location permissions, current location, and saved locations
-/// Ready for integration with geolocator and geocoding packages
+/// Integrated with geolocator and geocoding packages
 class LocationService {
   // Singleton pattern
   static final LocationService _instance = LocationService._internal();
   factory LocationService() => _instance;
   LocationService._internal();
 
-  // Mock saved locations
-  final List<LocationModel> _savedLocations = [];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Recent locations cache (in-memory)
   final List<LocationModel> _recentLocations = [];
 
   /// Get current device location
-  /// TODO: Implement with geolocator package
-  Future<LocationModel?> getCurrentLocation() async {
+  Future<LocationModel?> getCurrentLocation(
+      {bool requestPermission = true}) async {
     try {
-      // TODO: Check location permissions
-      // final permission = await Geolocator.checkPermission();
-      // if (permission == LocationPermission.denied) {
-      //   await Geolocator.requestPermission();
-      // }
+      // Check if location service is enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        print('Location services are disabled.');
+        return null;
+      }
 
-      // TODO: Get current position
-      // final position = await Geolocator.getCurrentPosition();
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
 
-      // TODO: Get address from coordinates using geocoding
-      // final placemarks = await placemarkFromCoordinates(
-      //   position.latitude,
-      //   position.longitude,
-      // );
+      if (permission == LocationPermission.denied) {
+        if (requestPermission) {
+          permission = await Geolocator.requestPermission();
+          if (permission == LocationPermission.denied) {
+            print('Location permissions are denied');
+            return null;
+          }
+        } else {
+          return null;
+        }
+      }
 
-      // Mock implementation
-      await Future.delayed(const Duration(seconds: 1));
+      if (permission == LocationPermission.deniedForever) {
+        print('Location permissions are permanently denied');
+        return null;
+      }
+
+      // Get current position with high accuracy
+      final Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Get address from coordinates using geocoding
+      String address = await _getAddressFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
 
       return LocationModel(
-        address: '123 Sample Street, Manila, Metro Manila, Philippines',
-        latitude: 14.5995,
-        longitude: 120.9842,
-        city: 'Manila',
-        province: 'Metro Manila',
-        country: 'Philippines',
+        address: address,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        city: '', // Will be populated by geocoding
+        province: '', // Will be populated by geocoding
+        country: '', // Will be populated by geocoding
       );
     } catch (e) {
       print('Error getting current location: $e');
@@ -51,14 +76,9 @@ class LocationService {
   }
 
   /// Check if location services are enabled
-  /// TODO: Implement with geolocator package
   Future<bool> isLocationServiceEnabled() async {
     try {
-      // TODO: Check if location services are enabled
-      // return await Geolocator.isLocationServiceEnabled();
-
-      // Mock implementation
-      return true;
+      return await Geolocator.isLocationServiceEnabled();
     } catch (e) {
       print('Error checking location service: $e');
       return false;
@@ -66,17 +86,11 @@ class LocationService {
   }
 
   /// Request location permission
-  /// TODO: Implement with geolocator package
   Future<bool> requestLocationPermission() async {
     try {
-      // TODO: Request location permission
-      // final permission = await Geolocator.requestPermission();
-      // return permission == LocationPermission.always ||
-      //        permission == LocationPermission.whileInUse;
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-      return true;
+      LocationPermission permission = await Geolocator.requestPermission();
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
     } catch (e) {
       print('Error requesting location permission: $e');
       return false;
@@ -84,73 +98,103 @@ class LocationService {
   }
 
   /// Get address from coordinates (Reverse Geocoding)
-  /// TODO: Implement with geocoding package
   Future<String?> getAddressFromCoordinates(
     double latitude,
     double longitude,
   ) async {
     try {
-      // TODO: Implement reverse geocoding
-      // final placemarks = await placemarkFromCoordinates(latitude, longitude);
-      // if (placemarks.isNotEmpty) {
-      //   final place = placemarks.first;
-      //   return '${place.street}, ${place.locality}, ${place.administrativeArea}';
-      // }
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 800));
-      return 'Sample Address at $latitude, $longitude';
+      return await _getAddressFromCoordinates(latitude, longitude);
     } catch (e) {
       print('Error getting address from coordinates: $e');
       return null;
     }
   }
 
+  /// Internal method to get address from coordinates
+  Future<String> _getAddressFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      final List<Placemark> placemarks = await placemarkFromCoordinates(
+        latitude,
+        longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final Placemark place = placemarks.first;
+        final street =
+            place.street?.isNotEmpty == true ? '${place.street}, ' : '';
+        final sublocality = place.subLocality?.isNotEmpty == true
+            ? '${place.subLocality}, '
+            : '';
+        final locality =
+            place.locality?.isNotEmpty == true ? '${place.locality}, ' : '';
+        final administrativeArea = place.administrativeArea?.isNotEmpty == true
+            ? '${place.administrativeArea}, '
+            : '';
+        final country = place.country?.isNotEmpty == true ? place.country : '';
+
+        return '$street$sublocality$locality$administrativeArea$country'.trim();
+      }
+
+      return 'Unknown Location';
+    } catch (e) {
+      print('Error in reverse geocoding: $e');
+      return 'Unknown Location';
+    }
+  }
+
   /// Get coordinates from address (Forward Geocoding)
-  /// TODO: Implement with geocoding package
   Future<Map<String, double>?> getCoordinatesFromAddress(
     String address,
   ) async {
     try {
-      // TODO: Implement forward geocoding
-      // final locations = await locationFromAddress(address);
-      // if (locations.isNotEmpty) {
-      //   final location = locations.first;
-      //   return {
-      //     'latitude': location.latitude,
-      //     'longitude': location.longitude,
-      //   };
-      // }
+      final List<Location> locations = await locationFromAddress(address);
 
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 800));
-      return {
-        'latitude': 14.5995,
-        'longitude': 120.9842,
-      };
+      if (locations.isNotEmpty) {
+        final Location location = locations.first;
+        return {
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+        };
+      }
+
+      return null;
     } catch (e) {
       print('Error getting coordinates from address: $e');
       return null;
     }
   }
 
-  /// Save a favorite location
+  /// Save a favorite location to Firestore
   Future<bool> saveFavoriteLocation(LocationModel location) async {
     try {
-      // TODO: Save to Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('users')
-      //     .doc(userId)
-      //     .collection('saved_locations')
-      //     .add(location.toMap());
+      final authService = AuthService();
+      final userId = authService.currentUser?.userId;
 
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-      _savedLocations.add(location.copyWith(
-        id: 'loc_${DateTime.now().millisecondsSinceEpoch}',
-        isFavorite: true,
-        createdAt: DateTime.now(),
-      ));
+      if (userId == null) {
+        print('User not authenticated');
+        return false;
+      }
+
+      final locationData = {
+        'name': location.label ?? 'Saved Location',
+        'address': location.address,
+        'latitude': location.latitude,
+        'longitude': location.longitude,
+        'type': location.label?.toLowerCase() == 'home'
+            ? 'home'
+            : location.label?.toLowerCase() == 'work'
+                ? 'office'
+                : 'other',
+        'userId': userId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await _firestore.collection('saved_locations').add(locationData);
+
       return true;
     } catch (e) {
       print('Error saving favorite location: $e');
@@ -158,72 +202,80 @@ class LocationService {
     }
   }
 
-  /// Get all saved locations
+  /// Get all saved locations from Firestore
   Future<List<LocationModel>> getSavedLocations() async {
     try {
-      // TODO: Fetch from Firestore
-      // final snapshot = await FirebaseFirestore.instance
-      //     .collection('users')
-      //     .doc(userId)
-      //     .collection('saved_locations')
-      //     .where('isFavorite', isEqualTo: true)
-      //     .get();
-      // return snapshot.docs.map((doc) => LocationModel.fromMap(doc.data())).toList();
+      final authService = AuthService();
+      final userId = authService.currentUser?.userId;
 
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (_savedLocations.isEmpty) {
-        // Add mock saved locations
-        _savedLocations.addAll([
-          LocationModel(
-            id: 'loc_1',
-            label: 'Home',
-            address: '123 Main Street, Quezon City, Metro Manila',
-            latitude: 14.6760,
-            longitude: 121.0437,
-            city: 'Quezon City',
-            province: 'Metro Manila',
-            country: 'Philippines',
-            isFavorite: true,
-            createdAt: DateTime.now().subtract(const Duration(days: 30)),
-          ),
-          LocationModel(
-            id: 'loc_2',
-            label: 'Work',
-            address: '456 Business Ave, Makati City, Metro Manila',
-            latitude: 14.5547,
-            longitude: 121.0244,
-            city: 'Makati City',
-            province: 'Metro Manila',
-            country: 'Philippines',
-            isFavorite: true,
-            createdAt: DateTime.now().subtract(const Duration(days: 20)),
-          ),
-        ]);
+      if (userId == null) {
+        return [];
       }
 
-      return List.from(_savedLocations);
+      final snapshot = await _firestore
+          .collection('saved_locations')
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return LocationModel(
+          id: doc.id,
+          label: data['name'] as String?,
+          address: data['address'] as String? ?? '',
+          latitude: (data['latitude'] as num).toDouble(),
+          longitude: (data['longitude'] as num).toDouble(),
+          city: '',
+          province: '',
+          country: '',
+          isFavorite: true,
+          createdAt:
+              (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+        );
+      }).toList();
     } catch (e) {
       print('Error getting saved locations: $e');
       return [];
     }
   }
 
-  /// Delete a saved location
+  /// Stream of saved locations for real-time updates
+  Stream<List<LocationModel>> getSavedLocationsStream() {
+    final authService = AuthService();
+    final userId = authService.currentUser?.userId;
+
+    if (userId == null) {
+      return Stream.value([]);
+    }
+
+    return _firestore
+        .collection('saved_locations')
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              return LocationModel(
+                id: doc.id,
+                label: data['name'] as String?,
+                address: data['address'] as String? ?? '',
+                latitude: (data['latitude'] as num).toDouble(),
+                longitude: (data['longitude'] as num).toDouble(),
+                city: '',
+                province: '',
+                country: '',
+                isFavorite: true,
+                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
+                    DateTime.now(),
+              );
+            }).toList());
+  }
+
+  /// Delete a saved location from Firestore
   Future<bool> deleteSavedLocation(String locationId) async {
     try {
-      // TODO: Delete from Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('users')
-      //     .doc(userId)
-      //     .collection('saved_locations')
-      //     .doc(locationId)
-      //     .delete();
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-      _savedLocations.removeWhere((loc) => loc.id == locationId);
+      await _firestore.collection('saved_locations').doc(locationId).delete();
       return true;
     } catch (e) {
       print('Error deleting saved location: $e');
@@ -231,25 +283,17 @@ class LocationService {
     }
   }
 
-  /// Update a saved location
+  /// Update a saved location in Firestore
   Future<bool> updateSavedLocation(LocationModel location) async {
     try {
-      // TODO: Update in Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('users')
-      //     .doc(userId)
-      //     .collection('saved_locations')
-      //     .doc(location.id)
-      //     .update(location.toMap());
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-      final index = _savedLocations.indexWhere((loc) => loc.id == location.id);
-      if (index != -1) {
-        _savedLocations[index] = location;
-        return true;
-      }
-      return false;
+      await _firestore.collection('saved_locations').doc(location.id).update({
+        'name': location.label ?? 'Saved Location',
+        'address': location.address,
+        'latitude': location.latitude,
+        'longitude': location.longitude,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
     } catch (e) {
       print('Error updating saved location: $e');
       return false;
@@ -260,7 +304,8 @@ class LocationService {
   void addToRecentLocations(LocationModel location) {
     // Remove if already exists
     _recentLocations.removeWhere((loc) =>
-        loc.latitude == location.latitude && loc.longitude == location.longitude);
+        loc.latitude == location.latitude &&
+        loc.longitude == location.longitude);
 
     // Add to beginning
     _recentLocations.insert(0, location);
@@ -277,16 +322,36 @@ class LocationService {
   }
 
   /// Calculate distance between two coordinates (in kilometers)
+  /// Uses geolocator's distanceBetween method for accurate calculation
   double calculateDistance(
     double lat1,
     double lon1,
     double lat2,
     double lon2,
   ) {
-    // TODO: Use geolocator's distanceBetween method
-    // return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / 1000;
+    try {
+      // Use geolocator's built-in distance calculation (returns meters)
+      final distanceInMeters = Geolocator.distanceBetween(
+        lat1,
+        lon1,
+        lat2,
+        lon2,
+      );
+      return distanceInMeters / 1000; // Convert to kilometers
+    } catch (e) {
+      print('Error calculating distance: $e');
+      // Fallback to Haversine formula
+      return _haversineDistance(lat1, lon1, lat2, lon2);
+    }
+  }
 
-    // Haversine formula (simplified)
+  /// Haversine formula as fallback for distance calculation
+  double _haversineDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     const double earthRadius = 6371; // km
 
     final dLat = _toRadians(lat2 - lat1);
@@ -305,5 +370,104 @@ class LocationService {
 
   double _toRadians(double degree) {
     return degree * (pi / 180);
+  }
+
+  /// Get current position (raw Position object)
+  Future<Position?> getCurrentPosition({
+    LocationAccuracy desiredAccuracy = LocationAccuracy.high,
+    bool forceAndroidLocationManager = false,
+  }) async {
+    try {
+      // Check if location service is enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        print('Location services are disabled.');
+        return null;
+      }
+
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          print('Location permissions are denied');
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        print('Location permissions are permanently denied');
+        return null;
+      }
+
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: desiredAccuracy,
+        forceAndroidLocationManager: forceAndroidLocationManager,
+      );
+    } catch (e) {
+      print('Error getting current position: $e');
+      return null;
+    }
+  }
+
+  /// Get last known position (faster but may be cached)
+  Future<Position?> getLastKnownPosition() async {
+    try {
+      return await Geolocator.getLastKnownPosition();
+    } catch (e) {
+      print('Error getting last known position: $e');
+      return null;
+    }
+  }
+
+  /// Get distance between two locations in meters
+  double distanceBetween(
+    double startLatitude,
+    double startLongitude,
+    double endLatitude,
+    double endLongitude,
+  ) {
+    return Geolocator.distanceBetween(
+      startLatitude,
+      startLongitude,
+      endLatitude,
+      endLongitude,
+    );
+  }
+
+  /// Get bearing between two coordinates in degrees
+  double distanceBetweenBearing(
+    double startLatitude,
+    double startLongitude,
+    double endLatitude,
+    double endLongitude,
+  ) {
+    return Geolocator.bearingBetween(
+      startLatitude,
+      startLongitude,
+      endLatitude,
+      endLongitude,
+    );
+  }
+
+  /// Open location settings (useful when location service is disabled)
+  Future<bool> openLocationSettings() async {
+    try {
+      return await Geolocator.openLocationSettings();
+    } catch (e) {
+      print('Error opening location settings: $e');
+      return false;
+    }
+  }
+
+  /// Open app settings (useful when permission is denied forever)
+  Future<bool> openAppSettings() async {
+    try {
+      return await Geolocator.openAppSettings();
+    } catch (e) {
+      print('Error opening app settings: $e');
+      return false;
+    }
   }
 }

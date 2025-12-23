@@ -464,6 +464,8 @@ class RiderAuthService {
     String? photoUrl,
     String? vehicleType,
     String? vehiclePlateNumber,
+    String? vehicleModel,
+    String? vehicleColor,
   }) async {
     try {
       if (_currentRider == null) return false;
@@ -478,6 +480,8 @@ class RiderAuthService {
         photoUrl: photoUrl,
         vehicleType: vehicleType,
         vehiclePlateNumber: vehiclePlateNumber,
+        vehicleModel: vehicleModel,
+        vehicleColor: vehicleColor,
         updatedAt: DateTime.now(),
       );
 
@@ -507,6 +511,54 @@ class RiderAuthService {
       return true;
     } catch (e) {
       debugPrint('Error updating rider profile: $e');
+      return false;
+    }
+  }
+
+  /// Upload profile photo to Firebase Storage
+  Future<String?> uploadProfilePhoto(String imagePath) async {
+    try {
+      if (_currentRider == null) return null;
+
+      final file = File(imagePath);
+      final ext = file.path.split('.').last.toLowerCase();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final objectName = 'profile_photo_$timestamp.$ext';
+
+      final ref = _firebaseStorage
+          .ref()
+          .child('rider_photos')
+          .child(_currentRider!.riderId)
+          .child(objectName);
+
+      final uploadTask = await ref.putFile(file);
+      final url = await uploadTask.ref.getDownloadURL();
+
+      debugPrint('Profile photo uploaded: $url');
+      return url;
+    } catch (e) {
+      debugPrint('Error uploading profile photo: $e');
+      return null;
+    }
+  }
+
+  /// Remove profile photo (set to null)
+  Future<bool> removeProfilePhoto() async {
+    try {
+      if (_currentRider == null) return false;
+
+      await _firestore
+          .collection('riders')
+          .doc(_currentRider!.riderId)
+          .set({'photoUrl': null}, SetOptions(merge: true));
+
+      _currentRider = _currentRider!.copyWith(photoUrl: null);
+      await _saveRiderToStorage(_currentRider!);
+
+      debugPrint('Profile photo removed');
+      return true;
+    } catch (e) {
+      debugPrint('Error removing profile photo: $e');
       return false;
     }
   }
@@ -571,13 +623,63 @@ class RiderAuthService {
   /// Request account deletion
   Future<bool> requestAccountDeletion() async {
     try {
-      // TODO: Implement account deletion request
-      await Future.delayed(const Duration(seconds: 1));
+      if (_currentRider == null) return false;
 
-      debugPrint('Rider account deletion requested');
+      final riderId = _currentRider!.riderId;
+
+      // Mark account for deletion (soft delete)
+      await _firestore.collection('riders').doc(riderId).set({
+        'status': 'deleted',
+        'deletedAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      }, SetOptions(merge: true));
+
+      // Clear local data
+      _currentRider = null;
+      await _clearRiderFromStorage();
+
+      debugPrint('Rider account deletion requested: $riderId');
       return true;
     } catch (e) {
       debugPrint('Error requesting account deletion: $e');
+      return false;
+    }
+  }
+
+  /// Permanently delete rider account (admin only)
+  Future<bool> permanentlyDeleteAccount(String riderId) async {
+    try {
+      // Delete rider document
+      await _firestore.collection('riders').doc(riderId).delete();
+
+      // Delete rider photos from storage
+      try {
+        final photosRef =
+            _firebaseStorage.ref().child('rider_photos').child(riderId);
+        final result = await photosRef.listAll();
+        for (final item in result.items) {
+          await item.delete();
+        }
+      } catch (e) {
+        debugPrint('Error deleting rider photos: $e');
+      }
+
+      // Delete rider documents from storage
+      try {
+        final docsRef =
+            _firebaseStorage.ref().child('rider_documents').child(riderId);
+        final result = await docsRef.listAll();
+        for (final item in result.items) {
+          await item.delete();
+        }
+      } catch (e) {
+        debugPrint('Error deleting rider documents: $e');
+      }
+
+      debugPrint('Rider account permanently deleted: $riderId');
+      return true;
+    } catch (e) {
+      debugPrint('Error permanently deleting account: $e');
       return false;
     }
   }

@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
+import '../../services/storage_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -14,11 +17,14 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _authService = AuthService();
+  final _storageService = StorageService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
   bool _isLoading = false;
+  File? _selectedImage;
 
   @override
   void initState() {
@@ -90,7 +96,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               title: const Text('Take Photo'),
               onTap: () {
                 Navigator.pop(context);
-                UIHelpers.showInfoToast('Camera feature coming soon');
+                _pickImage(ImageSource.camera);
               },
             ),
             ListTile(
@@ -99,7 +105,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               title: const Text('Choose from Gallery'),
               onTap: () {
                 Navigator.pop(context);
-                UIHelpers.showInfoToast('Gallery feature coming soon');
+                _pickImage(ImageSource.gallery);
               },
             ),
             ListTile(
@@ -107,13 +113,108 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               title: const Text('Remove Photo'),
               onTap: () {
                 Navigator.pop(context);
-                UIHelpers.showInfoToast('Photo removed');
+                _removePhoto();
               },
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 512,
+        maxHeight: 512,
+      );
+
+      if (pickedFile != null) {
+        final imageFile = File(pickedFile!.path);
+
+        // Validate image
+        if (!_storageService.validateImageFile(imageFile)) {
+          UIHelpers.showErrorToast(
+              'Invalid image file. Please select a valid image.');
+          return;
+        }
+
+        setState(() => _isLoading = true);
+
+        final user = _authService.currentUser;
+        if (user == null) {
+          UIHelpers.showErrorToast('Please login first');
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        // Upload to Firebase Storage
+        final photoUrl = await _storageService.uploadProfilePhoto(
+          imageFile,
+          user.userId,
+        );
+
+        if (photoUrl != null) {
+          // Update user profile with new photo URL
+          final success = await _authService.updateProfile(photoUrl: photoUrl);
+
+          if (mounted) {
+            setState(() => _isLoading = false);
+            if (success) {
+              setState(() => _selectedImage = imageFile);
+              UIHelpers.showSuccessToast('Profile photo updated successfully');
+            } else {
+              UIHelpers.showErrorToast('Failed to update profile photo');
+            }
+          }
+        } else {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            UIHelpers.showErrorToast('Failed to upload photo');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        UIHelpers.showErrorToast('Error picking image: $e');
+      }
+    }
+  }
+
+  Future<void> _removePhoto() async {
+    try {
+      final user = _authService.currentUser;
+      if (user == null) {
+        UIHelpers.showErrorToast('Please login first');
+        return;
+      }
+
+      setState(() => _isLoading = true);
+
+      // Delete from Firebase Storage
+      await _storageService.deleteProfilePhoto(user.userId);
+
+      // Update user profile with null photo URL
+      final success = await _authService.updateProfile(photoUrl: null);
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        if (success) {
+          setState(() => _selectedImage = null);
+          UIHelpers.showSuccessToast('Profile photo removed successfully');
+        } else {
+          UIHelpers.showErrorToast('Failed to remove profile photo');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        UIHelpers.showErrorToast('Error removing photo: $e');
+      }
+    }
   }
 
   @override
@@ -169,10 +270,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ),
                         color: AppColors.primaryRed.withValues(alpha: 0.1),
                       ),
-                      child: const Icon(
-                        Icons.person,
-                        size: 60,
-                        color: AppColors.primaryRed,
+                      child: ClipOval(
+                        child: _selectedImage != null
+                            ? Image.file(
+                                _selectedImage!,
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.cover,
+                              )
+                            : _authService.currentUser?.photoUrl != null &&
+                                    _authService
+                                        .currentUser!.photoUrl!.isNotEmpty
+                                ? Image.network(
+                                    _authService.currentUser!.photoUrl!,
+                                    width: 120,
+                                    height: 120,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            const Icon(
+                                      Icons.person,
+                                      size: 60,
+                                      color: AppColors.primaryRed,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    size: 60,
+                                    color: AppColors.primaryRed,
+                                  ),
                       ),
                     ),
                     Positioned(

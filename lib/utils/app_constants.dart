@@ -73,6 +73,17 @@ class AppConstants {
   static const int maxImageSizeKB = 2048; // 2MB
   static const int imageQuality = 85;
 
+  // Support Contact
+  static const String supportPhone = '09090104355';
+  static const String supportEmail = 'support@citimovers.com';
+
+  // Privacy Policy Contact
+  static const String privacyEmail = 'privacy@citimovers.com';
+  static const String dpoEmail = 'dpo@citimovers.com';
+  static const String hotlinePhone = '+63 2 8123 4567';
+  static const String officeAddress =
+      '123 Delivery Street, Manila, Philippines';
+
   // Error Messages
   static const String errorGeneric = 'Something went wrong. Please try again.';
   static const String errorNetwork =

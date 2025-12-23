@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
+import '../../models/driver_model.dart';
+import '../../services/booking_service.dart';
 import 'delivery_completion_screen.dart';
 
 enum DeliveryStep {
@@ -62,6 +65,13 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   bool _receiverIdPhotoTaken = false;
   bool _receiverSignatureTaken = false;
 
+  // Firebase Firestore
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Driver data
+  DriverModel? _driver;
+  bool _isLoadingDriver = true;
+
   // Hardcoded locations for simulation (using Manila coordinates)
   static const LatLng _pickupLocation = LatLng(14.5995, 120.9842); // Manila
   static const LatLng _dropoffLocation = LatLng(14.5764, 121.0851); // Pasig
@@ -84,7 +94,40 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   void initState() {
     super.initState();
     _initializeMap();
+    _fetchDriverData();
     _startLocationSimulation();
+  }
+
+  // Fetch driver data from Firestore
+  Future<void> _fetchDriverData() async {
+    if (widget.booking.driverId != null) {
+      try {
+        final doc = await _firestore
+            .collection('riders')
+            .doc(widget.booking.driverId)
+            .get();
+
+        if (doc.exists && doc.data() != null) {
+          setState(() {
+            _driver = DriverModel.fromMap(doc.data()!);
+            _isLoadingDriver = false;
+          });
+        } else {
+          setState(() {
+            _isLoadingDriver = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error fetching driver data: $e');
+        setState(() {
+          _isLoadingDriver = false;
+        });
+      }
+    } else {
+      setState(() {
+        _isLoadingDriver = false;
+      });
+    }
   }
 
   @override
@@ -509,7 +552,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Driver: Driver Name',
+                              _isLoadingDriver
+                                  ? 'Driver: Loading...'
+                                  : 'Driver: ${_driver?.name ?? 'Unknown'}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'Medium',

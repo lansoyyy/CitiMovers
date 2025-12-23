@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 
 import '../models/user_model.dart';
 import 'otp_service.dart';
+import 'storage_service.dart';
 
 /// Authentication service for CitiMovers
 /// Handles user registration, login, and session management
@@ -409,10 +410,21 @@ class AuthService {
   /// Request account deletion
   Future<bool> requestAccountDeletion() async {
     try {
-      // TODO: Implement account deletion request
-      await Future.delayed(const Duration(seconds: 1));
+      if (_currentUser == null) return false;
 
-      debugPrint('Account deletion requested');
+      final userId = _currentUser!.userId;
+
+      // Delete user document from Firestore
+      await _firestore.collection('users').doc(userId).delete();
+
+      // Delete profile photo from Firebase Storage
+      await StorageService().deleteProfilePhoto(userId);
+
+      // Clear user from memory and storage
+      _currentUser = null;
+      await _clearUserFromStorage();
+
+      debugPrint('Account deleted: $userId');
       return true;
     } catch (e) {
       debugPrint('Error requesting account deletion: $e');

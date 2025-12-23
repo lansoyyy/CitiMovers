@@ -4,25 +4,20 @@ import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/app_constants.dart';
 import '../../utils/ui_helpers.dart';
 import '../booking/booking_start_screen.dart';
 import '../../models/location_model.dart';
+import '../../models/booking_model.dart';
+import '../../models/saved_location_model.dart' as app_models;
+import '../../models/promo_banner_model.dart';
+import '../../models/user_model.dart';
 import '../why_choose_us_screen.dart';
-
-// Saved Location Model
-class SavedLocation {
-  final String name;
-  final String address;
-  final IconData icon;
-  final Color color;
-
-  SavedLocation({
-    required this.name,
-    required this.address,
-    required this.icon,
-    required this.color,
-  });
-}
+import '../../services/auth_service.dart';
+import '../../services/saved_location_service.dart';
+import '../../services/promo_banner_service.dart';
+import '../../services/booking_service.dart';
+import '../../services/notification_service.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
@@ -35,22 +30,42 @@ class _HomeTabState extends State<HomeTab> {
   final PageController _pageController = PageController();
   int _currentCarouselIndex = 0;
   Timer? _timer;
+  final AuthService _authService = AuthService();
+  final NotificationService _notificationService = NotificationService();
+  UserModel? _currentUser;
 
-  final List<String> _promoImages = [
-    'https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=800&q=80',
-    'https://images.unsplash.com/photo-1603796846097-bee99e4a601f?w=800&q=80',
-    'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&q=80',
-  ];
+  // Firebase data streams
+  Stream<List<PromoBanner>> get _promoBannersStream =>
+      PromoBannerService.instance.getActivePromoBanners();
+  Stream<List<app_models.SavedLocation>> get _savedLocationsStream =>
+      SavedLocationService.instance.getUserSavedLocations(
+        _authService.currentUser?.userId ?? '',
+      );
+  Stream<List<BookingModel>> get _recentBookingsStream =>
+      BookingService().getCustomerBookings(
+        _authService.currentUser?.userId ?? '',
+      );
+
+  // Unread notifications count stream
+  Stream<int> get _unreadCountStream =>
+      _notificationService.getUnreadNotificationsCount(
+        _authService.currentUser?.userId ?? '',
+        'customer',
+      );
 
   @override
   void initState() {
     super.initState();
-    _startAutoPlay();
+    _currentUser = _authService.currentUser;
+    _startAutoPlay(3); // Default to 3 for initial load
   }
 
-  void _startAutoPlay() {
+  void _startAutoPlay(int pageCount) {
+    _timer?.cancel();
+    if (pageCount <= 1) return;
+
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_currentCarouselIndex < _promoImages.length - 1) {
+      if (_currentCarouselIndex < pageCount - 1) {
         _currentCarouselIndex++;
       } else {
         _currentCarouselIndex = 0;
@@ -108,7 +123,7 @@ class _HomeTabState extends State<HomeTab> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Hello, Juan! 👋',
+                                      'Hello, ${_currentUser?.name ?? 'User'}! 👋',
                                       style: TextStyle(
                                         fontSize: 24,
                                         fontFamily: 'Bold',
@@ -134,51 +149,68 @@ class _HomeTabState extends State<HomeTab> {
                         ],
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const NotificationsTab(),
+                    StreamBuilder<int>(
+                      stream: _unreadCountStream,
+                      builder: (context, snapshot) {
+                        final unreadCount = snapshot.data ?? 0;
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const NotificationsTab(),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryRed.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: AppColors.primaryRed.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Stack(
+                              children: [
+                                Icon(
+                                  Icons.notifications_outlined,
+                                  color: AppColors.primaryRed,
+                                  size: 24,
+                                ),
+                                if (unreadCount > 0)
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryRed,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: AppColors.white,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        unreadCount > 9
+                                            ? '9+'
+                                            : unreadCount.toString(),
+                                        style: const TextStyle(
+                                          color: AppColors.white,
+                                          fontSize: 10,
+                                          fontFamily: 'Bold',
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         );
                       },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppColors.primaryRed.withOpacity(0.1),
-                            width: 1,
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            Icon(
-                              Icons.notifications_outlined,
-                              color: AppColors.primaryRed,
-                              size: 24,
-                            ),
-                            Positioned(
-                              right: -2,
-                              top: -2,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: AppColors.primaryRed,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: AppColors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -186,113 +218,179 @@ class _HomeTabState extends State<HomeTab> {
 
               const SizedBox(height: 24),
 
-              // Carousel
-              SizedBox(
-                height: 200,
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentCarouselIndex = index;
+              // Promo Carousel
+              StreamBuilder<List<PromoBanner>>(
+                stream: _promoBannersStream,
+                builder: (context, snapshot) {
+                  final banners = snapshot.data ?? [];
+
+                  // Start auto-play when data is available
+                  if (snapshot.hasData && banners.isNotEmpty) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (_currentCarouselIndex >= banners.length) {
+                        _currentCarouselIndex = 0;
+                      }
+                      _startAutoPlay(banners.length);
                     });
-                  },
-                  itemCount: _promoImages.length,
-                  itemBuilder: (context, index) {
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Stack(
-                          children: [
-                            Image.network(
-                              _promoImages[index],
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        AppColors.primaryRed,
-                                        AppColors.primaryRed.withOpacity(0.7),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
+                  }
+
+                  if (banners.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Column(
+                    children: [
+                      SizedBox(
+                        height: 200,
+                        child: PageView.builder(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentCarouselIndex = index;
+                            });
+                          },
+                          itemCount: banners.length,
+                          itemBuilder: (context, index) {
+                            final banner = banners[index];
+                            return GestureDetector(
+                              onTap: () {
+                                if (banner.actionUrl != null) {
+                                  _launchUrl(banner.actionUrl!);
+                                }
+                              },
+                              child: Container(
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.12),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 8),
                                     ),
-                                  ),
-                                  child: const Center(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.local_shipping,
-                                          color: AppColors.white,
-                                          size: 48,
-                                        ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          'Special Offer',
-                                          style: TextStyle(
-                                            color: AppColors.white,
-                                            fontSize: 18,
-                                            fontFamily: 'Bold',
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Image.network(
+                                        banner.imageUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                          return Container(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  AppColors.primaryRed,
+                                                  AppColors.primaryRed
+                                                      .withOpacity(0.7),
+                                                ],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              ),
+                                            ),
+                                            child: Center(
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.local_shipping,
+                                                    color: AppColors.white,
+                                                    size: 48,
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    banner.title,
+                                                    style: const TextStyle(
+                                                      color: AppColors.white,
+                                                      fontSize: 18,
+                                                      fontFamily: 'Bold',
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      if (banner.description.isNotEmpty)
+                                        Positioned(
+                                          bottom: 0,
+                                          left: 0,
+                                          right: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                colors: [
+                                                  Colors.transparent,
+                                                  Colors.black.withOpacity(0.7),
+                                                ],
+                                              ),
+                                            ),
+                                            child: Text(
+                                              banner.description,
+                                              style: const TextStyle(
+                                                color: AppColors.white,
+                                                fontSize: 14,
+                                                fontFamily: 'Medium',
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
                                         ),
-                                      ],
-                                    ),
+                                    ],
                                   ),
-                                );
-                              },
-                            ),
-                          ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
 
-              // Carousel Indicators
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  _promoImages.length,
-                  (index) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeInOut,
-                    width: _currentCarouselIndex == index ? 28 : 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      color: _currentCarouselIndex == index
-                          ? AppColors.primaryRed
-                          : AppColors.textHint.withOpacity(0.4),
-                      boxShadow: _currentCarouselIndex == index
-                          ? [
-                              BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.3),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                  ),
-                ),
+                      // Carousel Indicators
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          banners.length,
+                          (index) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeInOut,
+                            width: _currentCarouselIndex == index ? 28 : 8,
+                            height: 8,
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(6),
+                              color: _currentCarouselIndex == index
+                                  ? AppColors.primaryRed
+                                  : AppColors.textHint.withOpacity(0.4),
+                              boxShadow: _currentCarouselIndex == index
+                                  ? [
+                                      BoxShadow(
+                                        color: AppColors.primaryRed
+                                            .withOpacity(0.3),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
 
               const SizedBox(height: 28),
@@ -468,76 +566,81 @@ class _HomeTabState extends State<HomeTab> {
               const SizedBox(height: 28),
 
               // Recent Bookings
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              StreamBuilder<List<BookingModel>>(
+                stream: _recentBookingsStream,
+                builder: (context, snapshot) {
+                  final bookings = snapshot.data ?? [];
+                  final recentBookings = bookings.take(2).toList();
+
+                  if (recentBookings.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              width: 4,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryRed,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryRed,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Recent Bookings',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontFamily: 'Bold',
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Recent Bookings',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontFamily: 'Bold',
-                                color: AppColors.textPrimary,
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const BookingsTab(),
+                                  ),
+                                );
+                              },
+                              child: const Text(
+                                'See All',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const BookingsTab(),
+                        const SizedBox(height: 16),
+                        ...recentBookings.map((booking) => Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: _RecentBookingCard(
+                                vehicleType: booking.vehicle.type,
+                                date: _formatDate(booking.createdAt),
+                                status: booking.status,
+                                statusColor: _getStatusColor(booking.status),
+                                from: booking.pickupLocation.address,
+                                to: booking.dropoffLocation.address,
+                                fare: 'P${booking.estimatedFare.toInt()}',
                               ),
-                            );
-                          },
-                          child: const Text(
-                            'See All',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'Medium',
-                            ),
-                          ),
-                        ),
+                            )),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    _RecentBookingCard(
-                      vehicleType: 'Wingvan',
-                      date: 'Oct 15, 2025',
-                      status: 'Completed',
-                      statusColor: AppColors.success,
-                      from: 'Quezon City',
-                      to: 'Makati City',
-                      fare: 'P850',
-                    ),
-                    const SizedBox(height: 16),
-                    _RecentBookingCard(
-                      vehicleType: '4-Wheeler',
-                      date: 'Oct 14, 2025',
-                      status: 'Completed',
-                      statusColor: AppColors.success,
-                      from: 'Manila',
-                      to: 'Pasig City',
-                      fare: 'P320',
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
 
               const SizedBox(height: 28),
@@ -663,13 +766,59 @@ class _HomeTabState extends State<HomeTab> {
 
   // Launch Phone Support
   void _launchPhoneSupport() async {
-    const phoneNumber = '09090104355';
-    final uri = Uri.parse('tel:$phoneNumber');
+    final uri = Uri.parse('tel:${AppConstants.supportPhone}');
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
       UIHelpers.showErrorToast('Could not launch phone dialer');
+    }
+  }
+
+  // Launch URL
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      UIHelpers.showErrorToast('Could not launch URL');
+    }
+  }
+
+  // Format date
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Unknown';
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  // Get status color
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return AppColors.success;
+      case 'in_progress':
+      case 'in progress':
+        return AppColors.primaryBlue;
+      case 'cancelled':
+        return AppColors.error;
+      case 'pending':
+        return Colors.orange;
+      default:
+        return AppColors.textSecondary;
     }
   }
 }
@@ -847,38 +996,54 @@ class _SavedLocationsBottomSheet extends StatefulWidget {
 
 class __SavedLocationsBottomSheetState
     extends State<_SavedLocationsBottomSheet> {
-  final List<SavedLocation> _savedLocations = [
-    SavedLocation(
-      name: 'Home',
-      address: '123 Main St, Quezon City, Metro Manila',
-      icon: Icons.home,
-      color: AppColors.primaryRed,
-    ),
-    SavedLocation(
-      name: 'Work',
-      address: '456 Business Ave, Makati City, Metro Manila',
-      icon: Icons.work,
-      color: AppColors.primaryBlue,
-    ),
-    SavedLocation(
-      name: 'Mom\'s House',
-      address: '789 Family Rd, Pasig City, Metro Manila',
-      icon: Icons.favorite,
-      color: AppColors.primaryRed,
-    ),
-    SavedLocation(
-      name: 'Gym',
-      address: '321 Fitness Blvd, Mandaluyong City, Metro Manila',
-      icon: Icons.fitness_center,
-      color: AppColors.primaryRed,
-    ),
-    SavedLocation(
-      name: 'Grocery Store',
-      address: '555 Market St, San Juan City, Metro Manila',
-      icon: Icons.shopping_cart,
-      color: AppColors.primaryBlue,
-    ),
-  ];
+  late Stream<List<app_models.SavedLocation>> _savedLocationsStream;
+  final String _userId = AuthService().currentUser?.userId ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _savedLocationsStream =
+        SavedLocationService.instance.getUserSavedLocations(_userId);
+  }
+
+  IconData _getIconForType(String? type) {
+    switch (type?.toLowerCase()) {
+      case 'home':
+        return Icons.home;
+      case 'office':
+      case 'work':
+        return Icons.work;
+      case 'school':
+        return Icons.school;
+      case 'shopping':
+        return Icons.shopping_cart;
+      case 'gym':
+        return Icons.fitness_center;
+      case 'hospital':
+        return Icons.local_hospital;
+      case 'favorite':
+        return Icons.favorite;
+      default:
+        return Icons.location_on;
+    }
+  }
+
+  Color _getColorForType(String? type) {
+    switch (type?.toLowerCase()) {
+      case 'home':
+      case 'favorite':
+        return AppColors.primaryRed;
+      case 'office':
+      case 'work':
+        return AppColors.primaryBlue;
+      case 'gym':
+        return Colors.green;
+      case 'shopping':
+        return Colors.orange;
+      default:
+        return AppColors.primaryRed;
+    }
+  }
 
   // Show Add Location Dialog
   void _showAddLocationDialog(BuildContext context) {
@@ -981,79 +1146,137 @@ class __SavedLocationsBottomSheetState
 
           // Content
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              itemCount: _savedLocations.length,
-              itemBuilder: (context, index) {
-                final location = _savedLocations[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                    border: Border.all(
-                      color: AppColors.lightGrey.withOpacity(0.3),
-                      width: 1,
+            child: StreamBuilder<List<app_models.SavedLocation>>(
+              stream: _savedLocationsStream,
+              builder: (context, snapshot) {
+                final locations = snapshot.data ?? [];
+
+                if (locations.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.location_off_outlined,
+                          size: 64,
+                          color: AppColors.textHint.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No saved locations yet',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Medium',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Add your first location for quick access',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Regular',
+                            color: AppColors.textHint,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () {
-                        Navigator.pop(context);
-                        UIHelpers.showSuccessToast(
-                            'Selected ${location.name} as destination');
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    location.name,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontFamily: 'Bold',
-                                      color: AppColors.textPrimary,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    location.address,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontFamily: 'Regular',
-                                      color: AppColors.textSecondary,
-                                      height: 1.3,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              color: AppColors.textHint,
-                              size: 16,
-                            ),
-                          ],
+                  );
+                }
+
+                return ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  itemCount: locations.length,
+                  itemBuilder: (context, index) {
+                    final location = locations[index];
+                    final icon = _getIconForType(location.type);
+                    final color = _getColorForType(location.type);
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: AppColors.lightGrey.withOpacity(0.3),
+                          width: 1,
                         ),
                       ),
-                    ),
-                  ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () {
+                            Navigator.pop(context);
+                            UIHelpers.showSuccessToast(
+                                'Selected ${location.name} as destination');
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    icon,
+                                    color: color,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        location.name,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontFamily: 'Bold',
+                                          color: AppColors.textPrimary,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        location.address,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontFamily: 'Regular',
+                                          color: AppColors.textSecondary,
+                                          height: 1.3,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: AppColors.textHint,
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -2069,30 +2292,20 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
   final _addressController = TextEditingController();
   final _cityController = TextEditingController();
   final _postalCodeController = TextEditingController();
+  final _latitudeController = TextEditingController();
+  final _longitudeController = TextEditingController();
 
-  String _selectedIcon = 'home';
-  Color _selectedColor = AppColors.primaryRed;
+  String _selectedType = 'home';
 
-  final List<Map<String, dynamic>> _iconOptions = [
-    {'icon': Icons.home, 'name': 'home'},
-    {'icon': Icons.work, 'name': 'work'},
-    {'icon': Icons.school, 'name': 'school'},
-    {'icon': Icons.shopping_cart, 'name': 'shopping'},
-    {'icon': Icons.restaurant, 'name': 'restaurant'},
-    {'icon': Icons.fitness_center, 'name': 'gym'},
-    {'icon': Icons.local_hospital, 'name': 'hospital'},
-    {'icon': Icons.favorite, 'name': 'favorite'},
-  ];
-
-  final List<Color> _colorOptions = [
-    AppColors.primaryRed,
-    AppColors.primaryBlue,
-    Colors.green,
-    Colors.orange,
-    Colors.purple,
-    Colors.pink,
-    Colors.teal,
-    Colors.indigo,
+  final List<Map<String, dynamic>> _typeOptions = [
+    {'icon': Icons.home, 'name': 'Home', 'value': 'home'},
+    {'icon': Icons.work, 'name': 'Office', 'value': 'office'},
+    {'icon': Icons.school, 'name': 'School', 'value': 'school'},
+    {'icon': Icons.shopping_cart, 'name': 'Shopping', 'value': 'shopping'},
+    {'icon': Icons.restaurant, 'name': 'Restaurant', 'value': 'restaurant'},
+    {'icon': Icons.fitness_center, 'name': 'Gym', 'value': 'gym'},
+    {'icon': Icons.local_hospital, 'name': 'Hospital', 'value': 'hospital'},
+    {'icon': Icons.favorite, 'name': 'Favorite', 'value': 'favorite'},
   ];
 
   @override
@@ -2101,6 +2314,8 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
     _addressController.dispose();
     _cityController.dispose();
     _postalCodeController.dispose();
+    _latitudeController.dispose();
+    _longitudeController.dispose();
     super.dispose();
   }
 
@@ -2410,6 +2625,188 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                     ],
                   ),
 
+                  const SizedBox(height: 20),
+
+                  // Latitude and Longitude
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Latitude',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Medium',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _latitudeController,
+                              keyboardType: TextInputType.numberWithOptions(
+                                  decimal: true),
+                              decoration: InputDecoration(
+                                hintText: '14.5995',
+                                filled: true,
+                                fillColor: AppColors.scaffoldBackground,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: AppColors.lightGrey.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: AppColors.lightGrey.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color:
+                                        AppColors.primaryBlue.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Longitude',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Medium',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _longitudeController,
+                              keyboardType: TextInputType.numberWithOptions(
+                                  decimal: true),
+                              decoration: InputDecoration(
+                                hintText: '120.9842',
+                                filled: true,
+                                fillColor: AppColors.scaffoldBackground,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: AppColors.lightGrey.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: AppColors.lightGrey.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color:
+                                        AppColors.primaryBlue.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Location Type Selection
+                  const Text(
+                    'Location Type',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Medium',
+                      color: AppColors.textPrimary,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _typeOptions.map((option) {
+                      final isSelected = _selectedType == option['value'];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedType = option['value'];
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primaryBlue
+                                : AppColors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppColors.primaryBlue
+                                  : AppColors.lightGrey.withOpacity(0.5),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                option['icon'],
+                                size: 16,
+                                color: isSelected
+                                    ? AppColors.white
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                option['name'],
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontFamily: 'Medium',
+                                  color: isSelected
+                                      ? AppColors.white
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+
                   const SizedBox(height: 32),
 
                   // Buttons
@@ -2457,32 +2854,50 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed: () {
+                            onPressed: () async {
                               if (_formKey.currentState!.validate()) {
-                                // Create new location
-                                final newLocation = LocationModel(
+                                final userId =
+                                    AuthService().currentUser?.userId;
+                                if (userId == null) {
+                                  UIHelpers.showErrorToast(
+                                      'Please login first');
+                                  return;
+                                }
+
+                                // Parse coordinates
+                                final latitude = double.tryParse(
+                                        _latitudeController.text.trim()) ??
+                                    14.5995;
+                                final longitude = double.tryParse(
+                                        _longitudeController.text.trim()) ??
+                                    120.9842;
+
+                                // Create new saved location
+                                final newLocation = app_models.SavedLocation(
+                                  id: '',
+                                  userId: userId,
+                                  name: _nameController.text.trim(),
                                   address: _addressController.text.trim(),
-                                  label: _nameController.text.trim(),
-                                  city: _cityController.text.trim().isNotEmpty
-                                      ? _cityController.text.trim()
-                                      : null,
-                                  postalCode: _postalCodeController.text
-                                          .trim()
-                                          .isNotEmpty
-                                      ? _postalCodeController.text.trim()
-                                      : null,
-                                  latitude:
-                                      14.5995, // Default coordinates (Manila)
-                                  longitude: 120.9842,
+                                  latitude: latitude,
+                                  longitude: longitude,
+                                  type: _selectedType,
                                   createdAt: DateTime.now(),
-                                  isFavorite: false,
+                                  updatedAt: DateTime.now(),
                                 );
 
-                                // Here you would save the location to your database
-                                // For now, we'll just show a success message
-                                Navigator.pop(context);
-                                UIHelpers.showSuccessToast(
-                                    'Location "${newLocation.label}" added successfully');
+                                // Save to Firestore
+                                final locationId = await SavedLocationService
+                                    .instance
+                                    .addSavedLocation(newLocation);
+
+                                if (locationId != null) {
+                                  Navigator.pop(context);
+                                  UIHelpers.showSuccessToast(
+                                      'Location "${newLocation.name}" added successfully');
+                                } else {
+                                  UIHelpers.showErrorToast(
+                                      'Failed to add location');
+                                }
                               }
                             },
                             style: ElevatedButton.styleFrom(

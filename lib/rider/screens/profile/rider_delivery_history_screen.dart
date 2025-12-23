@@ -1,6 +1,12 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../../utils/app_colors.dart';
+import '../../../services/auth_service.dart';
+import '../../../models/booking_model.dart';
+import '../../../models/user_model.dart';
 
 class RiderDeliveryHistoryScreen extends StatefulWidget {
   const RiderDeliveryHistoryScreen({super.key});
@@ -12,51 +18,168 @@ class RiderDeliveryHistoryScreen extends StatefulWidget {
 
 class _RiderDeliveryHistoryScreenState
     extends State<RiderDeliveryHistoryScreen> {
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'This Week', 'This Month', 'Last Month'];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AuthService _authService = AuthService();
 
-  // Mock data
-  final List<DeliveryHistory> _deliveries = [
-    DeliveryHistory(
-      bookingId: 'BK1005',
-      date: 'Nov 6, 2025',
-      time: '2:30 PM',
-      from: 'Quezon City',
-      to: 'Makati City',
-      distance: '12.5 km',
-      duration: '45 mins',
-      fare: 450.0,
-      customerName: 'Juan Dela Cruz',
-      vehicleType: '4-Wheeler',
-      rating: 5.0,
-    ),
-    DeliveryHistory(
-      bookingId: 'BK1004',
-      date: 'Nov 5, 2025',
-      time: '10:15 AM',
-      from: 'Manila',
-      to: 'Pasig City',
-      distance: '8.2 km',
-      duration: '30 mins',
-      fare: 320.0,
-      customerName: 'Maria Santos',
-      vehicleType: 'AUV',
-      rating: 4.5,
-    ),
-    DeliveryHistory(
-      bookingId: 'BK1003',
-      date: 'Nov 4, 2025',
-      time: '4:45 PM',
-      from: 'Taguig',
-      to: 'Paranaque',
-      distance: '15.8 km',
-      duration: '55 mins',
-      fare: 580.0,
-      customerName: 'Pedro Garcia',
-      vehicleType: 'Wingvan',
-      rating: 5.0,
-    ),
+  String _selectedFilter = 'All';
+  final List<String> _filters = [
+    'All',
+    'This Week',
+    'This Month',
+    'Last Month'
   ];
+
+  // Data from Firebase
+  List<DeliveryHistory> _deliveries = [];
+  List<DeliveryHistory> _filteredDeliveries = [];
+  bool _isLoading = true;
+  Map<String, String> _customerNames = {}; // Cache for customer names
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDeliveryHistory();
+  }
+
+  Future<void> _loadDeliveryHistory() async {
+    final riderId = _authService.currentUser?.userId;
+    if (riderId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // Load completed bookings for this rider
+      final bookingsQuery = await _firestore
+          .collection('bookings')
+          .where('driverId', isEqualTo: riderId)
+          .where('status', whereIn: ['completed', 'delivered'])
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      List<DeliveryHistory> deliveries = [];
+      Map<String, String> customerNames = {};
+
+      for (var doc in bookingsQuery.docs) {
+        final booking = BookingModel.fromMap(doc.data());
+
+        // Fetch customer name if not already cached
+        if (booking.customerId != null &&
+            !customerNames.containsKey(booking.customerId)) {
+          final customerDoc = await _firestore
+              .collection('users')
+              .doc(booking.customerId)
+              .get();
+          if (customerDoc.exists) {
+            final customer = UserModel.fromMap(customerDoc.data()!);
+            customerNames[booking.customerId!] = customer.name;
+          }
+        }
+
+        // Calculate distance and duration (mock calculation for now)
+        final distance = _calculateDistance(
+            booking.pickupLocation.latitude,
+            booking.pickupLocation.longitude,
+            booking.dropoffLocation.latitude,
+            booking.dropoffLocation.longitude);
+        final duration = _calculateDuration(distance);
+
+        final delivery = DeliveryHistory(
+          bookingId: doc.id,
+          date: booking.createdAt != null
+              ? DateFormat('MMM d, yyyy').format(booking.createdAt!)
+              : 'Unknown',
+          time: booking.createdAt != null
+              ? DateFormat('h:mm a').format(booking.createdAt!)
+              : 'Unknown',
+          from: booking.pickupLocation.address,
+          to: booking.dropoffLocation.address,
+          distance: distance,
+          duration: duration,
+          fare: booking.estimatedFare ?? 0.0,
+          customerName: customerNames[booking.customerId] ?? 'Unknown',
+          vehicleType: booking.vehicle.type,
+          rating: 0.0, // Rating would be stored separately
+        );
+        deliveries.add(delivery);
+      }
+
+      setState(() {
+        _deliveries = deliveries;
+        _customerNames = customerNames;
+        _filteredDeliveries = deliveries;
+        _isLoading = false;
+      });
+
+      _applyFilter(_selectedFilter);
+    } catch (e) {
+      debugPrint('Error loading delivery history: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
+    // Haversine formula for distance calculation
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLon = _toRadians(lon2 - lon1);
+    final double a = math.pow(math.sin(dLat / 2), 2) +
+        math.cos(_toRadians(lat1)) *
+            math.cos(_toRadians(lat2)) *
+            math.pow(math.sin(dLon / 2), 2);
+    final double c = 2 * math.asin(math.sqrt(a).clamp(0.0, 1.0));
+    final double distance = earthRadius * c;
+    return '${distance.toStringAsFixed(1)} km';
+  }
+
+  double _toRadians(double degrees) {
+    return degrees * (math.pi / 180);
+  }
+
+  String _calculateDuration(String distanceStr) {
+    // Rough estimate: 30 km/h average speed in city traffic
+    final distance = double.tryParse(distanceStr.replaceAll(' km', '')) ?? 0.0;
+    final hours = distance / 30;
+    final minutes = (hours * 60).round();
+    return '$minutes mins';
+  }
+
+  void _applyFilter(String filter) {
+    setState(() {
+      _selectedFilter = filter;
+
+      if (filter == 'All') {
+        _filteredDeliveries = _deliveries;
+      } else {
+        final now = DateTime.now();
+        DateTime startDate;
+
+        switch (filter) {
+          case 'This Week':
+            startDate = now.subtract(Duration(days: now.weekday - 1));
+            break;
+          case 'This Month':
+            startDate = DateTime(now.year, now.month, 1);
+            break;
+          case 'Last Month':
+            startDate = DateTime(now.year, now.month - 1, 1);
+            break;
+          default:
+            startDate = DateTime(2000);
+        }
+
+        _filteredDeliveries = _deliveries.where((delivery) {
+          try {
+            final date = DateFormat('MMM d, yyyy').parse(delivery.date);
+            return date.isAfter(startDate) || date.isAtSameMomentAs(startDate);
+          } catch (e) {
+            return false;
+          }
+        }).toList();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,116 +197,130 @@ class _RiderDeliveryHistoryScreenState
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
       ),
-      body: Column(
-        children: [
-          // Stats Summary
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                Expanded(
-                  child: _StatBox(
-                    icon: FontAwesomeIcons.truck,
-                    value: '${_deliveries.length}',
-                    label: 'Total',
-                    color: AppColors.primaryBlue,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _StatBox(
-                    icon: FontAwesomeIcons.pesoSign,
-                    value: '₱${_deliveries.fold<double>(0, (sum, item) => sum + item.fare).toStringAsFixed(0)}',
-                    label: 'Earned',
-                    color: AppColors.success,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _StatBox(
-                    icon: FontAwesomeIcons.star,
-                    value: '${(_deliveries.fold<double>(0, (sum, item) => sum + item.rating) / _deliveries.length).toStringAsFixed(1)}',
-                    label: 'Rating',
-                    color: Colors.amber,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Filter Chips
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filters.map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedFilter = filter;
-                      });
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 12),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 10,
+                // Stats Summary
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primaryRed
-                            : AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Text(
-                        filter,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Bold',
-                          color: isSelected
-                              ? AppColors.white
-                              : AppColors.textPrimary,
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _StatBox(
+                          icon: FontAwesomeIcons.truck,
+                          value: '${_filteredDeliveries.length}',
+                          label: 'Total',
+                          color: AppColors.primaryBlue,
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _StatBox(
+                          icon: FontAwesomeIcons.pesoSign,
+                          value:
+                              '₱${_filteredDeliveries.fold<double>(0, (sum, item) => sum + item.fare).toStringAsFixed(0)}',
+                          label: 'Earned',
+                          color: AppColors.success,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _StatBox(
+                          icon: FontAwesomeIcons.star,
+                          value:
+                              '${(_filteredDeliveries.isEmpty ? 0 : _filteredDeliveries.fold<double>(0, (sum, item) => sum + item.rating) / _filteredDeliveries.length).toStringAsFixed(1)}',
+                          label: 'Rating',
+                          color: Colors.amber,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
-          // Delivery List
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: _deliveries.length,
-              itemBuilder: (context, index) {
-                final delivery = _deliveries[index];
-                return _DeliveryHistoryCard(delivery: delivery);
-              },
+                // Filter Chips
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _filters.map((filter) {
+                        final isSelected = _selectedFilter == filter;
+                        return GestureDetector(
+                          onTap: () {
+                            _applyFilter(filter);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primaryRed
+                                  : AppColors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              filter,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Bold',
+                                color: isSelected
+                                    ? AppColors.white
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+
+                // Delivery List
+                Expanded(
+                  child: _filteredDeliveries.isEmpty
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20),
+                            child: Text(
+                              'No delivery history yet',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: _filteredDeliveries.length,
+                          itemBuilder: (context, index) {
+                            final delivery = _filteredDeliveries[index];
+                            return _DeliveryHistoryCard(delivery: delivery);
+                          },
+                        ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -305,7 +442,8 @@ class _DeliveryHistoryCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppColors.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),

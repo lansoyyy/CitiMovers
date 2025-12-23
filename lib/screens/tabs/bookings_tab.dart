@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../services/booking_service.dart';
+import '../../services/driver_service.dart';
 import '../../models/booking_model.dart';
+import '../../models/driver_model.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../delivery/delivery_tracking_screen.dart';
@@ -266,7 +268,7 @@ class _BookingsTabState extends State<BookingsTab>
   }
 }
 
-class BookingCard extends StatelessWidget {
+class BookingCard extends StatefulWidget {
   final BookingModel booking;
   final VoidCallback onTap;
 
@@ -277,79 +279,105 @@ class BookingCard extends StatelessWidget {
   });
 
   @override
+  State<BookingCard> createState() => _BookingCardState();
+}
+
+class _BookingCardState extends State<BookingCard> {
+  final DriverService _driverService = DriverService.instance;
+  DriverModel? _driver;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.booking.driverId != null) {
+      _fetchDriverData();
+    }
+  }
+
+  Future<void> _fetchDriverData() async {
+    final driver = await _driverService.getDriverById(widget.booking.driverId!);
+    if (mounted) {
+      setState(() {
+        _driver = driver;
+      });
+    }
+  }
+
+  // Helper methods to get booking information
+  String getVehicleType() {
+    return widget.booking.vehicle.type;
+  }
+
+  String getBookingId() {
+    return widget.booking.bookingId ?? 'Unknown';
+  }
+
+  String getDriverName() {
+    return _driver?.name ?? 'Driver';
+  }
+
+  double getDriverRating() {
+    return _driver?.rating ?? 0.0;
+  }
+
+  String getFromLocation() {
+    return widget.booking.pickupLocation.address;
+  }
+
+  String getToLocation() {
+    return widget.booking.dropoffLocation.address;
+  }
+
+  String getFormattedDate() {
+    return '${widget.booking.createdAt.day}/${widget.booking.createdAt.month}/${widget.booking.createdAt.year}';
+  }
+
+  String getFormattedTime() {
+    return '${widget.booking.createdAt.hour}:${widget.booking.createdAt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String getFare() {
+    return 'P${widget.booking.finalFare?.toStringAsFixed(2) ?? widget.booking.estimatedFare.toStringAsFixed(2)}';
+  }
+
+  Color getStatusColor() {
+    switch (widget.booking.status) {
+      case 'pending':
+        return AppColors.warning;
+      case 'accepted':
+        return AppColors.primaryBlue;
+      case 'in_progress':
+        return AppColors.primaryBlue;
+      case 'completed':
+        return AppColors.success;
+      case 'cancelled':
+        return AppColors.error;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String getStatusText() {
+    switch (widget.booking.status) {
+      case 'pending':
+        return 'Pending';
+      case 'accepted':
+        return 'Driver Assigned';
+      case 'in_progress':
+        return 'In Transit';
+      case 'completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Helper methods to get booking information
-    String getVehicleType() {
-      return booking.vehicle.type;
-    }
-
-    String getBookingId() {
-      return booking.bookingId ?? 'Unknown';
-    }
-
-    String getDriverName() {
-      return 'Driver'; // We'll need to fetch driver info from driverId
-    }
-
-    double getDriverRating() {
-      return 4.5; // Default rating, should be fetched from driver data
-    }
-
-    String getFromLocation() {
-      return booking.pickupLocation.address;
-    }
-
-    String getToLocation() {
-      return booking.dropoffLocation.address;
-    }
-
-    String getFormattedDate() {
-      return '${booking.createdAt.day}/${booking.createdAt.month}/${booking.createdAt.year}';
-    }
-
-    String getFormattedTime() {
-      return '${booking.createdAt.hour}:${booking.createdAt.minute.toString().padLeft(2, '0')}';
-    }
-
-    String getFare() {
-      return 'P${booking.finalFare?.toStringAsFixed(2) ?? booking.estimatedFare.toStringAsFixed(2)}';
-    }
-
-    Color getStatusColor() {
-      switch (booking.status) {
-        case 'pending':
-          return AppColors.warning;
-        case 'accepted':
-          return AppColors.primaryBlue;
-        case 'in_progress':
-          return AppColors.primaryBlue;
-        case 'completed':
-          return AppColors.success;
-        case 'cancelled':
-          return AppColors.error;
-        default:
-          return AppColors.textSecondary;
-      }
-    }
-
-    String getStatusText() {
-      switch (booking.status) {
-        case 'pending':
-          return 'Pending';
-        case 'accepted':
-          return 'Driver Assigned';
-        case 'in_progress':
-          return 'In Transit';
-        case 'completed':
-          return 'Completed';
-        case 'cancelled':
-          return 'Cancelled';
-        default:
-          return 'Unknown';
-      }
-    }
-
     return Container(
+      key: ValueKey(widget.booking.bookingId),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -370,7 +398,7 @@ class BookingCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
+          onTap: widget.onTap,
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -505,7 +533,7 @@ class BookingCard extends StatelessWidget {
                 const SizedBox(height: 20),
 
                 // Driver Info (simplified for card view)
-                if (booking.driverId != null)
+                if (widget.booking.driverId != null)
                   Row(
                     children: [
                       Container(
@@ -543,7 +571,9 @@ class BookingCard extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '${getDriverRating()} rating',
+                                  getDriverRating() > 0
+                                      ? '${getDriverRating().toStringAsFixed(1)} rating'
+                                      : 'New Driver',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontFamily: 'Regular',
@@ -559,7 +589,7 @@ class BookingCard extends StatelessWidget {
                     ],
                   ),
 
-                if (booking.driverId != null) const SizedBox(height: 20),
+                if (widget.booking.driverId != null) const SizedBox(height: 20),
 
                 // Simplified Route
                 Container(
@@ -781,7 +811,7 @@ class _RoutePoint extends StatelessWidget {
 }
 
 // Booking Details Bottom Sheet
-class BookingDetailsBottomSheet extends StatelessWidget {
+class BookingDetailsBottomSheet extends StatefulWidget {
   final BookingModel booking;
 
   const BookingDetailsBottomSheet({
@@ -789,17 +819,43 @@ class BookingDetailsBottomSheet extends StatelessWidget {
     required this.booking,
   });
 
+  @override
+  State<BookingDetailsBottomSheet> createState() =>
+      _BookingDetailsBottomSheetState();
+}
+
+class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
+  final DriverService _driverService = DriverService.instance;
+  DriverModel? _driver;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.booking.driverId != null) {
+      _fetchDriverData();
+    }
+  }
+
+  Future<void> _fetchDriverData() async {
+    final driver = await _driverService.getDriverById(widget.booking.driverId!);
+    if (mounted) {
+      setState(() {
+        _driver = driver;
+      });
+    }
+  }
+
   // Helper methods for BookingDetailsBottomSheet
   String getVehicleType() {
-    return booking.vehicle.type;
+    return widget.booking.vehicle.type;
   }
 
   String getBookingId() {
-    return booking.bookingId ?? 'Unknown';
+    return widget.booking.bookingId ?? 'Unknown';
   }
 
   String getStatusText() {
-    switch (booking.status) {
+    switch (widget.booking.status) {
       case 'pending':
         return 'Pending';
       case 'accepted':
@@ -816,7 +872,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
   }
 
   Color getStatusColor() {
-    switch (booking.status) {
+    switch (widget.booking.status) {
       case 'pending':
         return AppColors.warning;
       case 'accepted':
@@ -833,36 +889,121 @@ class BookingDetailsBottomSheet extends StatelessWidget {
   }
 
   String getFormattedDate() {
-    return '${booking.createdAt.day}/${booking.createdAt.month}/${booking.createdAt.year}';
+    return '${widget.booking.createdAt.day}/${widget.booking.createdAt.month}/${widget.booking.createdAt.year}';
   }
 
   String getFormattedTime() {
-    return '${booking.createdAt.hour}:${booking.createdAt.minute.toString().padLeft(2, '0')}';
+    return '${widget.booking.createdAt.hour}:${widget.booking.createdAt.minute.toString().padLeft(2, '0')}';
   }
 
   String getDriverName() {
-    return 'Driver'; // Should be fetched from driver data
+    return _driver?.name ?? 'Driver';
   }
 
   double getDriverRating() {
-    return 4.5; // Default rating, should be fetched from driver data
+    return _driver?.rating ?? 0.0;
+  }
+
+  String getDriverContact() {
+    return _driver?.phoneNumber ?? 'N/A';
+  }
+
+  String getVehicleNumber() {
+    return _driver?.vehiclePlateNumber ?? 'N/A';
   }
 
   String getFromLocation() {
-    return booking.pickupLocation.address;
+    return widget.booking.pickupLocation.address;
   }
 
   String getToLocation() {
-    return booking.dropoffLocation.address;
+    return widget.booking.dropoffLocation.address;
   }
 
   String getFare() {
-    return 'P${booking.finalFare?.toStringAsFixed(2) ?? booking.estimatedFare.toStringAsFixed(2)}';
+    return 'P${widget.booking.finalFare?.toStringAsFixed(2) ?? widget.booking.estimatedFare.toStringAsFixed(2)}';
+  }
+
+  String getPaymentMethod() {
+    // Get payment method from booking data
+    return widget.booking.paymentMethod;
+  }
+
+  String getPackageType() {
+    // Package type based on vehicle type
+    switch (widget.booking.vehicle.type) {
+      case 'Motorcycle':
+        return 'Small Package';
+      case 'Sedan':
+        return 'Standard Package';
+      case 'AUV':
+        return 'Medium Package';
+      case '4-Wheeler':
+        return 'Large Package';
+      case '6-Wheeler':
+        return 'Extra Large Package';
+      case 'Wingvan':
+        return 'Heavy Package';
+      case 'Trailer':
+        return 'Oversized Package';
+      case '10-Wheeler Wingvan':
+        return 'Industrial Package';
+      default:
+        return 'Standard Delivery';
+    }
+  }
+
+  String getWeight() {
+    // Weight based on vehicle type
+    switch (widget.booking.vehicle.type) {
+      case 'Motorcycle':
+        return 'Up to 10kg';
+      case 'Sedan':
+        return 'Up to 50kg';
+      case 'AUV':
+        return 'Up to 200kg';
+      case '4-Wheeler':
+        return 'Up to 500kg';
+      case '6-Wheeler':
+        return 'Up to 1000kg';
+      case 'Wingvan':
+        return 'Up to 2000kg';
+      case 'Trailer':
+        return 'Up to 5000kg';
+      case '10-Wheeler Wingvan':
+        return 'Up to 10000kg';
+      default:
+        return 'Up to 500kg';
+    }
+  }
+
+  String getInsurance() {
+    // Insurance based on fare amount
+    final fare = widget.booking.finalFare ?? widget.booking.estimatedFare;
+    if (fare < 500) return 'Basic Coverage';
+    if (fare < 1000) return 'Standard Coverage';
+    if (fare < 2000) return 'Premium Coverage';
+    return 'Full Coverage';
+  }
+
+  String getSpecialInstructions() {
+    // Get special instructions from notes
+    return widget.booking.notes ?? 'None';
+  }
+
+  String getEstimatedTime() {
+    // Calculate estimated time based on distance
+    final distance = widget.booking.distance;
+    if (distance <= 0) return 'Unknown';
+    // Assume average speed of 30 km/h for urban delivery
+    final timeInMinutes = (distance / 30 * 60).round();
+    return '$timeInMinutes mins';
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: ValueKey(widget.booking.bookingId),
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: const BoxDecoration(
         color: AppColors.white,
@@ -971,25 +1112,26 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     [
                       _buildDetailRow('Date', getFormattedDate()),
                       _buildDetailRow('Time', getFormattedTime()),
-                      if (booking.status == 'in_progress' ||
-                          booking.status == 'accepted')
-                        _buildDetailRow('Estimated Time', '45 mins'),
+                      if (widget.booking.status == 'in_progress' ||
+                          widget.booking.status == 'accepted')
+                        _buildDetailRow('Estimated Time', getEstimatedTime()),
                     ],
                   ),
 
                   const SizedBox(height: 20),
 
                   // Driver Information
-                  if (booking.driverId != null) ...[
+                  if (widget.booking.driverId != null) ...[
                     _buildSectionCard(
                       'Driver Information',
                       Icons.person,
                       [
                         _buildDetailRow('Name', getDriverName()),
                         if (getDriverRating() > 0)
-                          _buildDetailRow('Rating', '${getDriverRating()} ⭐'),
-                        _buildDetailRow('Contact', '+63 912 345 6789'),
-                        _buildDetailRow('Vehicle Number', 'ABC 1234'),
+                          _buildDetailRow('Rating',
+                              '${getDriverRating().toStringAsFixed(1)} ⭐'),
+                        _buildDetailRow('Contact', getDriverContact()),
+                        _buildDetailRow('Vehicle Number', getVehicleNumber()),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -1006,9 +1148,12 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     Icons.payment,
                     [
                       _buildDetailRow('Total Fare', getFare()),
-                      _buildDetailRow('Payment Method', 'Cash on Delivery'),
-                      _buildDetailRow('Payment Status',
-                          booking.status == 'Completed' ? 'Paid' : 'Pending'),
+                      _buildDetailRow('Payment Method', getPaymentMethod()),
+                      _buildDetailRow(
+                          'Payment Status',
+                          widget.booking.status == 'Completed'
+                              ? 'Paid'
+                              : 'Pending'),
                     ],
                   ),
 
@@ -1019,11 +1164,11 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     'Additional Information',
                     Icons.info_outline,
                     [
-                      _buildDetailRow('Package Type', 'Standard Delivery'),
-                      _buildDetailRow('Weight', 'Up to 500kg'),
-                      _buildDetailRow('Insurance', 'Basic Coverage'),
+                      _buildDetailRow('Package Type', getPackageType()),
+                      _buildDetailRow('Weight', getWeight()),
+                      _buildDetailRow('Insurance', getInsurance()),
                       _buildDetailRow(
-                          'Special Instructions', 'Handle with care'),
+                          'Special Instructions', getSpecialInstructions()),
                     ],
                   ),
 
@@ -1039,8 +1184,8 @@ class BookingDetailsBottomSheet extends StatelessWidget {
             child: Column(
               children: [
                 // Primary Action
-                if (booking.status == 'In Transit' ||
-                    booking.status == 'Driver Assigned') ...[
+                if (widget.booking.status == 'in_progress' ||
+                    widget.booking.status == 'accepted') ...[
                   Container(
                     width: double.infinity,
                     height: 56,
@@ -1069,7 +1214,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (context) => DeliveryTrackingScreen(
-                              booking: booking,
+                              booking: widget.booking,
                             ),
                           ),
                         );
@@ -1466,7 +1611,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${booking.distance.toStringAsFixed(1)} km',
+                  '${widget.booking.distance.toStringAsFixed(1)} km',
                   style: const TextStyle(
                     fontSize: 12,
                     fontFamily: 'Medium',

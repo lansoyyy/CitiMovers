@@ -77,12 +77,32 @@ class ProfileScreen extends StatelessWidget {
     );
 
     if (confirm == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account deletion request submitted'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      // Delete account from Firebase
+      final success = await AuthService().requestAccountDeletion();
+
+      if (context.mounted) {
+        if (success) {
+          // Navigate to welcome screen after successful deletion
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+            (route) => false,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account deleted successfully'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete account'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
     }
   }
 

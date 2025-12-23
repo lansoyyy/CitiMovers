@@ -63,8 +63,43 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
     }
   }
 
+  Future<void> _uploadProfilePhoto() async {
+    if (_profileImagePath == null) return;
+
+    setState(() => _isLoading = true);
+
+    final photoUrl = await _authService.uploadProfilePhoto(_profileImagePath!);
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+      if (photoUrl != null) {
+        // Update profile with new photo URL
+        final success = await _authService.updateProfile(photoUrl: photoUrl);
+        if (success) {
+          setState(() {
+            _profileImagePath = null;
+          });
+          UIHelpers.showSuccessToast('Profile photo updated');
+        } else {
+          UIHelpers.showErrorToast('Failed to update profile');
+        }
+      } else {
+        UIHelpers.showErrorToast('Failed to upload photo');
+      }
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // If there's a new profile photo, upload it first
+    if (_profileImagePath != null) {
+      await _uploadProfilePhoto();
+      if (mounted && _isLoading) {
+        setState(() => _isLoading = false);
+        return;
+      }
+    }
 
     setState(() => _isLoading = true);
 
@@ -132,28 +167,91 @@ class _RiderEditProfileScreenState extends State<RiderEditProfileScreen> {
                   Positioned(
                     bottom: 0,
                     right: 0,
-                    child: GestureDetector(
-                      onTap: _pickImage,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryRed,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color:
-                                  AppColors.primaryRed.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (rider?.photoUrl != null)
+                          GestureDetector(
+                            onTap: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Remove Photo'),
+                                  content: const Text(
+                                      'Do you want to remove your profile photo?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text(
+                                        'Remove',
+                                        style:
+                                            TextStyle(color: AppColors.error),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await _authService.removeProfilePhoto();
+                                if (mounted) {
+                                  setState(() {});
+                                  UIHelpers.showSuccessToast(
+                                      'Profile photo removed');
+                                }
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.error,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        AppColors.error.withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.delete,
+                                color: AppColors.white,
+                                size: 20,
+                              ),
                             ),
-                          ],
+                          ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryRed,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryRed
+                                      .withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: AppColors.white,
+                              size: 20,
+                            ),
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          color: AppColors.white,
-                          size: 20,
-                        ),
-                      ),
+                      ],
                     ),
                   ),
                 ],

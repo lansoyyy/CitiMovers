@@ -53,13 +53,21 @@ class _RiderVehicleDetailsScreenState extends State<RiderVehicleDetailsScreen> {
 
     setState(() => _isLoading = true);
 
-    // TODO: Implement vehicle update with Firebase
-    await Future.delayed(const Duration(seconds: 2));
+    final success = await _authService.updateProfile(
+      vehicleType: _selectedVehicleType,
+      vehiclePlateNumber: _plateNumberController.text.trim(),
+      vehicleModel: _vehicleModelController.text.trim(),
+      vehicleColor: _vehicleColorController.text.trim(),
+    );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      UIHelpers.showSuccessToast('Vehicle details updated successfully');
-      Navigator.pop(context);
+      if (success) {
+        UIHelpers.showSuccessToast('Vehicle details updated successfully');
+        Navigator.pop(context);
+      } else {
+        UIHelpers.showErrorToast('Failed to update vehicle details');
+      }
     }
   }
 

@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../../screens/delivery/delivery_tracking_screen.dart';
 import '../../../models/booking_model.dart';
 import '../../../models/location_model.dart';
 import '../../../models/vehicle_model.dart';
+import '../../services/rider_auth_service.dart';
+import 'package:intl/intl.dart';
 
 class RiderDeliveriesTab extends StatefulWidget {
   const RiderDeliveriesTab({super.key});
@@ -16,32 +20,261 @@ class RiderDeliveriesTab extends StatefulWidget {
 class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final RiderAuthService _authService = RiderAuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   bool _isLoading = false;
+  List<DeliveryData> _activeDeliveries = [];
+  List<DeliveryData> _completedDeliveries = [];
+  List<DeliveryData> _cancelledDeliveries = [];
+
+  StreamSubscription<QuerySnapshot>? _activeSubscription;
+  StreamSubscription<QuerySnapshot>? _completedSubscription;
+  StreamSubscription<QuerySnapshot>? _cancelledSubscription;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadDeliveries();
+    _loadRiderDeliveries();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _activeSubscription?.cancel();
+    _completedSubscription?.cancel();
+    _cancelledSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadDeliveries() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _loadRiderDeliveries() async {
+    final rider = await _authService.getCurrentRider();
+    if (rider != null) {
+      _listenToActiveDeliveries(rider.riderId);
+      _listenToCompletedDeliveries(rider.riderId);
+      _listenToCancelledDeliveries(rider.riderId);
+    }
+  }
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
+  void _listenToActiveDeliveries(String riderId) {
+    _activeSubscription = _firestore
+        .collection('bookings')
+        .where('driverId', isEqualTo: riderId)
+        .where('status',
+            whereIn: ['pending', 'accepted', 'driver_assigned', 'in_progress'])
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .listen((snapshot) {
+          if (mounted) {
+            setState(() {
+              _activeDeliveries = snapshot.docs
+                  .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
+                  .toList();
+            });
+          }
+        });
+  }
 
-    setState(() {
-      _isLoading = false;
+  void _listenToCompletedDeliveries(String riderId) {
+    _completedSubscription = _firestore
+        .collection('bookings')
+        .where('driverId', isEqualTo: riderId)
+        .where('status', isEqualTo: 'completed')
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _completedDeliveries = snapshot.docs
+              .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
+              .toList();
+        });
+      }
     });
+  }
+
+  void _listenToCancelledDeliveries(String riderId) {
+    _cancelledSubscription = _firestore
+        .collection('bookings')
+        .where('driverId', isEqualTo: riderId)
+        .where('status', whereIn: ['cancelled', 'rejected'])
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .snapshots()
+        .listen((snapshot) {
+          if (mounted) {
+            setState(() {
+              _cancelledDeliveries = snapshot.docs
+                  .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
+                  .toList();
+            });
+          }
+        });
+  }
+
+  DeliveryData _bookingToDeliveryData(
+      String bookingId, Map<String, dynamic> data) {
+    // Get vehicle data
+    final vehicleData = data['vehicle'] as Map<String, dynamic>?;
+    final vehicleType = vehicleData?['type'] as String? ?? '4-Wheeler';
+    final vehicleCapacity = vehicleData?['capacity'] as String? ?? 'N/A';
+
+    // Get customer info
+    final customerName = data['customerName'] as String? ?? 'Unknown';
+    final customerPhone = data['customerPhone'] as String? ?? 'N/A';
+
+    // Get locations
+    final pickupLocationData = data['pickupLocation'] as Map<String, dynamic>?;
+    final pickupLocation = pickupLocationData?['address'] as String? ?? '';
+    final deliveryLocationData =
+        data['dropoffLocation'] as Map<String, dynamic>?;
+    final deliveryLocation = deliveryLocationData?['address'] as String? ?? '';
+
+    // Get date and time
+    final createdAt =
+        (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final date = DateFormat('MMM dd, yyyy').format(createdAt);
+    final time = DateFormat('h:mm a').format(createdAt);
+
+    // Get fare
+    final fare =
+        (data['estimatedFare'] as num? ?? data['fare'] as num? ?? 0).toDouble();
+    final finalFare = (data['finalFare'] as num?)?.toDouble();
+
+    // Get status
+    final status = data['status'] as String? ?? 'pending';
+
+    // Get status color and display text
+    Color statusColor;
+    String statusText;
+    String estimatedTimeText;
+
+    switch (status) {
+      case 'pending':
+        statusColor = AppColors.warning;
+        statusText = 'Pending';
+        estimatedTimeText = 'Waiting for driver';
+        break;
+      case 'accepted':
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Accepted';
+        estimatedTimeText = 'Preparing';
+        break;
+      case 'driver_assigned':
+        statusColor = AppColors.warning;
+        statusText = 'Driver Assigned';
+        estimatedTimeText = 'Heading to pickup';
+        break;
+      case 'in_progress':
+        statusColor = AppColors.primaryRed;
+        statusText = 'In Transit';
+        estimatedTimeText = 'On the way';
+        break;
+      case 'completed':
+        statusColor = AppColors.success;
+        statusText = 'Completed';
+        estimatedTimeText = 'Delivered';
+        break;
+      case 'cancelled':
+        statusColor = AppColors.error;
+        statusText = 'Cancelled';
+        estimatedTimeText = 'Cancelled';
+        break;
+      case 'rejected':
+        statusColor = AppColors.error;
+        statusText = 'Rejected';
+        estimatedTimeText = 'Rejected';
+        break;
+      default:
+        statusColor = AppColors.textSecondary;
+        statusText = 'Unknown';
+        estimatedTimeText = 'N/A';
+    }
+
+    // Get customer rating
+    final customerRating = (data['customerRating'] as num?)?.toDouble() ?? 0.0;
+
+    // Get estimated duration
+    final estimatedDuration = data['estimatedDuration'] as num? ?? 0;
+
+    // Get payment method
+    final paymentMethod = data['paymentMethod'] as String? ?? 'Cash';
+
+    // Get notes
+    final notes = data['notes'] as String?;
+
+    // Get distance
+    final distance = (data['distance'] as num?)?.toDouble() ?? 0.0;
+
+    // Derive package type from vehicle type
+    String packageType;
+    switch (vehicleType) {
+      case 'Motorcycle':
+        packageType = 'Small Package';
+        break;
+      case 'Sedan':
+        packageType = 'Standard Package';
+        break;
+      case 'AUV':
+        packageType = 'Medium Package';
+        break;
+      case '4-Wheeler':
+        packageType = 'Large Package';
+        break;
+      case '6-Wheeler':
+        packageType = 'Extra Large Package';
+        break;
+      case 'Wingvan':
+        packageType = 'Heavy Package';
+        break;
+      case 'Trailer':
+        packageType = 'Oversized Package';
+        break;
+      case '10-Wheeler Wingvan':
+        packageType = 'Industrial Package';
+        break;
+      default:
+        packageType = 'Standard Delivery';
+    }
+
+    // Derive insurance from fare
+    final actualFare = finalFare ?? fare;
+    String insurance;
+    if (actualFare < 500) {
+      insurance = 'Basic Coverage';
+    } else if (actualFare < 1000) {
+      insurance = 'Standard Coverage';
+    } else if (actualFare < 2000) {
+      insurance = 'Premium Coverage';
+    } else {
+      insurance = 'Full Coverage';
+    }
+
+    return DeliveryData(
+      id: bookingId,
+      vehicleType: vehicleType,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      pickupLocation: pickupLocation,
+      deliveryLocation: deliveryLocation,
+      date: date,
+      time: time,
+      fare: 'P${(finalFare ?? fare).toStringAsFixed(0)}',
+      status: statusText,
+      statusColor: statusColor,
+      estimatedTime: estimatedDuration > 0
+          ? '${estimatedDuration.toStringAsFixed(0)} mins'
+          : estimatedTimeText,
+      customerRating: customerRating,
+      paymentMethod: paymentMethod,
+      packageType: packageType,
+      weight: vehicleCapacity,
+      insurance: insurance,
+      specialInstructions: notes ?? 'None',
+      distance: distance,
+    );
   }
 
   @override
@@ -132,9 +365,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
       return Center(child: UIHelpers.loadingIndicator());
     }
 
-    final List<DeliveryData> deliveries = _getActiveDeliveries();
-
-    if (deliveries.isEmpty) {
+    if (_activeDeliveries.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -168,57 +399,34 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     }
 
     return RefreshIndicator(
-      onRefresh: _loadDeliveries,
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
       color: AppColors.primaryRed,
       child: ListView.builder(
         padding: const EdgeInsets.all(20),
-        itemCount: deliveries.length,
+        itemCount: _activeDeliveries.length,
         itemBuilder: (context, index) {
           return DeliveryCard(
-            delivery: deliveries[index],
-            onTap: () {
+            delivery: _activeDeliveries[index],
+            onTap: () async {
               // Navigate to delivery tracking screen for active deliveries
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DeliveryTrackingScreen(
-                    booking: BookingModel(
-                      bookingId: deliveries[index].id,
-                      customerId:
-                          'customer_id_placeholder', // Add appropriate customer ID
-                      pickupLocation: LocationModel(
-                        address: deliveries[index].pickupLocation,
-                        latitude: 0.0, // Add appropriate default or calculate
-                        longitude: 0.0, // Add appropriate default or calculate
-                      ),
-                      dropoffLocation: LocationModel(
-                        address: deliveries[index].deliveryLocation,
-                        latitude: 0.0, // Add appropriate default or calculate
-                        longitude: 0.0, // Add appropriate default or calculate
-                      ),
-                      vehicle: VehicleModel(
-                        id: 'vehicle_id_placeholder',
-                        name: deliveries[index].vehicleType,
-                        type: 'truck',
-                        description: 'Standard delivery truck',
-                        baseFare: 50.0,
-                        perKmRate: 10.0,
-                        capacity: '1000 kg',
-                        features: ['Refrigerated', 'GPS Tracking'],
-                        imageUrl: '',
-                      ),
-                      bookingType: 'now',
-                      distance: 0.0, // Add appropriate default or calculate
-                      estimatedFare:
-                          double.tryParse(deliveries[index].fare.toString()) ??
-                              0.0,
-                      paymentMethod: 'cash',
-                      createdAt:
-                          DateTime.now(), // Use actual date from delivery data
-                    ),
+              // Fetch booking details from Firestore
+              final bookingDoc = await _firestore
+                  .collection('bookings')
+                  .doc(_activeDeliveries[index].id)
+                  .get();
+
+              if (bookingDoc.exists && context.mounted) {
+                final booking = BookingModel.fromMap(bookingDoc.data()!);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        DeliveryTrackingScreen(booking: booking),
                   ),
-                ),
-              );
+                );
+              }
             },
           );
         },
@@ -231,9 +439,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
       return Center(child: UIHelpers.loadingIndicator());
     }
 
-    final List<DeliveryData> deliveries = _getCompletedDeliveries();
-
-    if (deliveries.isEmpty) {
+    if (_completedDeliveries.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -267,17 +473,20 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     }
 
     return RefreshIndicator(
-      onRefresh: _loadDeliveries,
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
       color: AppColors.primaryRed,
       child: ListView.builder(
         padding: const EdgeInsets.all(20),
-        itemCount: deliveries.length,
+        itemCount: _completedDeliveries.length,
         itemBuilder: (context, index) {
           return DeliveryCard(
-            delivery: deliveries[index],
+            delivery: _completedDeliveries[index],
             onTap: () {
               // Show bottom sheet for completed deliveries
-              _showDeliveryDetailsBottomSheet(context, deliveries[index]);
+              _showDeliveryDetailsBottomSheet(
+                  context, _completedDeliveries[index]);
             },
           );
         },
@@ -290,9 +499,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
       return Center(child: UIHelpers.loadingIndicator());
     }
 
-    final List<DeliveryData> deliveries = _getCancelledDeliveries();
-
-    if (deliveries.isEmpty) {
+    if (_cancelledDeliveries.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -326,112 +533,25 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     }
 
     return RefreshIndicator(
-      onRefresh: _loadDeliveries,
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
       color: AppColors.primaryRed,
       child: ListView.builder(
         padding: const EdgeInsets.all(20),
-        itemCount: deliveries.length,
+        itemCount: _cancelledDeliveries.length,
         itemBuilder: (context, index) {
           return DeliveryCard(
-            delivery: deliveries[index],
+            delivery: _cancelledDeliveries[index],
             onTap: () {
               // Show bottom sheet for cancelled deliveries
-              _showDeliveryDetailsBottomSheet(context, deliveries[index]);
+              _showDeliveryDetailsBottomSheet(
+                  context, _cancelledDeliveries[index]);
             },
           );
         },
       ),
     );
-  }
-
-  List<DeliveryData> _getActiveDeliveries() {
-    return [
-      DeliveryData(
-        id: 'DL002',
-        vehicleType: '4-Wheeler',
-        customerName: 'Juan Reyes',
-        customerPhone: '+63 923 456 7890',
-        pickupLocation: 'Quezon City',
-        deliveryLocation: 'Manila',
-        date: 'Nov 12, 2025',
-        time: '2:15 PM',
-        fare: 'P320',
-        status: 'Driver Assigned',
-        statusColor: AppColors.warning,
-        estimatedTime: '45 mins',
-        customerRating: 4.9,
-      ),
-      DeliveryData(
-        id: 'DL003',
-        vehicleType: 'Wingvan',
-        customerName: 'Carlos Mendoza',
-        customerPhone: '+63 934 567 8901',
-        pickupLocation: 'Pasig City',
-        deliveryLocation: 'Taguig City',
-        date: 'Nov 12, 2025',
-        time: '4:00 PM',
-        fare: 'P750',
-        status: 'Preparing',
-        statusColor: AppColors.primaryRed,
-        estimatedTime: '60 mins',
-        customerRating: 4.5,
-      ),
-    ];
-  }
-
-  List<DeliveryData> _getCompletedDeliveries() {
-    return [
-      DeliveryData(
-        id: 'DL005',
-        vehicleType: '6-Wheeler',
-        customerName: 'Roberto Cruz',
-        customerPhone: '+63 956 789 0123',
-        pickupLocation: 'Caloocan',
-        deliveryLocation: 'Makati City',
-        date: 'Nov 10, 2025',
-        time: '3:30 PM',
-        fare: 'P1,200',
-        status: 'Completed',
-        statusColor: AppColors.success,
-        estimatedTime: 'Delivered',
-        customerRating: 4.6,
-      ),
-      DeliveryData(
-        id: 'DL006',
-        vehicleType: '4-Wheeler',
-        customerName: 'Elena Rodriguez',
-        customerPhone: '+63 967 890 1234',
-        pickupLocation: 'Paranaque',
-        deliveryLocation: 'Las Pinas',
-        date: 'Nov 9, 2025',
-        time: '11:45 AM',
-        fare: 'P280',
-        status: 'Completed',
-        statusColor: AppColors.success,
-        estimatedTime: 'Delivered',
-        customerRating: 5.0,
-      ),
-    ];
-  }
-
-  List<DeliveryData> _getCancelledDeliveries() {
-    return [
-      DeliveryData(
-        id: 'DL007',
-        vehicleType: 'Wingvan',
-        customerName: 'Pedro Santos',
-        customerPhone: '+63 978 901 2345',
-        pickupLocation: 'Pasay',
-        deliveryLocation: 'Muntinlupa',
-        date: 'Nov 8, 2025',
-        time: '1:00 PM',
-        fare: 'P750',
-        status: 'Cancelled',
-        statusColor: AppColors.error,
-        estimatedTime: 'Cancelled by customer',
-        customerRating: 0.0,
-      ),
-    ];
   }
 
   void _showDeliveryDetailsBottomSheet(
@@ -843,6 +963,12 @@ class DeliveryData {
   final Color statusColor;
   final String estimatedTime;
   final double customerRating;
+  final String paymentMethod;
+  final String packageType;
+  final String weight;
+  final String insurance;
+  final String specialInstructions;
+  final double distance;
 
   DeliveryData({
     required this.id,
@@ -858,6 +984,12 @@ class DeliveryData {
     required this.statusColor,
     required this.estimatedTime,
     required this.customerRating,
+    required this.paymentMethod,
+    required this.packageType,
+    required this.weight,
+    required this.insurance,
+    required this.specialInstructions,
+    required this.distance,
   });
 }
 
@@ -1015,7 +1147,7 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
                     Icons.payment,
                     [
                       _buildDetailRow('Total Fare', delivery.fare),
-                      _buildDetailRow('Payment Method', 'Cash on Delivery'),
+                      _buildDetailRow('Payment Method', delivery.paymentMethod),
                       _buildDetailRow('Payment Status',
                           delivery.status == 'Completed' ? 'Paid' : 'Pending'),
                     ],
@@ -1028,11 +1160,11 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
                     'Additional Information',
                     Icons.info_outline,
                     [
-                      _buildDetailRow('Package Type', 'Standard Delivery'),
-                      _buildDetailRow('Weight', 'Up to 500kg'),
-                      _buildDetailRow('Insurance', 'Basic Coverage'),
+                      _buildDetailRow('Package Type', delivery.packageType),
+                      _buildDetailRow('Weight', delivery.weight),
+                      _buildDetailRow('Insurance', delivery.insurance),
                       _buildDetailRow(
-                          'Special Instructions', 'Handle with care'),
+                          'Special Instructions', delivery.specialInstructions),
                     ],
                   ),
 
@@ -1468,7 +1600,9 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '12.5 km',
+                  delivery.distance > 0
+                      ? '${delivery.distance.toStringAsFixed(1)} km'
+                      : 'N/A',
                   style: const TextStyle(
                     fontSize: 12,
                     fontFamily: 'Medium',

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
+import '../../../services/auth_service.dart';
+import '../../../services/wallet_service.dart';
+import '../../../models/booking_model.dart';
+import '../../models/rider_model.dart';
 
 class RiderEarningsTab extends StatefulWidget {
   const RiderEarningsTab({super.key});
@@ -12,6 +18,10 @@ class RiderEarningsTab extends StatefulWidget {
 }
 
 class _RiderEarningsTabState extends State<RiderEarningsTab> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AuthService _authService = AuthService();
+  final WalletService _walletService = WalletService();
+
   String _selectedPeriod = 'This Week';
   final List<String> _periods = [
     'Today',
@@ -20,601 +30,765 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
     'All Time'
   ];
 
-  // Mock data
-  final double _totalEarnings = 25000.0;
-  final double _todayEarnings = 1250.0;
-  final int _totalDeliveries = 150;
-  final double _averageRating = 4.8;
+  // Data from Firebase
+  double _totalEarnings = 0.0;
+  double _todayEarnings = 0.0;
+  double _walletBalance = 0.0; // Actual rider wallet balance
+  int _totalDeliveries = 0;
+  double _averageRating = 0.0;
+  bool _isLoading = true;
+  RiderModel? _riderData;
 
   // Earnings distribution constants
   static const double _operatorPercentage = 0.80;
   static const double _adminPercentage = 0.18;
   static const double _birPercentage = 0.02;
 
-  // Chart data
-  final List<double> _weeklyEarnings = [850, 1200, 950, 1400, 1100, 1350, 1250];
-  final List<double> _monthlyEarnings = [8500, 9200, 10500, 11200, 9800, 11500];
-  final List<int> _weeklyDeliveries = [5, 8, 6, 9, 7, 8, 7];
-  final List<int> _monthlyDeliveries = [45, 52, 58, 62, 54, 60];
+  // Chart data from Firebase
+  List<double> _weeklyEarnings = [0, 0, 0, 0, 0, 0, 0];
+  List<double> _monthlyEarnings = List.generate(12, (_) => 0.0);
+  List<int> _weeklyDeliveries = [0, 0, 0, 0, 0, 0, 0];
+  List<int> _monthlyDeliveries = List.generate(12, (_) => 0);
+
+  // Recent transactions from Firebase
+  List<Map<String, dynamic>> _recentTransactions = [];
 
   // Load wallet form controllers
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _recipientController = TextEditingController();
   String _selectedPaymentMethod = 'gcash';
   String _selectedLoadMethod = 'gcash';
+  bool _isProcessingTransaction = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEarningsData();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _recipientController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.scaffoldBackground,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.success,
-                      AppColors.success.withValues(alpha: 0.8),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.success.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'My Earnings',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontFamily: 'Bold',
-                        color: AppColors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppColors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Total Balance',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'Regular',
-                              color: AppColors.white,
+        backgroundColor: AppColors.scaffoldBackground,
+        body: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _refreshData,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.success,
+                                AppColors.success.withValues(alpha: 0.8),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.success.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'P${_totalEarnings.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontFamily: 'Bold',
-                              color: AppColors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: _showLoadWalletDialog,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryBlue,
-                                    foregroundColor: AppColors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.add_circle_outline,
-                                        size: 18,
-                                        color: Colors.white,
+                              const Text(
+                                'My Earnings',
+                                style: TextStyle(
+                                  fontSize: 28,
+                                  fontFamily: 'Bold',
+                                  color: AppColors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Total Balance',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontFamily: 'Regular',
+                                        color: AppColors.white,
                                       ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Load Wallet',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontFamily: 'Bold',
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'P${_totalEarnings.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 36,
+                                        fontFamily: 'Bold',
+                                        color: AppColors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ElevatedButton(
+                                            onPressed: _showLoadWalletDialog,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  AppColors.primaryBlue,
+                                              foregroundColor: AppColors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 12,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                            ),
+                                            child: const Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.add_circle_outline,
+                                                  size: 18,
+                                                  color: Colors.white,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Load Wallet',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontFamily: 'Bold',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                        ),
 
-              const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-              // Period Selector
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _periods.map((period) {
-                      final isSelected = _selectedPeriod == period;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedPeriod = period;
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
+                        // Period Selector
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _periods.map((period) {
+                                final isSelected = _selectedPeriod == period;
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedPeriod = period;
+                                    });
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? AppColors.primaryRed
+                                          : AppColors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.04),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      period,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontFamily: 'Bold',
+                                        color: isSelected
+                                            ? AppColors.white
+                                            : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                           ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primaryRed
-                                : AppColors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Stats Cards
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _StatCard(
+                                      icon: FontAwesomeIcons.truck,
+                                      title: 'Deliveries',
+                                      value: '$_totalDeliveries',
+                                      color: AppColors.primaryBlue,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _StatCard(
+                                      icon: FontAwesomeIcons.star,
+                                      title: 'Rating',
+                                      value: _averageRating.toStringAsFixed(1),
+                                      color: Colors.amber,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _StatCard(
+                                      icon: FontAwesomeIcons.pesoSign,
+                                      title: 'Today',
+                                      value:
+                                          'P${_todayEarnings.toStringAsFixed(0)}',
+                                      color: AppColors.success,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _StatCard(
+                                      icon: FontAwesomeIcons.chartLine,
+                                      title: 'Average',
+                                      value:
+                                          'P${(_totalEarnings / _totalDeliveries).toStringAsFixed(0)}',
+                                      color: AppColors.warning,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                          child: Text(
-                            period,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'Bold',
-                              color: isSelected
-                                  ? AppColors.white
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
 
-              const SizedBox(height: 24),
+                        const SizedBox(height: 28),
 
-              // Stats Cards
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _StatCard(
-                            icon: FontAwesomeIcons.truck,
-                            title: 'Deliveries',
-                            value: '$_totalDeliveries',
-                            color: AppColors.primaryBlue,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _StatCard(
-                            icon: FontAwesomeIcons.star,
-                            title: 'Rating',
-                            value: _averageRating.toStringAsFixed(1),
-                            color: Colors.amber,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _StatCard(
-                            icon: FontAwesomeIcons.pesoSign,
-                            title: 'Today',
-                            value: 'P${_todayEarnings.toStringAsFixed(0)}',
-                            color: AppColors.success,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _StatCard(
-                            icon: FontAwesomeIcons.chartLine,
-                            title: 'Average',
-                            value:
-                                'P${(_totalEarnings / _totalDeliveries).toStringAsFixed(0)}',
-                            color: AppColors.warning,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // Earnings Distribution Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 24,
+                        // Earnings Distribution Card
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: AppColors.primaryBlue,
-                              borderRadius: BorderRadius.circular(2),
+                              color: AppColors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 4,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryBlue,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      'Earnings Distribution',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontFamily: 'Bold',
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                _DistributionRow(
+                                  title: 'Operator (80%)',
+                                  amount:
+                                      'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}',
+                                  color: AppColors.success,
+                                  icon: Icons.account_balance,
+                                ),
+                                const SizedBox(height: 12),
+                                _DistributionRow(
+                                  title: 'Admin (18%)',
+                                  amount:
+                                      'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}',
+                                  color: AppColors.primaryBlue,
+                                  icon: Icons.admin_panel_settings,
+                                ),
+                                const SizedBox(height: 12),
+                                _DistributionRow(
+                                  title: 'BIR (2%)',
+                                  amount:
+                                      'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}',
+                                  color: AppColors.warning,
+                                  icon: Icons.receipt_long,
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Earnings Distribution',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontFamily: 'Bold',
-                              color: AppColors.textPrimary,
-                            ),
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // Earnings Chart
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 4,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryRed,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Earnings Overview',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontFamily: 'Bold',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                height: 200,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.04),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: _buildEarningsChart(),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _DistributionRow(
-                        title: 'Operator (80%)',
-                        amount:
-                            'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}',
-                        color: AppColors.success,
-                        icon: Icons.account_balance,
-                      ),
-                      const SizedBox(height: 12),
-                      _DistributionRow(
-                        title: 'Admin (18%)',
-                        amount:
-                            'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}',
-                        color: AppColors.primaryBlue,
-                        icon: Icons.admin_panel_settings,
-                      ),
-                      const SizedBox(height: 12),
-                      _DistributionRow(
-                        title: 'BIR (2%)',
-                        amount:
-                            'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}',
-                        color: AppColors.warning,
-                        icon: Icons.receipt_long,
-                      ),
-                    ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Performance Chart
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 4,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryBlue,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Delivery Performance',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontFamily: 'Bold',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                height: 200,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.04),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: _buildPerformanceChart(),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // Earnings Distribution Chart
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 4,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.warning,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Earnings Distribution Breakdown',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontFamily: 'Bold',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                height: 250,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.04),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: _buildDistributionChart(),
+                              ),
+                              const SizedBox(height: 16),
+                              // Distribution Legend
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.04),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  children: [
+                                    _buildLegendItem(
+                                        'Operator (80%)',
+                                        AppColors.success,
+                                        'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}'),
+                                    const SizedBox(height: 8),
+                                    _buildLegendItem(
+                                        'Admin (18%)',
+                                        AppColors.primaryBlue,
+                                        'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}'),
+                                    const SizedBox(height: 8),
+                                    _buildLegendItem(
+                                        'BIR (2%)',
+                                        AppColors.warning,
+                                        'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // Recent Transactions
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 4,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryRed,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Recent Transactions',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontFamily: 'Bold',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              // Show recent transactions from Firebase
+                              if (_recentTransactions.isEmpty)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(20),
+                                    child: Text(
+                                      'No transactions yet',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                ..._recentTransactions.map((transaction) {
+                                  final isPositive =
+                                      transaction['type'] == 'earning' ||
+                                          transaction['type'] == 'topup';
+                                  final amount =
+                                      (transaction['amount'] as num).toDouble();
+                                  final createdAt = transaction['createdAt'];
+                                  String dateStr = 'Unknown';
+
+                                  if (createdAt != null) {
+                                    if (createdAt is DateTime) {
+                                      dateStr = DateFormat('MMM d, yyyy')
+                                          .format(createdAt);
+                                    } else if (createdAt is Timestamp) {
+                                      dateStr = DateFormat('MMM d, yyyy')
+                                          .format(createdAt.toDate());
+                                    }
+                                  }
+
+                                  return _TransactionCard(
+                                    title: _getTransactionTitle(
+                                        transaction['type']),
+                                    date: dateStr,
+                                    amount: isPositive
+                                        ? '+P${amount.toStringAsFixed(2)}'
+                                        : '-P${amount.toStringAsFixed(2)}',
+                                    isPositive: isPositive,
+                                    onTap: () => _showTransactionDetails(
+                                      _getTransactionTitle(transaction['type']),
+                                      dateStr,
+                                      isPositive
+                                          ? '+P${amount.toStringAsFixed(2)}'
+                                          : '-P${amount.toStringAsFixed(2)}',
+                                      transaction['id'] ?? '',
+                                      transaction['description'] ??
+                                          'No description available',
+                                      _formatStatus(
+                                          transaction['status'] ?? 'completed'),
+                                    ),
+                                  );
+                                }).toList(),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+        ));
+  }
 
-              const SizedBox(height: 28),
+  Future<void> _loadEarningsData() async {
+    final riderId = _authService.currentUser?.userId;
+    if (riderId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
 
-              // Earnings Chart
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 4,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryRed,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Earnings Overview',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontFamily: 'Bold',
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      height: 200,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: _buildEarningsChart(),
-                    ),
-                  ],
-                ),
-              ),
+    try {
+      // Load rider data for rating and wallet balance
+      final riderDoc = await _firestore.collection('riders').doc(riderId).get();
+      double walletBalance = 0.0;
+      if (riderDoc.exists) {
+        final riderData = riderDoc.data()!;
+        setState(() {
+          _riderData = RiderModel.fromJson(riderData);
+          _averageRating = _riderData?.rating ?? 0.0;
+        });
+        walletBalance = (riderData['walletBalance'] as num?)?.toDouble() ?? 0.0;
+      }
 
-              const SizedBox(height: 24),
+      // Load completed bookings for earnings
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final tomorrow = today.add(const Duration(days: 1));
 
-              // Performance Chart
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 4,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryBlue,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Delivery Performance',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontFamily: 'Bold',
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      height: 200,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: _buildPerformanceChart(),
-                    ),
-                  ],
-                ),
-              ),
+      final bookingsQuery = await _firestore
+          .collection('bookings')
+          .where('driverId', isEqualTo: riderId)
+          .where('status', whereIn: ['completed', 'delivered'])
+          .orderBy('createdAt', descending: true)
+          .get();
 
-              const SizedBox(height: 28),
+      double totalEarnings = 0;
+      double todayEarnings = 0;
+      int totalDeliveries = 0;
 
-              // Earnings Distribution Chart
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 4,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: AppColors.warning,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Earnings Distribution Breakdown',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontFamily: 'Bold',
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      height: 250,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: _buildDistributionChart(),
-                    ),
-                    const SizedBox(height: 16),
-                    // Distribution Legend
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          _buildLegendItem('Operator (80%)', AppColors.success,
-                              'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}'),
-                          const SizedBox(height: 8),
-                          _buildLegendItem('Admin (18%)', AppColors.primaryBlue,
-                              'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}'),
-                          const SizedBox(height: 8),
-                          _buildLegendItem('BIR (2%)', AppColors.warning,
-                              'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+      // Initialize chart data
+      List<double> weeklyEarnings = [0, 0, 0, 0, 0, 0, 0];
+      List<double> monthlyEarnings = List.generate(12, (_) => 0.0);
+      List<int> weeklyDeliveries = [0, 0, 0, 0, 0, 0, 0];
+      List<int> monthlyDeliveries = List.generate(12, (_) => 0);
 
-              const SizedBox(height: 28),
+      // Get start of week (Monday)
+      final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
+      // Get start of month
+      final startOfMonth = DateTime(now.year, now.month, 1);
 
-              // Recent Transactions
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 4,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryRed,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Recent Transactions',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontFamily: 'Bold',
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    _TransactionCard(
-                      title: 'Delivery Earnings',
-                      date: 'Nov 6, 2025',
-                      amount: '+P350',
-                      isPositive: true,
-                      onTap: () => _showTransactionDetails(
-                          'Delivery Earnings',
-                          'Nov 6, 2025',
-                          '+P350',
-                          'BK001',
-                          'Completed delivery from Makati to Pasig\n\nDistribution:\nOperator (80%): P280.00\nAdmin (18%): P63.00\nBIR (2%): P7.00'),
-                    ),
-                    _TransactionCard(
-                      title: 'Delivery Earnings',
-                      date: 'Nov 5, 2025',
-                      amount: '+P420',
-                      isPositive: true,
-                      onTap: () => _showTransactionDetails(
-                          'Delivery Earnings',
-                          'Nov 5, 2025',
-                          '+P420',
-                          'BK002',
-                          'Completed delivery from Quezon City to Mandaluyong\n\nDistribution:\nOperator (80%): P336.00\nAdmin (18%): P75.60\nBIR (2%): P8.40'),
-                    ),
-                    _TransactionCard(
-                      title: 'Load Wallet',
-                      date: 'Nov 4, 2025',
-                      amount: '-P500',
-                      isPositive: false,
-                      onTap: () => _showTransactionDetails(
-                          'Load Wallet',
-                          'Nov 4, 2025',
-                          '-P500',
-                          'LW001',
-                          'Load wallet to 09123456789 via GCash\n\nRecipient: 09123456789\nMethod: GCash\nStatus: Completed'),
-                    ),
-                    _TransactionCard(
-                      title: 'Load Wallet',
-                      date: 'Nov 3, 2025',
-                      amount: '-P750',
-                      isPositive: false,
-                      onTap: () => _showTransactionDetails(
-                          'Load Wallet',
-                          'Nov 3, 2025',
-                          '-P750',
-                          'LW002',
-                          'Load wallet to 09876543210 via PayMaya\n\nRecipient: 09876543210\nMethod: PayMaya\nStatus: Completed'),
-                    ),
-                    _TransactionCard(
-                      title: 'Top Up',
-                      date: 'Nov 2, 2025',
-                      amount: '+P1000',
-                      isPositive: true,
-                      onTap: () => _showTransactionDetails(
-                          'Top Up',
-                          'Nov 2, 2025',
-                          '+P1000',
-                          'TOP001',
-                          'Wallet top-up via GCash\n\nMethod: GCash\nStatus: Completed'),
-                    ),
-                  ],
-                ),
-              ),
+      for (var doc in bookingsQuery.docs) {
+        final booking = BookingModel.fromMap(doc.data());
 
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
+        if (booking.estimatedFare != null) {
+          final earnings = booking.estimatedFare!;
+          totalEarnings += earnings;
+          totalDeliveries++;
+
+          // Check if today's earnings - fixed to check same day
+          final bookingDate = booking.createdAt;
+          if (bookingDate != null &&
+              bookingDate.isAfter(today) &&
+              bookingDate.isBefore(tomorrow)) {
+            todayEarnings += earnings;
+          }
+
+          // Weekly data
+          if (bookingDate != null && bookingDate.isAfter(startOfWeek)) {
+            final dayIndex = bookingDate.weekday - 1; // 0 = Monday
+            if (dayIndex >= 0 && dayIndex < 7) {
+              weeklyEarnings[dayIndex] += earnings;
+              weeklyDeliveries[dayIndex]++;
+            }
+          }
+
+          // Monthly data - fixed to use all 12 months
+          if (bookingDate != null && bookingDate.isAfter(startOfMonth)) {
+            final monthIndex = bookingDate.month - 1; // 0 = January
+            if (monthIndex >= 0 && monthIndex < 12) {
+              monthlyEarnings[monthIndex] += earnings;
+              monthlyDeliveries[monthIndex]++;
+            }
+          }
+        }
+      }
+
+      // Load recent transactions from wallet_transactions
+      final transactionsQuery = await _firestore
+          .collection('wallet_transactions')
+          .where('userId', isEqualTo: riderId)
+          .orderBy('createdAt', descending: true)
+          .limit(10)
+          .get();
+
+      List<Map<String, dynamic>> transactions = [];
+      for (var doc in transactionsQuery.docs) {
+        final data = doc.data();
+        transactions.add({
+          'id': doc.id,
+          'type': data['type'] ?? 'unknown',
+          'amount': data['amount'] ?? 0.0,
+          'description': data['description'] ?? '',
+          'createdAt': data['createdAt'],
+          'status': data['status'] ?? 'completed',
+          'previousBalance': data['previousBalance'] ?? 0.0,
+          'newBalance': data['newBalance'] ?? 0.0,
+        });
+      }
+
+      setState(() {
+        _totalEarnings = totalEarnings;
+        _todayEarnings = todayEarnings;
+        _walletBalance = walletBalance;
+        _totalDeliveries = totalDeliveries;
+        _weeklyEarnings = weeklyEarnings;
+        _monthlyEarnings = monthlyEarnings;
+        _weeklyDeliveries = weeklyDeliveries;
+        _monthlyDeliveries = monthlyDeliveries;
+        _recentTransactions = transactions;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading earnings data: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _refreshData() async {
+    setState(() => _isLoading = true);
+    await _loadEarningsData();
   }
 
   void _showTopUpDialog() {
@@ -822,16 +996,54 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
-                        if (_amountController.text.isNotEmpty) {
-                          Navigator.of(context).pop();
-                          UIHelpers.showSuccessToast(
-                              'Top-up request of P${_amountController.text} submitted');
-                          _amountController.clear();
-                        } else {
-                          UIHelpers.showErrorToast('Please enter an amount');
-                        }
-                      },
+                      onPressed: _isProcessingTransaction
+                          ? null
+                          : () async {
+                              if (_amountController.text.isNotEmpty) {
+                                final amount =
+                                    double.tryParse(_amountController.text);
+                                if (amount != null && amount > 0) {
+                                  setState(
+                                      () => _isProcessingTransaction = true);
+
+                                  final riderId =
+                                      _authService.currentUser?.userId;
+                                  if (riderId != null) {
+                                    final success =
+                                        await _walletService.topUpWallet(
+                                      userId: riderId,
+                                      amount: amount,
+                                      description:
+                                          'Top up wallet via ${_selectedPaymentMethod.toUpperCase()}',
+                                      referenceId: _selectedPaymentMethod,
+                                    );
+
+                                    if (success) {
+                                      Navigator.of(context).pop();
+                                      UIHelpers.showSuccessToast(
+                                          'Top-up of P${amount.toStringAsFixed(2)} successful');
+                                      _amountController.clear();
+                                      _refreshData();
+                                    } else {
+                                      UIHelpers.showErrorToast(
+                                          'Top-up failed. Please try again.');
+                                    }
+                                  } else {
+                                    UIHelpers.showErrorToast(
+                                        'User not logged in');
+                                  }
+
+                                  setState(
+                                      () => _isProcessingTransaction = false);
+                                } else {
+                                  UIHelpers.showErrorToast(
+                                      'Please enter a valid amount');
+                                }
+                              } else {
+                                UIHelpers.showErrorToast(
+                                    'Please enter an amount');
+                              }
+                            },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.success,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -940,7 +1152,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}',
+                        'P${_walletBalance.toStringAsFixed(2)}',
                         style: const TextStyle(
                           fontSize: 24,
                           fontFamily: 'Bold',
@@ -1063,18 +1275,103 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          if (_amountController.text.isNotEmpty &&
-                              _recipientController.text.isNotEmpty) {
-                            Navigator.of(context).pop();
-                            UIHelpers.showSuccessToast(
-                                'Load wallet request of P${_amountController.text} to ${_recipientController.text} via ${_selectedLoadMethod.toUpperCase()}');
-                            _amountController.clear();
-                            _recipientController.clear();
-                          } else {
-                            UIHelpers.showErrorToast('Please fill all fields');
-                          }
-                        },
+                        onPressed: _isProcessingTransaction
+                            ? null
+                            : () async {
+                                if (_amountController.text.isNotEmpty &&
+                                    _recipientController.text.isNotEmpty) {
+                                  final amount =
+                                      double.tryParse(_amountController.text);
+                                  if (amount != null && amount > 0) {
+                                    if (amount > _walletBalance) {
+                                      UIHelpers.showErrorToast(
+                                          'Insufficient balance');
+                                      return;
+                                    }
+
+                                    setState(
+                                        () => _isProcessingTransaction = true);
+
+                                    final riderId =
+                                        _authService.currentUser?.userId;
+                                    if (riderId != null) {
+                                      // Create withdrawal transaction
+                                      final walletTransactionId = _firestore
+                                          .collection('wallet_transactions')
+                                          .doc()
+                                          .id;
+                                      final previousBalance = _walletBalance;
+                                      final newBalance =
+                                          _walletBalance - amount;
+
+                                      try {
+                                        await _firestore.runTransaction(
+                                            (transaction) async {
+                                          // Update rider wallet balance
+                                          transaction.update(
+                                            _firestore
+                                                .collection('riders')
+                                                .doc(riderId),
+                                            {
+                                              'walletBalance': newBalance,
+                                              'updatedAt': DateTime.now()
+                                                  .toIso8601String(),
+                                            },
+                                          );
+
+                                          // Add withdrawal transaction record
+                                          transaction.set(
+                                            _firestore
+                                                .collection(
+                                                    'wallet_transactions')
+                                                .doc(walletTransactionId),
+                                            {
+                                              'id': walletTransactionId,
+                                              'userId': riderId,
+                                              'type': 'withdrawal',
+                                              'amount': amount,
+                                              'previousBalance':
+                                                  previousBalance,
+                                              'newBalance': newBalance,
+                                              'description':
+                                                  'Withdrawal to ${_recipientController.text} via ${_selectedLoadMethod.toUpperCase()}',
+                                              'referenceId':
+                                                  _selectedLoadMethod,
+                                              'recipient':
+                                                  _recipientController.text,
+                                              'status': 'pending',
+                                              'createdAt':
+                                                  FieldValue.serverTimestamp(),
+                                            },
+                                          );
+                                        });
+
+                                        Navigator.of(context).pop();
+                                        UIHelpers.showSuccessToast(
+                                            'Withdrawal of P${amount.toStringAsFixed(2)} submitted');
+                                        _amountController.clear();
+                                        _recipientController.clear();
+                                        _refreshData();
+                                      } catch (e) {
+                                        UIHelpers.showErrorToast(
+                                            'Withdrawal failed. Please try again.');
+                                      }
+                                    } else {
+                                      UIHelpers.showErrorToast(
+                                          'User not logged in');
+                                    }
+
+                                    setState(
+                                        () => _isProcessingTransaction = false);
+                                  } else {
+                                    UIHelpers.showErrorToast(
+                                        'Please enter a valid amount');
+                                  }
+                                } else {
+                                  UIHelpers.showErrorToast(
+                                      'Please fill all fields');
+                                }
+                              },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primaryBlue,
                           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1099,7 +1396,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   }
 
   void _showTransactionDetails(String title, String date, String amount,
-      String transactionId, String description) {
+      String transactionId, String description, String status) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1166,7 +1463,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                     _buildDetailRow('Transaction ID', transactionId),
                     _buildDetailRow('Date', date),
                     _buildDetailRow('Amount', amount),
-                    _buildDetailRow('Status', 'Completed'),
+                    _buildDetailRow('Status', _formatStatus(status)),
                     const SizedBox(height: 16),
                     const Text(
                       'Description',
@@ -1324,13 +1621,62 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
     );
   }
 
+  String _getTransactionTitle(String? type) {
+    switch (type) {
+      case 'earning':
+        return 'Delivery Earnings';
+      case 'load':
+        return 'Load Wallet';
+      case 'top_up':
+        return 'Top Up';
+      case 'withdrawal':
+        return 'Withdrawal';
+      case 'refund':
+        return 'Refund';
+      default:
+        return 'Transaction';
+    }
+  }
+
+  String _formatStatus(dynamic status) {
+    if (status == null) return 'Unknown';
+    final statusStr = status.toString().toLowerCase();
+    switch (statusStr) {
+      case 'completed':
+        return 'Completed';
+      case 'pending':
+        return 'Pending';
+      case 'processing':
+        return 'Processing';
+      case 'failed':
+        return 'Failed';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return statusStr[0].toUpperCase() + statusStr.substring(1);
+    }
+  }
+
   Widget _buildEarningsChart() {
     final isWeekly =
         _selectedPeriod == 'This Week' || _selectedPeriod == 'Today';
     final data = isWeekly ? _weeklyEarnings : _monthlyEarnings;
     final labels = isWeekly
         ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+        : [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec'
+          ];
 
     return LineChart(
       LineChartData(
@@ -1524,7 +1870,20 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
     final deliveryData = isWeekly ? _weeklyDeliveries : _monthlyDeliveries;
     final labels = isWeekly
         ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+        : [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec'
+          ];
 
     return BarChart(
       BarChartData(
