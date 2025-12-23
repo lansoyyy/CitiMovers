@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
-import '../tabs/bookings_tab.dart';
+import '../../models/booking_model.dart';
 import 'delivery_completion_screen.dart';
 
 enum DeliveryStep {
@@ -21,7 +21,7 @@ enum LoadingSubStep { arrived, startLoading, finishLoading }
 enum UnloadingSubStep { arrived, startUnloading, finishUnloading }
 
 class DeliveryTrackingScreen extends StatefulWidget {
-  final BookingData booking;
+  final BookingModel booking;
 
   const DeliveryTrackingScreen({
     super.key,
@@ -169,7 +169,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   BitmapDescriptor.hueGreen),
               infoWindow: InfoWindow(
                 title: 'Driver Location',
-                snippet: widget.booking.vehicleType,
+                snippet: widget.booking.vehicle.name,
               ),
               rotation: _calculateRotation(_currentRouteIndex),
             ),
@@ -279,8 +279,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     // "Every 4 hours - 25% of the delivery fare"
     int blocks = _loadingDuration.inHours ~/ 4;
     if (blocks > 0) {
-      final fareString = widget.booking.fare.replaceAll(RegExp(r'[^0-9.]'), '');
-      final baseFare = double.tryParse(fareString) ?? 0.0;
+      final baseFare = widget.booking.estimatedFare;
       _loadingDemurrageFee = blocks * 0.25 * baseFare;
     } else {
       _loadingDemurrageFee = 0.0;
@@ -301,8 +300,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   void _calculateUnloadingFee() {
     int blocks = _unloadingDuration.inHours ~/ 4;
     if (blocks > 0) {
-      final fareString = widget.booking.fare.replaceAll(RegExp(r'[^0-9.]'), '');
-      final baseFare = double.tryParse(fareString) ?? 0.0;
+      final baseFare = widget.booking.estimatedFare;
       _unloadingDemurrageFee = blocks * 0.25 * baseFare;
     } else {
       _unloadingDemurrageFee = 0.0;
@@ -372,7 +370,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               ),
             ),
             Text(
-              'Booking ID: ${widget.booking.id}',
+              'Booking ID: ${widget.booking.bookingId}',
               style: const TextStyle(
                 fontSize: 12,
                 fontFamily: 'Regular',
@@ -468,7 +466,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                                     ),
                                   ),
                                   Text(
-                                    widget.booking.vehicleType,
+                                    widget.booking.vehicle.name,
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontFamily: 'Regular',
@@ -511,7 +509,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Driver: ${widget.booking.driverName}',
+                              'Driver: Driver Name',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'Medium',
@@ -519,9 +517,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                               ),
                             ),
                             Text(
-                              _isDelivered
-                                  ? 'Completed'
-                                  : 'Est. ${widget.booking.estimatedTime}',
+                              _isDelivered ? 'Completed' : 'Est. 30 mins',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'Medium',
@@ -1010,7 +1006,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Est. Time: ${widget.booking.estimatedTime}',
+          'Est. Time: 30 mins',
           style: TextStyle(fontSize: 12, color: AppColors.textHint),
         ),
       ],

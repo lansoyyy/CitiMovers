@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
-import '../tabs/bookings_tab.dart';
+import '../../models/booking_model.dart';
 
 class DeliveryCompletionScreen extends StatefulWidget {
-  final BookingData booking;
+  final BookingModel booking;
   final double loadingDemurrage;
   final double unloadingDemurrage;
 
@@ -54,10 +54,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     {'icon': Icons.more_horiz, 'label': 'Others'},
   ];
 
-  double get _baseFare {
-    final fareString = widget.booking.fare.replaceAll(RegExp(r'[^0-9.]'), '');
-    return double.tryParse(fareString) ?? 0.0;
-  }
+  double get _baseFare => widget.booking.estimatedFare;
 
   double get _totalDemurrage =>
       widget.loadingDemurrage + widget.unloadingDemurrage;
@@ -327,7 +324,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Booking ID: ${widget.booking.id}',
+                          'Booking ID: ${widget.booking.bookingId}',
                           style: const TextStyle(
                             fontSize: 14,
                             fontFamily: 'Regular',
@@ -371,14 +368,14 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   ),
                   const SizedBox(height: 16),
                   _buildSummaryRow(Icons.local_shipping, 'Vehicle',
-                      widget.booking.vehicleType),
-                  _buildSummaryRow(
-                      Icons.person, 'Driver', widget.booking.driverName),
-                  _buildSummaryRow(
-                      Icons.calendar_today, 'Date', widget.booking.date),
-                  _buildSummaryRow(
-                      Icons.access_time, 'Time', widget.booking.time),
-                  _buildSummaryRow(Icons.payments, 'Fare', widget.booking.fare),
+                      widget.booking.vehicle.name),
+                  _buildSummaryRow(Icons.person, 'Driver', 'Driver Name'),
+                  _buildSummaryRow(Icons.calendar_today, 'Date',
+                      '${widget.booking.createdAt.day}/${widget.booking.createdAt.month}/${widget.booking.createdAt.year}'),
+                  _buildSummaryRow(Icons.access_time, 'Time',
+                      '${widget.booking.createdAt.hour}:${widget.booking.createdAt.minute.toString().padLeft(2, '0')}'),
+                  _buildSummaryRow(Icons.payments, 'Fare',
+                      'P${widget.booking.estimatedFare.toStringAsFixed(2)}'),
                 ],
               ),
             ),
@@ -1182,7 +1179,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'You are tipping P${_selectedTipAmount!.toStringAsFixed(0)} to ${widget.booking.driverName}',
+                                  'You are tipping P${_selectedTipAmount!.toStringAsFixed(0)} to Driver',
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontFamily: 'Medium',

@@ -1,9 +1,9 @@
-import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
+import '../../models/booking_model.dart';
 import '../../services/auth_service.dart';
 import '../home_screen.dart';
 import '../delivery/delivery_tracking_screen.dart';
@@ -14,7 +14,7 @@ class OTPVerificationScreen extends StatefulWidget {
   final String? name;
   final VoidCallback? onVerified;
   final bool isBookingFlow;
-  final BookingData? booking;
+  final BookingModel? booking;
 
   const OTPVerificationScreen({
     super.key,

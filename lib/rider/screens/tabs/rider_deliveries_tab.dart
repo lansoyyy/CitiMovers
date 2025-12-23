@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../../screens/delivery/delivery_tracking_screen.dart';
-import '../../../screens/tabs/bookings_tab.dart';
+import '../../../models/booking_model.dart';
+import '../../../models/location_model.dart';
+import '../../../models/vehicle_model.dart';
 
 class RiderDeliveriesTab extends StatefulWidget {
   const RiderDeliveriesTab({super.key});
@@ -180,20 +182,39 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                 context,
                 MaterialPageRoute(
                   builder: (context) => DeliveryTrackingScreen(
-                    booking: BookingData(
-                      id: deliveries[index].id,
-                      vehicleType: deliveries[index].vehicleType,
-                      driverName:
-                          'Current Driver', // This would be the rider's name
-                      driverRating: 4.8, // This would be the rider's rating
-                      from: deliveries[index].pickupLocation,
-                      to: deliveries[index].deliveryLocation,
-                      date: deliveries[index].date,
-                      time: deliveries[index].time,
-                      fare: deliveries[index].fare,
-                      status: deliveries[index].status,
-                      statusColor: deliveries[index].statusColor,
-                      estimatedTime: deliveries[index].estimatedTime,
+                    booking: BookingModel(
+                      bookingId: deliveries[index].id,
+                      customerId:
+                          'customer_id_placeholder', // Add appropriate customer ID
+                      pickupLocation: LocationModel(
+                        address: deliveries[index].pickupLocation,
+                        latitude: 0.0, // Add appropriate default or calculate
+                        longitude: 0.0, // Add appropriate default or calculate
+                      ),
+                      dropoffLocation: LocationModel(
+                        address: deliveries[index].deliveryLocation,
+                        latitude: 0.0, // Add appropriate default or calculate
+                        longitude: 0.0, // Add appropriate default or calculate
+                      ),
+                      vehicle: VehicleModel(
+                        id: 'vehicle_id_placeholder',
+                        name: deliveries[index].vehicleType,
+                        type: 'truck',
+                        description: 'Standard delivery truck',
+                        baseFare: 50.0,
+                        perKmRate: 10.0,
+                        capacity: '1000 kg',
+                        features: ['Refrigerated', 'GPS Tracking'],
+                        imageUrl: '',
+                      ),
+                      bookingType: 'now',
+                      distance: 0.0, // Add appropriate default or calculate
+                      estimatedFare:
+                          double.tryParse(deliveries[index].fare.toString()) ??
+                              0.0,
+                      paymentMethod: 'cash',
+                      createdAt:
+                          DateTime.now(), // Use actual date from delivery data
                     ),
                   ),
                 ),

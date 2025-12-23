@@ -2,6 +2,7 @@ import 'package:citimovers/screens/tabs/notifications_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/auth_service.dart';
+import '../../services/wallet_service.dart';
 import '../../utils/app_colors.dart';
 import 'edit_profile_screen.dart';
 import '../help_center_screen.dart';
@@ -234,8 +235,19 @@ class ProfileScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     infoRow('User ID', user.userId),
                     infoRow('User Type', user.userType),
-                    infoRow('Wallet Balance',
-                        user.walletBalance.toStringAsFixed(2)),
+                    FutureBuilder<double>(
+                      future: WalletService().getWalletBalance(user.userId),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData) {
+                          return infoRow('Wallet Balance',
+                              snapshot.data!.toStringAsFixed(2));
+                        } else if (snapshot.hasError) {
+                          return infoRow('Wallet Balance', 'Error loading');
+                        } else {
+                          return infoRow('Wallet Balance', 'Loading...');
+                        }
+                      },
+                    ),
                     infoRow(
                       'Favorites',
                       user.favoriteLocations.isEmpty

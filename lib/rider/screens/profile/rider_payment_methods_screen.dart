@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
+import '../../../services/payment_service.dart';
+import '../../services/rider_auth_service.dart';
 
 class RiderPaymentMethodsScreen extends StatefulWidget {
   const RiderPaymentMethodsScreen({super.key});
@@ -12,70 +14,57 @@ class RiderPaymentMethodsScreen extends StatefulWidget {
 }
 
 class _RiderPaymentMethodsScreenState extends State<RiderPaymentMethodsScreen> {
-  final List<PaymentMethod> _paymentMethods = [
-    PaymentMethod(
-      id: '1',
-      type: 'bank',
-      name: 'BDO',
-      accountNumber: '****1234',
-      accountName: 'Juan Dela Cruz',
-      isDefault: true,
-    ),
-    PaymentMethod(
-      id: '2',
-      type: 'gcash',
-      name: 'GCash',
-      accountNumber: '09171234567',
-      accountName: 'Juan Dela Cruz',
-      isDefault: false,
-    ),
-  ];
+  final _authService = RiderAuthService();
+  final _paymentService = PaymentService();
+  Stream<List<PaymentMethod>>? _paymentMethodsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPaymentMethods();
+  }
+
+  void _loadPaymentMethods() {
+    final rider = _authService.currentRider;
+    if (rider != null) {
+      setState(() {
+        _paymentMethodsStream =
+            _paymentService.getPaymentMethods(rider.riderId);
+      });
+    }
+  }
 
   void _showAddPaymentMethodDialog() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AddPaymentMethodSheet(),
-    );
-  }
-
-  void _setDefaultPaymentMethod(String id) {
-    setState(() {
-      for (var method in _paymentMethods) {
-        method.isDefault = method.id == id;
-      }
-    });
-    UIHelpers.showSuccessToast('Default payment method updated');
-  }
-
-  void _deletePaymentMethod(String id) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Payment Method'),
-        content: const Text('Are you sure you want to delete this payment method?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _paymentMethods.removeWhere((method) => method.id == id);
-              });
-              Navigator.pop(context);
-              UIHelpers.showSuccessToast('Payment method deleted');
-            },
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
+      builder: (context) => _AddPaymentMethodSheet(
+        onPaymentMethodAdded: () {
+          // Stream will automatically update
+          UIHelpers.showSuccessToast('Payment method added');
+        },
       ),
     );
+  }
+
+  void _setDefaultPaymentMethod(String id) async {
+    final success = await _paymentService.setDefaultPaymentMethod(id);
+    if (success) {
+      UIHelpers.showSuccessToast('Default payment method updated');
+    } else {
+      UIHelpers.showErrorToast('Failed to update default payment method');
+    }
+  }
+
+  void _deletePaymentMethod(String id) async {
+    final success = await _paymentService.deletePaymentMethod(id);
+    if (success) {
+      UIHelpers.showSuccessToast('Payment method deleted');
+    } else {
+      UIHelpers.showErrorToast(
+          'Cannot delete default payment method or method not found');
+    }
   }
 
   @override
@@ -135,45 +124,67 @@ class _RiderPaymentMethodsScreenState extends State<RiderPaymentMethodsScreen> {
               const SizedBox(height: 24),
 
               // Payment Methods List
-              if (_paymentMethods.isEmpty)
-                Center(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 40),
-                      Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 80,
-                        color: AppColors.lightGrey,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'No Payment Methods',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontFamily: 'Bold',
-                          color: AppColors.textPrimary,
+              if (_paymentMethodsStream != null)
+                StreamBuilder<List<PaymentMethod>>(
+                  stream: _paymentMethodsStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text('Error loading payment methods'),
+                      );
+                    }
+
+                    final paymentMethods = snapshot.data ?? [];
+
+                    if (paymentMethods.isEmpty) {
+                      return Center(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 40),
+                            Icon(
+                              Icons.account_balance_wallet_outlined,
+                              size: 80,
+                              color: AppColors.lightGrey,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No Payment Methods',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontFamily: 'Bold',
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Add a payment method to receive your earnings',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Regular',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Add a payment method to receive your earnings',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Regular',
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                ..._paymentMethods.map((method) {
-                  return _PaymentMethodCard(
-                    method: method,
-                    onSetDefault: () => _setDefaultPaymentMethod(method.id),
-                    onDelete: () => _deletePaymentMethod(method.id),
-                  );
-                }).toList(),
+                      );
+                    }
+
+                    return Column(
+                      children: paymentMethods.map((method) {
+                        return _PaymentMethodCard(
+                          method: method,
+                          onSetDefault: () =>
+                              _setDefaultPaymentMethod(method.id),
+                          onDelete: () => _deletePaymentMethod(method.id),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
 
               const SizedBox(height: 24),
 
@@ -193,7 +204,8 @@ class _RiderPaymentMethodsScreenState extends State<RiderPaymentMethodsScreen> {
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.primaryRed,
-                    side: const BorderSide(color: AppColors.primaryRed, width: 2),
+                    side:
+                        const BorderSide(color: AppColors.primaryRed, width: 2),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -208,24 +220,6 @@ class _RiderPaymentMethodsScreenState extends State<RiderPaymentMethodsScreen> {
       ),
     );
   }
-}
-
-class PaymentMethod {
-  final String id;
-  final String type; // 'bank', 'gcash', 'paymaya'
-  final String name;
-  final String accountNumber;
-  final String accountName;
-  bool isDefault;
-
-  PaymentMethod({
-    required this.id,
-    required this.type,
-    required this.name,
-    required this.accountNumber,
-    required this.accountName,
-    required this.isDefault,
-  });
 }
 
 class _PaymentMethodCard extends StatelessWidget {
@@ -324,7 +318,8 @@ class _PaymentMethodCard extends StatelessWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.primaryRed.withValues(alpha: 0.1),
+                              color:
+                                  AppColors.primaryRed.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Text(
@@ -376,9 +371,11 @@ class _PaymentMethodCard extends StatelessWidget {
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_outline, size: 20, color: AppColors.error),
+                        Icon(Icons.delete_outline,
+                            size: 20, color: AppColors.error),
                         SizedBox(width: 12),
-                        Text('Delete', style: TextStyle(color: AppColors.error)),
+                        Text('Delete',
+                            style: TextStyle(color: AppColors.error)),
                       ],
                     ),
                   ),
@@ -402,12 +399,75 @@ class _PaymentMethodCard extends StatelessWidget {
 }
 
 class _AddPaymentMethodSheet extends StatefulWidget {
+  final VoidCallback onPaymentMethodAdded;
+
+  const _AddPaymentMethodSheet({
+    required this.onPaymentMethodAdded,
+  });
+
   @override
   State<_AddPaymentMethodSheet> createState() => _AddPaymentMethodSheetState();
 }
 
 class _AddPaymentMethodSheetState extends State<_AddPaymentMethodSheet> {
   String _selectedType = 'bank';
+  final _nameController = TextEditingController();
+  final _accountNumberController = TextEditingController();
+  final _accountNameController = TextEditingController();
+  final _paymentService = PaymentService();
+  final _authService = RiderAuthService();
+  bool _isLoading = false;
+
+  Future<void> _savePaymentMethod() async {
+    final rider = _authService.currentRider;
+    if (rider == null) return;
+
+    final name = _nameController.text.trim();
+    final accountNumber = _accountNumberController.text.trim();
+    final accountName = _accountNameController.text.trim();
+
+    if (name.isEmpty || accountNumber.isEmpty || accountName.isEmpty) {
+      UIHelpers.showErrorToast('Please fill in all fields');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final success = await _paymentService.addPaymentMethod(
+        userId: rider.riderId,
+        type: _selectedType,
+        name: name,
+        accountNumber: accountNumber,
+        accountName: accountName,
+        isDefault:
+            false, // Can add logic to set as first payment method as default
+      );
+
+      if (success) {
+        Navigator.pop(context);
+        widget.onPaymentMethodAdded();
+      } else {
+        UIHelpers.showErrorToast('Failed to add payment method');
+      }
+    } catch (e) {
+      UIHelpers.showErrorToast('Error adding payment method');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _accountNumberController.dispose();
+    _accountNameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -487,8 +547,10 @@ class _AddPaymentMethodSheetState extends State<_AddPaymentMethodSheet> {
 
               // Form Fields
               TextFormField(
+                controller: _nameController,
                 decoration: InputDecoration(
-                  labelText: _selectedType == 'bank' ? 'Bank Name' : 'Account Name',
+                  labelText:
+                      _selectedType == 'bank' ? 'Bank Name' : 'Account Name',
                   prefixIcon: const Icon(Icons.account_balance),
                   filled: true,
                   fillColor: AppColors.scaffoldBackground,
@@ -498,6 +560,7 @@ class _AddPaymentMethodSheetState extends State<_AddPaymentMethodSheet> {
               const SizedBox(height: 16),
 
               TextFormField(
+                controller: _accountNumberController,
                 decoration: InputDecoration(
                   labelText: _selectedType == 'bank'
                       ? 'Account Number'
@@ -512,6 +575,7 @@ class _AddPaymentMethodSheetState extends State<_AddPaymentMethodSheet> {
               const SizedBox(height: 16),
 
               TextFormField(
+                controller: _accountNameController,
                 decoration: const InputDecoration(
                   labelText: 'Account Holder Name',
                   prefixIcon: Icon(Icons.person),
@@ -527,10 +591,7 @@ class _AddPaymentMethodSheetState extends State<_AddPaymentMethodSheet> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    UIHelpers.showSuccessToast('Payment method added');
-                  },
+                  onPressed: _isLoading ? null : _savePaymentMethod,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryRed,
                     foregroundColor: AppColors.white,
@@ -539,13 +600,15 @@ class _AddPaymentMethodSheetState extends State<_AddPaymentMethodSheet> {
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Add Payment Method',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontFamily: 'Bold',
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: AppColors.white)
+                      : const Text(
+                          'Add Payment Method',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Bold',
+                          ),
+                        ),
                 ),
               ),
 
@@ -591,7 +654,8 @@ class _PaymentTypeChip extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? AppColors.primaryRed : AppColors.textSecondary,
+              color:
+                  isSelected ? AppColors.primaryRed : AppColors.textSecondary,
               size: 24,
             ),
             const SizedBox(height: 8),
@@ -600,7 +664,8 @@ class _PaymentTypeChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontFamily: 'Bold',
-                color: isSelected ? AppColors.primaryRed : AppColors.textSecondary,
+                color:
+                    isSelected ? AppColors.primaryRed : AppColors.textSecondary,
               ),
             ),
           ],

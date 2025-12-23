@@ -1,10 +1,10 @@
-import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/location_model.dart';
 import '../../models/vehicle_model.dart';
+import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
 import '../../services/auth_service.dart';
@@ -149,19 +149,19 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
             phoneNumber: user.phoneNumber,
             isSignup: false,
             isBookingFlow: true,
-            booking: BookingData(
-                id: booking.bookingId!,
-                vehicleType: booking.vehicle.name,
-                driverName: 'John Doe',
-                driverRating: 4.5,
-                from: booking.pickupLocation.address,
-                to: booking.dropoffLocation.address,
-                date: booking.scheduledDateTime.toString(),
-                time: booking.scheduledDateTime.toString(),
-                fare: booking.estimatedFare.toString(),
-                status: booking.status,
-                statusColor: Colors.green,
-                estimatedTime: '1 hour'),
+            booking: BookingModel(
+              bookingId: booking.bookingId!,
+              customerId:
+                  'customer_id_placeholder', // Add appropriate customer ID
+              pickupLocation: booking.pickupLocation,
+              dropoffLocation: booking.dropoffLocation,
+              vehicle: booking.vehicle,
+              bookingType: 'now',
+              distance: 0.0, // Add appropriate default or calculate
+              estimatedFare: booking.estimatedFare,
+              paymentMethod: 'cash',
+              createdAt: booking.scheduledDateTime ?? DateTime.now(),
+            ),
           ),
         ),
       );

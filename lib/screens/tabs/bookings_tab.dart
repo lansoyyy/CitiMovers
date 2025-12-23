@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
+import '../../services/booking_service.dart';
+import '../../models/booking_model.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../delivery/delivery_tracking_screen.dart';
@@ -13,32 +16,19 @@ class BookingsTab extends StatefulWidget {
 class _BookingsTabState extends State<BookingsTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool _isLoading = false;
+  final _authService = AuthService();
+  final _bookingService = BookingService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadBookings();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadBookings() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
   @override
@@ -80,65 +70,93 @@ class _BookingsTabState extends State<BookingsTab>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildBookingsList(BookingStatus.active),
-          _buildBookingsList(BookingStatus.completed),
-          _buildBookingsList(BookingStatus.cancelled),
+          _buildBookingsList('active'),
+          _buildBookingsList('completed'),
+          _buildBookingsList('cancelled'),
         ],
       ),
     );
   }
 
-  Widget _buildBookingsList(BookingStatus status) {
-    if (_isLoading) {
-      return Center(child: UIHelpers.loadingIndicator());
+  Widget _buildBookingsList(String status) {
+    final user = _authService.currentUser;
+    if (user == null) {
+      return const Center(
+        child: Text(
+          'Please login to view bookings',
+          style: TextStyle(
+            fontSize: 16,
+            fontFamily: 'Regular',
+            color: AppColors.textSecondary,
+          ),
+        ),
+      );
     }
 
-    // Sample booking data based on status
-    final List<BookingData> bookings = _getBookingsByStatus(status);
+    return StreamBuilder<List<BookingModel>>(
+      stream: _bookingService.getCustomerBookings(user.userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: UIHelpers.loadingIndicator());
+        }
 
-    if (bookings.isEmpty) {
-      return _buildEmptyState(status);
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadBookings,
-      color: AppColors.primaryRed,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: bookings.length,
-        itemBuilder: (context, index) {
-          return BookingCard(
-            booking: bookings[index],
-            onTap: () {
-              _showBookingDetailsBottomSheet(context, bookings[index]);
-            },
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading bookings',
+              style: const TextStyle(
+                fontSize: 16,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+              ),
+            ),
           );
-        },
-      ),
+        }
+
+        final bookings = snapshot.data ?? [];
+        final filteredBookings = _filterBookingsByStatus(bookings, status);
+
+        if (filteredBookings.isEmpty) {
+          return _buildEmptyState(status);
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: filteredBookings.length,
+          itemBuilder: (context, index) {
+            final booking = filteredBookings[index];
+            return _bookingCard(booking);
+          },
+        );
+      },
     );
   }
 
-  Widget _buildEmptyState(BookingStatus status) {
+  Widget _buildEmptyState(String status) {
     String title;
     String subtitle;
     IconData icon;
 
     switch (status) {
-      case BookingStatus.active:
+      case 'active':
         title = 'No active bookings';
         subtitle = 'You don\'t have any active deliveries';
         icon = Icons.local_shipping_outlined;
         break;
-      case BookingStatus.completed:
+      case 'completed':
         title = 'No completed bookings';
         subtitle = 'You haven\'t completed any deliveries yet';
         icon = Icons.check_circle_outline;
         break;
-      case BookingStatus.cancelled:
+      case 'cancelled':
         title = 'No cancelled bookings';
         subtitle = 'You don\'t have any cancelled deliveries';
         icon = Icons.cancel_outlined;
         break;
+      default:
+        title = 'No bookings';
+        subtitle = 'No bookings found';
+        icon = Icons.inbox_outlined;
     }
 
     return Center(
@@ -177,7 +195,7 @@ class _BookingsTabState extends State<BookingsTab>
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          if (status == BookingStatus.active)
+          if (status == 'active')
             ElevatedButton(
               onPressed: () {
                 UIHelpers.showInfoToast('Navigate to booking screen');
@@ -204,92 +222,41 @@ class _BookingsTabState extends State<BookingsTab>
     );
   }
 
-  List<BookingData> _getBookingsByStatus(BookingStatus status) {
+  // Helper methods for Firebase integration
+  List<BookingModel> _filterBookingsByStatus(
+      List<BookingModel> bookings, String status) {
     switch (status) {
-      case BookingStatus.active:
-        return [
-          BookingData(
-            id: 'BK001',
-            vehicleType: 'Wingvan',
-            driverName: 'Juan Dela Cruz',
-            driverRating: 4.8,
-            from: 'Quezon City',
-            to: 'Makati City',
-            date: 'Oct 24, 2025',
-            time: '10:30 AM',
-            fare: 'P850',
-            status: 'In Transit',
-            statusColor: AppColors.primaryBlue,
-            estimatedTime: '45 mins',
-          ),
-          BookingData(
-            id: 'BK002',
-            vehicleType: '4-Wheeler',
-            driverName: 'Pedro Santos',
-            driverRating: 4.9,
-            from: 'Manila',
-            to: 'Pasig City',
-            date: 'Oct 24, 2025',
-            time: '2:15 PM',
-            fare: 'P320',
-            status: 'Driver Assigned',
-            statusColor: AppColors.warning,
-            estimatedTime: '30 mins',
-          ),
-        ];
-      case BookingStatus.completed:
-        return [
-          BookingData(
-            id: 'BK003',
-            vehicleType: 'Motorcycle',
-            driverName: 'Maria Reyes',
-            driverRating: 4.7,
-            from: 'Mandaluyong',
-            to: 'San Juan',
-            date: 'Oct 23, 2025',
-            time: '9:00 AM',
-            fare: 'P150',
-            status: 'Completed',
-            statusColor: AppColors.success,
-            estimatedTime: 'Delivered',
-          ),
-          BookingData(
-            id: 'BK004',
-            vehicleType: '6-Wheeler',
-            driverName: 'Carlos Mendoza',
-            driverRating: 4.6,
-            from: 'Caloocan',
-            to: 'Taguig',
-            date: 'Oct 22, 2025',
-            time: '3:30 PM',
-            fare: 'P1,200',
-            status: 'Completed',
-            statusColor: AppColors.success,
-            estimatedTime: 'Delivered',
-          ),
-        ];
-      case BookingStatus.cancelled:
-        return [
-          BookingData(
-            id: 'BK005',
-            vehicleType: 'Wingvan',
-            driverName: 'Not Assigned',
-            driverRating: 0,
-            from: 'Pasay',
-            to: 'Paranaque',
-            date: 'Oct 21, 2025',
-            time: '11:00 AM',
-            fare: 'P750',
-            status: 'Cancelled',
-            statusColor: AppColors.error,
-            estimatedTime: 'Cancelled by user',
-          ),
-        ];
+      case 'active':
+        return bookings
+            .where((booking) =>
+                booking.status == 'pending' ||
+                booking.status == 'accepted' ||
+                booking.status == 'in_progress')
+            .toList();
+      case 'completed':
+        return bookings
+            .where((booking) => booking.status == 'completed')
+            .toList();
+      case 'cancelled':
+        return bookings
+            .where((booking) => booking.status == 'cancelled')
+            .toList();
+      default:
+        return bookings;
     }
   }
 
+  Widget _bookingCard(BookingModel booking) {
+    return BookingCard(
+      booking: booking,
+      onTap: () {
+        _showBookingDetailsBottomSheet(context, booking);
+      },
+    );
+  }
+
   void _showBookingDetailsBottomSheet(
-      BuildContext context, BookingData booking) {
+      BuildContext context, BookingModel booking) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -300,7 +267,7 @@ class _BookingsTabState extends State<BookingsTab>
 }
 
 class BookingCard extends StatelessWidget {
-  final BookingData booking;
+  final BookingModel booking;
   final VoidCallback onTap;
 
   const BookingCard({
@@ -311,6 +278,77 @@ class BookingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Helper methods to get booking information
+    String getVehicleType() {
+      return booking.vehicle.type;
+    }
+
+    String getBookingId() {
+      return booking.bookingId ?? 'Unknown';
+    }
+
+    String getDriverName() {
+      return 'Driver'; // We'll need to fetch driver info from driverId
+    }
+
+    double getDriverRating() {
+      return 4.5; // Default rating, should be fetched from driver data
+    }
+
+    String getFromLocation() {
+      return booking.pickupLocation.address;
+    }
+
+    String getToLocation() {
+      return booking.dropoffLocation.address;
+    }
+
+    String getFormattedDate() {
+      return '${booking.createdAt.day}/${booking.createdAt.month}/${booking.createdAt.year}';
+    }
+
+    String getFormattedTime() {
+      return '${booking.createdAt.hour}:${booking.createdAt.minute.toString().padLeft(2, '0')}';
+    }
+
+    String getFare() {
+      return 'P${booking.finalFare?.toStringAsFixed(2) ?? booking.estimatedFare.toStringAsFixed(2)}';
+    }
+
+    Color getStatusColor() {
+      switch (booking.status) {
+        case 'pending':
+          return AppColors.warning;
+        case 'accepted':
+          return AppColors.primaryBlue;
+        case 'in_progress':
+          return AppColors.primaryBlue;
+        case 'completed':
+          return AppColors.success;
+        case 'cancelled':
+          return AppColors.error;
+        default:
+          return AppColors.textSecondary;
+      }
+    }
+
+    String getStatusText() {
+      switch (booking.status) {
+        case 'pending':
+          return 'Pending';
+        case 'accepted':
+          return 'Driver Assigned';
+        case 'in_progress':
+          return 'In Transit';
+        case 'completed':
+          return 'Completed';
+        case 'cancelled':
+          return 'Cancelled';
+        default:
+          return 'Unknown';
+      }
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -375,7 +413,7 @@ class BookingCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              booking.vehicleType,
+                              getVehicleType(),
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontFamily: 'Bold',
@@ -385,7 +423,7 @@ class BookingCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'ID: ${booking.id}',
+                              'ID: ${getBookingId()}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'Medium',
@@ -401,19 +439,19 @@ class BookingCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: booking.statusColor.withOpacity(0.1),
+                        color: getStatusColor().withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: booking.statusColor.withOpacity(0.2),
+                          color: getStatusColor().withOpacity(0.2),
                           width: 1,
                         ),
                       ),
                       child: Text(
-                        booking.status,
+                        getStatusText(),
                         style: TextStyle(
                           fontSize: 12,
                           fontFamily: 'Medium',
-                          color: booking.statusColor,
+                          color: getStatusColor(),
                           height: 1.2,
                         ),
                       ),
@@ -442,7 +480,7 @@ class BookingCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          booking.date,
+                          getFormattedDate(),
                           style: const TextStyle(
                             fontSize: 14,
                             fontFamily: 'Medium',
@@ -451,7 +489,7 @@ class BookingCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          booking.time,
+                          getFormattedTime(),
                           style: const TextStyle(
                             fontSize: 12,
                             fontFamily: 'Regular',
@@ -467,7 +505,7 @@ class BookingCard extends StatelessWidget {
                 const SizedBox(height: 20),
 
                 // Driver Info (simplified for card view)
-                if (booking.driverName != 'Not Assigned')
+                if (booking.driverId != null)
                   Row(
                     children: [
                       Container(
@@ -488,7 +526,7 @@ class BookingCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              booking.driverName,
+                              getDriverName(),
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontFamily: 'Medium',
@@ -496,34 +534,32 @@ class BookingCard extends StatelessWidget {
                                 height: 1.2,
                               ),
                             ),
-                            if (booking.driverRating > 0)
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.star,
-                                    size: 14,
-                                    color: Colors.amber,
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.star,
+                                  size: 14,
+                                  color: Colors.amber,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${getDriverRating()} rating',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'Regular',
+                                    color: AppColors.textSecondary,
+                                    height: 1.2,
                                   ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${booking.driverRating} rating',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontFamily: 'Regular',
-                                      color: AppColors.textSecondary,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
                     ],
                   ),
 
-                if (booking.driverName != 'Not Assigned')
-                  const SizedBox(height: 20),
+                if (booking.driverId != null) const SizedBox(height: 20),
 
                 // Simplified Route
                 Container(
@@ -565,7 +601,7 @@ class BookingCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              booking.from,
+                              getFromLocation(),
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontFamily: 'Medium',
@@ -613,7 +649,7 @@ class BookingCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              booking.to,
+                              getToLocation(),
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontFamily: 'Medium',
@@ -643,7 +679,7 @@ class BookingCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        booking.fare,
+                        getFare(),
                         style: const TextStyle(
                           fontSize: 20,
                           fontFamily: 'Bold',
@@ -744,50 +780,85 @@ class _RoutePoint extends StatelessWidget {
   }
 }
 
-class BookingData {
-  final String id;
-  final String vehicleType;
-  final String driverName;
-  final double driverRating;
-  final String from;
-  final String to;
-  final String date;
-  final String time;
-  final String fare;
-  final String status;
-  final Color statusColor;
-  final String estimatedTime;
-
-  BookingData({
-    required this.id,
-    required this.vehicleType,
-    required this.driverName,
-    required this.driverRating,
-    required this.from,
-    required this.to,
-    required this.date,
-    required this.time,
-    required this.fare,
-    required this.status,
-    required this.statusColor,
-    required this.estimatedTime,
-  });
-}
-
-enum BookingStatus {
-  active,
-  completed,
-  cancelled,
-}
-
 // Booking Details Bottom Sheet
 class BookingDetailsBottomSheet extends StatelessWidget {
-  final BookingData booking;
+  final BookingModel booking;
 
   const BookingDetailsBottomSheet({
     super.key,
     required this.booking,
   });
+
+  // Helper methods for BookingDetailsBottomSheet
+  String getVehicleType() {
+    return booking.vehicle.type;
+  }
+
+  String getBookingId() {
+    return booking.bookingId ?? 'Unknown';
+  }
+
+  String getStatusText() {
+    switch (booking.status) {
+      case 'pending':
+        return 'Pending';
+      case 'accepted':
+        return 'Driver Assigned';
+      case 'in_progress':
+        return 'In Transit';
+      case 'completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Color getStatusColor() {
+    switch (booking.status) {
+      case 'pending':
+        return AppColors.warning;
+      case 'accepted':
+        return AppColors.primaryBlue;
+      case 'in_progress':
+        return AppColors.primaryBlue;
+      case 'completed':
+        return AppColors.success;
+      case 'cancelled':
+        return AppColors.error;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String getFormattedDate() {
+    return '${booking.createdAt.day}/${booking.createdAt.month}/${booking.createdAt.year}';
+  }
+
+  String getFormattedTime() {
+    return '${booking.createdAt.hour}:${booking.createdAt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String getDriverName() {
+    return 'Driver'; // Should be fetched from driver data
+  }
+
+  double getDriverRating() {
+    return 4.5; // Default rating, should be fetched from driver data
+  }
+
+  String getFromLocation() {
+    return booking.pickupLocation.address;
+  }
+
+  String getToLocation() {
+    return booking.dropoffLocation.address;
+  }
+
+  String getFare() {
+    return 'P${booking.finalFare?.toStringAsFixed(2) ?? booking.estimatedFare.toStringAsFixed(2)}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -840,7 +911,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        booking.vehicleType,
+                        getVehicleType(),
                         style: const TextStyle(
                           fontSize: 20,
                           fontFamily: 'Bold',
@@ -850,7 +921,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Booking ID: ${booking.id}',
+                        'Booking ID: ${getBookingId()}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontFamily: 'Regular',
@@ -865,19 +936,19 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: booking.statusColor.withOpacity(0.1),
+                    color: getStatusColor().withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: booking.statusColor.withOpacity(0.2),
+                      color: getStatusColor().withOpacity(0.2),
                       width: 1,
                     ),
                   ),
                   child: Text(
-                    booking.status,
+                    getStatusText(),
                     style: TextStyle(
                       fontSize: 12,
                       fontFamily: 'Medium',
-                      color: booking.statusColor,
+                      color: getStatusColor(),
                       height: 1.2,
                     ),
                   ),
@@ -898,27 +969,25 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     'Schedule Information',
                     Icons.calendar_today,
                     [
-                      _buildDetailRow('Date', booking.date),
-                      _buildDetailRow('Time', booking.time),
-                      if (booking.status == 'In Transit' ||
-                          booking.status == 'Driver Assigned')
-                        _buildDetailRow(
-                            'Estimated Time', booking.estimatedTime),
+                      _buildDetailRow('Date', getFormattedDate()),
+                      _buildDetailRow('Time', getFormattedTime()),
+                      if (booking.status == 'in_progress' ||
+                          booking.status == 'accepted')
+                        _buildDetailRow('Estimated Time', '45 mins'),
                     ],
                   ),
 
                   const SizedBox(height: 20),
 
                   // Driver Information
-                  if (booking.driverName != 'Not Assigned') ...[
+                  if (booking.driverId != null) ...[
                     _buildSectionCard(
                       'Driver Information',
                       Icons.person,
                       [
-                        _buildDetailRow('Name', booking.driverName),
-                        if (booking.driverRating > 0)
-                          _buildDetailRow(
-                              'Rating', '${booking.driverRating} ⭐'),
+                        _buildDetailRow('Name', getDriverName()),
+                        if (getDriverRating() > 0)
+                          _buildDetailRow('Rating', '${getDriverRating()} ⭐'),
                         _buildDetailRow('Contact', '+63 912 345 6789'),
                         _buildDetailRow('Vehicle Number', 'ABC 1234'),
                       ],
@@ -936,7 +1005,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     'Payment Information',
                     Icons.payment,
                     [
-                      _buildDetailRow('Total Fare', booking.fare),
+                      _buildDetailRow('Total Fare', getFare()),
                       _buildDetailRow('Payment Method', 'Cash on Delivery'),
                       _buildDetailRow('Payment Status',
                           booking.status == 'Completed' ? 'Paid' : 'Pending'),
@@ -1296,7 +1365,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      booking.from,
+                      getFromLocation(),
                       style: const TextStyle(
                         fontSize: 14,
                         fontFamily: 'Medium',
@@ -1357,7 +1426,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      booking.to,
+                      getToLocation(),
                       style: const TextStyle(
                         fontSize: 14,
                         fontFamily: 'Medium',
@@ -1397,7 +1466,7 @@ class BookingDetailsBottomSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '12.5 km',
+                  '${booking.distance.toStringAsFixed(1)} km',
                   style: const TextStyle(
                     fontSize: 12,
                     fontFamily: 'Medium',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../models/rider_notification_model.dart';
+import '../../services/rider_auth_service.dart';
+import '../../../services/notification_service.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 
@@ -13,14 +14,13 @@ class RiderNotificationsTab extends StatefulWidget {
 class _RiderNotificationsTabState extends State<RiderNotificationsTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool _isLoading = false;
-  List<RiderNotificationModel> _allNotifications = [];
+  final _riderAuthService = RiderAuthService();
+  final _notificationService = NotificationService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadNotifications();
   }
 
   @override
@@ -29,18 +29,26 @@ class _RiderNotificationsTabState extends State<RiderNotificationsTab>
     super.dispose();
   }
 
-  Future<void> _loadNotifications() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _markAsRead(String notificationId) async {
+    await _notificationService.markAsRead(notificationId);
+  }
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
+  Future<void> _markAllAsRead() async {
+    final rider = _riderAuthService.currentRider;
+    if (rider != null) {
+      await _notificationService.markAllAsRead(rider.riderId, 'rider');
+    }
+  }
 
-    setState(() {
-      _allNotifications = _getSampleNotifications();
-      _isLoading = false;
-    });
+  Future<void> _deleteNotification(String notificationId) async {
+    await _notificationService.deleteNotification(notificationId);
+  }
+
+  Future<void> _clearAllNotifications() async {
+    final rider = _riderAuthService.currentRider;
+    if (rider != null) {
+      await _notificationService.clearAllNotifications(rider.riderId, 'rider');
+    }
   }
 
   @override
@@ -121,80 +129,83 @@ class _RiderNotificationsTabState extends State<RiderNotificationsTab>
         controller: _tabController,
         children: [
           _buildNotificationsList(filterType: null),
-          _buildNotificationsList(filterType: RiderNotificationType.newBooking),
-          _buildNotificationsList(
-              filterType: RiderNotificationType.earningUpdate),
+          _buildNotificationsList(filterType: 'booking'),
+          _buildNotificationsList(filterType: 'payment'),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showNotificationFilterDialog();
-        },
-        backgroundColor: AppColors.primaryRed,
-        child: const Icon(
-          Icons.filter_list,
-          color: AppColors.white,
+    );
+  }
+
+  Widget _buildNotificationsList({String? filterType}) {
+    final rider = _riderAuthService.currentRider;
+    if (rider == null) {
+      return const Center(
+        child: Text(
+          'Please login as rider to view notifications',
+          style: TextStyle(
+            fontSize: 16,
+            fontFamily: 'Regular',
+            color: AppColors.textSecondary,
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildNotificationsList({RiderNotificationType? filterType}) {
-    if (_isLoading) {
-      return Center(child: UIHelpers.loadingIndicator());
+      );
     }
 
-    List<RiderNotificationModel> notifications = _allNotifications;
+    return StreamBuilder<List<NotificationModel>>(
+      stream: _notificationService.getUserNotifications(rider.riderId, 'rider'),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: UIHelpers.loadingIndicator());
+        }
 
-    // Apply filter if specified
-    if (filterType != null) {
-      notifications = notifications
-          .where((n) => _isNotificationOfType(n, filterType))
-          .toList();
-    }
-
-    if (notifications.isEmpty) {
-      return _buildEmptyState(filterType);
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadNotifications,
-      color: AppColors.primaryRed,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: notifications.length,
-        itemBuilder: (context, index) {
-          return RiderNotificationCard(
-            notification: notifications[index],
-            onTap: () {
-              if (notifications[index].isUnread) {
-                setState(() {
-                  notifications[index].isUnread = false;
-                });
-              }
-              _handleNotificationTap(notifications[index]);
-            },
-            onDismiss: () {
-              setState(() {
-                _allNotifications.remove(notifications[index]);
-              });
-            },
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading notifications',
+              style: const TextStyle(
+                fontSize: 16,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+              ),
+            ),
           );
-        },
-      ),
+        }
+
+        final notifications = snapshot.data ?? [];
+        final filteredNotifications = filterType != null
+            ? notifications.where((n) => n.type == filterType).toList()
+            : notifications;
+
+        if (filteredNotifications.isEmpty) {
+          return _buildEmptyState(filterType);
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: filteredNotifications.length,
+          itemBuilder: (context, index) {
+            final notification = filteredNotifications[index];
+            return _notificationCard(
+              notification: notification,
+              onTap: () => _markAsRead(notification.id),
+              onDelete: () => _deleteNotification(notification.id),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildEmptyState(RiderNotificationType? filterType) {
+  Widget _buildEmptyState(String? filterType) {
     String title;
     String subtitle;
     IconData icon;
 
-    if (filterType == RiderNotificationType.newBooking) {
+    if (filterType == 'booking') {
       title = 'No booking notifications';
       subtitle = 'You\'ll see new booking requests here';
       icon = Icons.local_shipping_outlined;
-    } else if (filterType == RiderNotificationType.earningUpdate) {
+    } else if (filterType == 'payment') {
       title = 'No earning notifications';
       subtitle = 'Your earnings updates will appear here';
       icon = Icons.account_balance_wallet_outlined;
@@ -211,7 +222,7 @@ class _RiderNotificationsTabState extends State<RiderNotificationsTab>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.1),
+              color: AppColors.primaryRed.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -244,368 +255,178 @@ class _RiderNotificationsTabState extends State<RiderNotificationsTab>
     );
   }
 
-  bool _isNotificationOfType(
-      RiderNotificationModel notification, RiderNotificationType type) {
-    switch (type) {
-      case RiderNotificationType.newBooking:
-        return notification.type == RiderNotificationType.newBooking ||
-            notification.type == RiderNotificationType.bookingAccepted ||
-            notification.type == RiderNotificationType.bookingCancelled ||
-            notification.type == RiderNotificationType.pickupConfirmed ||
-            notification.type == RiderNotificationType.deliveryCompleted;
-      case RiderNotificationType.earningUpdate:
-        return notification.type == RiderNotificationType.earningUpdate ||
-            notification.type == RiderNotificationType.paymentReceived ||
-            notification.type == RiderNotificationType.ratingReceived;
-      default:
-        return notification.type == type;
-    }
-  }
-
-  List<RiderNotificationModel> _getSampleNotifications() {
-    return [
-      RiderNotificationModel(
-        id: 'r1',
-        title: 'New Booking Request',
-        message:
-            'Customer John Doe requested a delivery from Makati to Pasig. Distance: 8.5 km',
-        time: '2 minutes ago',
-        type: RiderNotificationType.newBooking,
-        icon: RiderNotificationType.newBooking.defaultIcon,
-        color: RiderNotificationType.newBooking.defaultColor,
-        isUnread: true,
-        bookingId: 'BK001',
-        customerId: 'CUST001',
-        customerName: 'John Doe',
-        pickupAddress: 'Makati City',
-        deliveryAddress: 'Pasig City',
-        amount: 250.0,
-      ),
-      RiderNotificationModel(
-        id: 'r2',
-        title: 'Pickup Confirmed',
-        message:
-            'You have confirmed pickup for booking #BK001. Proceed to pickup location.',
-        time: '15 minutes ago',
-        type: RiderNotificationType.pickupConfirmed,
-        icon: RiderNotificationType.pickupConfirmed.defaultIcon,
-        color: RiderNotificationType.pickupConfirmed.defaultColor,
-        isUnread: true,
-        bookingId: 'BK001',
-      ),
-      RiderNotificationModel(
-        id: 'r3',
-        title: 'Delivery Completed',
-        message:
-            'Great job! You completed delivery #BK002. Customer rated you 5 stars.',
-        time: '1 hour ago',
-        type: RiderNotificationType.deliveryCompleted,
-        icon: RiderNotificationType.deliveryCompleted.defaultIcon,
-        color: RiderNotificationType.deliveryCompleted.defaultColor,
-        isUnread: false,
-        bookingId: 'BK002',
-        amount: 180.0,
-      ),
-      RiderNotificationModel(
-        id: 'r4',
-        title: 'Payment Received',
-        message:
-            'Payment of ₱250.00 for booking #BK001 has been credited to your wallet.',
-        time: '2 hours ago',
-        type: RiderNotificationType.paymentReceived,
-        icon: RiderNotificationType.paymentReceived.defaultIcon,
-        color: RiderNotificationType.paymentReceived.defaultColor,
-        isUnread: false,
-        bookingId: 'BK001',
-        amount: 250.0,
-      ),
-      RiderNotificationModel(
-        id: 'r5',
-        title: 'Daily Earnings Update',
-        message:
-            'You earned ₱1,250 today from 5 deliveries. Keep up the great work!',
-        time: '3 hours ago',
-        type: RiderNotificationType.earningUpdate,
-        icon: RiderNotificationType.earningUpdate.defaultIcon,
-        color: RiderNotificationType.earningUpdate.defaultColor,
-        isUnread: false,
-        amount: 1250.0,
-      ),
-      RiderNotificationModel(
-        id: 'r6',
-        title: 'Rating Received',
-        message:
-            'Customer Maria Reyes rated you 4.8 stars for excellent service.',
-        time: '5 hours ago',
-        type: RiderNotificationType.ratingReceived,
-        icon: RiderNotificationType.ratingReceived.defaultIcon,
-        color: RiderNotificationType.ratingReceived.defaultColor,
-        isUnread: false,
-        customerId: 'CUST002',
-        customerName: 'Maria Reyes',
-      ),
-      RiderNotificationModel(
-        id: 'r7',
-        title: 'System Maintenance',
-        message:
-            'App scheduled maintenance tonight 11:00 PM - 1:00 AM. Please complete ongoing deliveries.',
-        time: 'Yesterday',
-        type: RiderNotificationType.maintenance,
-        icon: RiderNotificationType.maintenance.defaultIcon,
-        color: RiderNotificationType.maintenance.defaultColor,
-        isUnread: false,
-      ),
-      RiderNotificationModel(
-        id: 'r8',
-        title: 'Weekend Bonus',
-        message:
-            'Earn 20% extra on all deliveries this weekend! Maximum bonus: ₱500/day.',
-        time: '2 days ago',
-        type: RiderNotificationType.promotion,
-        icon: RiderNotificationType.promotion.defaultIcon,
-        color: RiderNotificationType.promotion.defaultColor,
-        isUnread: false,
-      ),
-    ];
-  }
-
-  void _handleNotificationTap(RiderNotificationModel notification) {
-    switch (notification.type) {
-      case RiderNotificationType.newBooking:
-      case RiderNotificationType.bookingAccepted:
-      case RiderNotificationType.bookingCancelled:
-      case RiderNotificationType.pickupConfirmed:
-      case RiderNotificationType.deliveryCompleted:
-        UIHelpers.showInfoToast('Opening booking details...');
-        break;
-      case RiderNotificationType.paymentReceived:
-      case RiderNotificationType.earningUpdate:
-        UIHelpers.showInfoToast('Opening earnings details...');
-        break;
-      case RiderNotificationType.ratingReceived:
-        UIHelpers.showInfoToast('Opening rating details...');
-        break;
-      case RiderNotificationType.promotion:
-        UIHelpers.showInfoToast('Viewing promotion details...');
-        break;
-      case RiderNotificationType.maintenance:
-      case RiderNotificationType.systemAlert:
-        UIHelpers.showInfoToast('System notification');
-        break;
-      case RiderNotificationType.emergency:
-        UIHelpers.showErrorToast('Emergency alert - Please check immediately');
-        break;
-    }
-  }
-
-  void _markAllAsRead() {
-    UIHelpers.showSuccessToast('All notifications marked as read');
-    setState(() {
-      for (var notification in _allNotifications) {
-        notification.isUnread = false;
-      }
-    });
-  }
-
-  void _clearAllNotifications() {
-    UIHelpers.showSuccessToast('All notifications cleared');
-    setState(() {
-      _allNotifications.clear();
-    });
-  }
-
-  void _showNotificationFilterDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Filter Notifications'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Select notification types to display:'),
-              const SizedBox(height: 16),
-              CheckboxListTile(
-                title: const Text('New Bookings'),
-                value: true,
-                onChanged: (bool? value) {},
-              ),
-              CheckboxListTile(
-                title: const Text('Payment Updates'),
-                value: true,
-                onChanged: (bool? value) {},
-              ),
-              CheckboxListTile(
-                title: const Text('System Alerts'),
-                value: false,
-                onChanged: (bool? value) {},
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                UIHelpers.showSuccessToast('Filter applied');
-              },
-              child: const Text('Apply'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class RiderNotificationCard extends StatelessWidget {
-  final RiderNotificationModel notification;
-  final VoidCallback onTap;
-  final VoidCallback? onDismiss;
-
-  const RiderNotificationCard({
-    super.key,
-    required this.notification,
-    required this.onTap,
-    this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dismissible(
-      key: Key(notification.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (direction) {
-        onDismiss?.call();
-      },
-      background: Container(
-        color: AppColors.error,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(
-          Icons.delete,
-          color: AppColors.white,
+  Widget _notificationCard({
+    required NotificationModel notification,
+    required VoidCallback onTap,
+    required VoidCallback onDelete,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: notification.isRead
+            ? AppColors.white
+            : AppColors.primaryRed.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: notification.isRead
+              ? AppColors.textHint
+              : AppColors.primaryRed.withValues(alpha: 0.2),
+          width: 1,
         ),
       ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: notification.isUnread
-              ? AppColors.primaryRed.withOpacity(0.05)
-              : AppColors.white,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-          border: notification.isUnread
-              ? Border.all(color: AppColors.primaryRed.withOpacity(0.2))
-              : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Notification Icon
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: notification.color.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      notification.icon,
-                      color: notification.color,
-                      size: 24,
-                    ),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _getNotificationTypeColor(notification.type)
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 12),
-                  // Notification Content
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                notification.title,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontFamily:
-                                      notification.isUnread ? 'Bold' : 'Medium',
-                                  color: AppColors.textPrimary,
-                                ),
+                  child: Icon(
+                    _getNotificationTypeIcon(notification.type),
+                    color: _getNotificationTypeColor(notification.type),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              notification.title,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontFamily:
+                                    notification.isRead ? 'Regular' : 'Medium',
+                                color: AppColors.textPrimary,
                               ),
                             ),
-                            if (notification.isUnread)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                margin: const EdgeInsets.only(left: 8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primaryRed,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          notification.message,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontFamily: 'Regular',
-                            color: AppColors.textSecondary,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text(
-                              notification.time,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Regular',
-                                color: AppColors.textHint,
+                          if (!notification.isRead)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryRed,
+                                shape: BoxShape.circle,
                               ),
                             ),
-                            if (notification.amount != null) ...[
-                              const Spacer(),
-                              Text(
-                                '₱${notification.amount!.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'Medium',
-                                  color: AppColors.success,
-                                ),
-                              ),
-                            ],
-                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        notification.message,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
                         ),
-                      ],
-                    ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _formatTime(notification.createdAt),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Regular',
+                          color: AppColors.textHint,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  icon: const Icon(
+                    Icons.more_vert,
+                    color: AppColors.textHint,
+                    size: 20,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      onDelete();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, size: 18),
+                          SizedBox(width: 8),
+                          Text('Delete'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Color _getNotificationTypeColor(String type) {
+    switch (type) {
+      case 'booking':
+        return AppColors.primaryBlue;
+      case 'payment':
+        return AppColors.success;
+      case 'system':
+        return AppColors.warning;
+      case 'rating':
+        return Colors.amber;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  IconData _getNotificationTypeIcon(String type) {
+    switch (type) {
+      case 'booking':
+        return Icons.local_shipping_outlined;
+      case 'payment':
+        return Icons.account_balance_wallet_outlined;
+      case 'system':
+        return Icons.info_outline;
+      case 'rating':
+        return Icons.star_outline;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
   }
 }

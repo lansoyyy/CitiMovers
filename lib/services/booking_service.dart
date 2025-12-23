@@ -1,18 +1,19 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_model.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
 
 /// Booking Service for CitiMovers
-/// Handles booking creation, updates, and management
-/// Ready for Firebase Firestore integration
+/// Handles booking creation, updates, and management with Firebase Firestore
 class BookingService {
   // Singleton pattern
   static final BookingService _instance = BookingService._internal();
   factory BookingService() => _instance;
   BookingService._internal();
 
-  // Mock bookings storage
-  final List<BookingModel> _bookings = [];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static const String _bookingsCollection = 'bookings';
 
   /// Create a new booking
   Future<BookingModel?> createBooking({
@@ -28,17 +29,13 @@ class BookingService {
     String? notes,
   }) async {
     try {
-      // TODO: Save to Firestore
-      // final docRef = await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .add(booking.toMap());
-
-      // Mock implementation
-      await Future.delayed(const Duration(seconds: 1));
+      final now = DateTime.now();
+      final bookingId = _firestore.collection(_bookingsCollection).doc().id;
 
       final booking = BookingModel(
-        bookingId: 'booking_${DateTime.now().millisecondsSinceEpoch}',
+        bookingId: bookingId,
         customerId: customerId,
+        driverId: null, // Will be set when rider accepts
         pickupLocation: pickupLocation,
         dropoffLocation: dropoffLocation,
         vehicle: vehicle,
@@ -46,218 +43,182 @@ class BookingService {
         scheduledDateTime: scheduledDateTime,
         distance: distance,
         estimatedFare: estimatedFare,
+        finalFare: estimatedFare, // Initially same as estimated
+        status:
+            'pending', // pending, accepted, in_progress, completed, cancelled
         paymentMethod: paymentMethod,
         notes: notes,
-        createdAt: DateTime.now(),
+        createdAt: now,
+        completedAt: null,
+        cancellationReason: null,
       );
 
-      _bookings.add(booking);
-      print('Booking created: ${booking.bookingId}');
+      await _firestore
+          .collection(_bookingsCollection)
+          .doc(bookingId)
+          .set(booking.toMap());
+
       return booking;
     } catch (e) {
-      print('Error creating booking: $e');
+      debugPrint('Error creating booking: $e');
       return null;
     }
   }
 
-  /// Get all bookings for a customer
-  Future<List<BookingModel>> getCustomerBookings(String customerId) async {
-    try {
-      // TODO: Fetch from Firestore
-      // final snapshot = await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .where('customerId', isEqualTo: customerId)
-      //     .orderBy('createdAt', descending: true)
-      //     .get();
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      return _bookings
-          .where((booking) => booking.customerId == customerId)
-          .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    } catch (e) {
-      print('Error getting customer bookings: $e');
-      return [];
-    }
+  /// Get bookings for a specific customer
+  Stream<List<BookingModel>> getCustomerBookings(String customerId) {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('customerId', isEqualTo: customerId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => BookingModel.fromMap(doc.data()))
+            .toList());
   }
 
-  /// Get active bookings for a customer
-  Future<List<BookingModel>> getActiveBookings(String customerId) async {
-    try {
-      final allBookings = await getCustomerBookings(customerId);
-      return allBookings.where((booking) => booking.isActive).toList();
-    } catch (e) {
-      print('Error getting active bookings: $e');
-      return [];
-    }
+  /// Get bookings for a specific rider
+  Stream<List<BookingModel>> getRiderBookings(String riderId) {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('driverId', isEqualTo: riderId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => BookingModel.fromMap(doc.data()))
+            .toList());
   }
 
   /// Get booking by ID
   Future<BookingModel?> getBookingById(String bookingId) async {
     try {
-      // TODO: Fetch from Firestore
-      // final doc = await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .doc(bookingId)
-      //     .get();
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      return _bookings.firstWhere(
-        (booking) => booking.bookingId == bookingId,
-        orElse: () => throw Exception('Booking not found'),
-      );
+      final doc =
+          await _firestore.collection(_bookingsCollection).doc(bookingId).get();
+      if (doc.exists) {
+        return BookingModel.fromMap(doc.data()!);
+      }
+      return null;
     } catch (e) {
-      print('Error getting booking: $e');
+      debugPrint('Error getting booking: $e');
       return null;
     }
   }
 
   /// Update booking status
-  Future<bool> updateBookingStatus(String bookingId, String newStatus) async {
+  Future<bool> updateBookingStatus(String bookingId, String status,
+      {String? driverId}) async {
     try {
-      // TODO: Update in Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .doc(bookingId)
-      //     .update({'status': newStatus});
+      final updateData = {
+        'status': status,
+      };
 
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      final index = _bookings.indexWhere((b) => b.bookingId == bookingId);
-      if (index != -1) {
-        _bookings[index] = _bookings[index].copyWith(status: newStatus);
-        print('Booking status updated: $bookingId -> $newStatus');
-        return true;
+      if (driverId != null) {
+        updateData['driverId'] = driverId;
       }
-      return false;
+
+      await _firestore
+          .collection(_bookingsCollection)
+          .doc(bookingId)
+          .update(updateData);
+      return true;
     } catch (e) {
-      print('Error updating booking status: $e');
+      debugPrint('Error updating booking status: $e');
       return false;
     }
   }
 
-  /// Cancel a booking
+  /// Update booking with final fare and completion details
+  Future<bool> completeBooking({
+    required String bookingId,
+    required double finalFare,
+    required DateTime completedAt,
+  }) async {
+    try {
+      await _firestore.collection(_bookingsCollection).doc(bookingId).update({
+        'status': 'completed',
+        'finalFare': finalFare,
+        'completedAt': completedAt.toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error completing booking: $e');
+      return false;
+    }
+  }
+
+  /// Cancel booking
   Future<bool> cancelBooking(String bookingId, String reason) async {
     try {
-      // TODO: Update in Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .doc(bookingId)
-      //     .update({
-      //       'status': 'cancelled',
-      //       'cancellationReason': reason,
-      //     });
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      final index = _bookings.indexWhere((b) => b.bookingId == bookingId);
-      if (index != -1) {
-        _bookings[index] = _bookings[index].copyWith(
-          status: 'cancelled',
-          cancellationReason: reason,
-        );
-        print('Booking cancelled: $bookingId');
-        return true;
-      }
-      return false;
+      await _firestore.collection(_bookingsCollection).doc(bookingId).update({
+        'status': 'cancelled',
+        'cancellationReason': reason,
+      });
+      return true;
     } catch (e) {
-      print('Error cancelling booking: $e');
+      debugPrint('Error cancelling booking: $e');
       return false;
     }
   }
 
-  /// Assign driver to booking
-  Future<bool> assignDriver(String bookingId, String driverId) async {
-    try {
-      // TODO: Update in Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .doc(bookingId)
-      //     .update({
-      //       'driverId': driverId,
-      //       'status': 'accepted',
-      //     });
-
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      final index = _bookings.indexWhere((b) => b.bookingId == bookingId);
-      if (index != -1) {
-        _bookings[index] = _bookings[index].copyWith(
-          driverId: driverId,
-          status: 'accepted',
-        );
-        print('Driver assigned to booking: $bookingId');
-        return true;
-      }
-      return false;
-    } catch (e) {
-      print('Error assigning driver: $e');
-      return false;
-    }
+  /// Get available bookings for riders (pending bookings)
+  Stream<List<BookingModel>> getAvailableBookings() {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => BookingModel.fromMap(doc.data()))
+            .toList());
   }
 
-  /// Complete a booking
-  Future<bool> completeBooking(String bookingId, double finalFare) async {
+  /// Get booking statistics for customer
+  Future<Map<String, int>> getCustomerBookingStats(String customerId) async {
     try {
-      // TODO: Update in Firestore
-      // await FirebaseFirestore.instance
-      //     .collection('bookings')
-      //     .doc(bookingId)
-      //     .update({
-      //       'status': 'completed',
-      //       'finalFare': finalFare,
-      //       'completedAt': FieldValue.serverTimestamp(),
-      //     });
+      final snapshot = await _firestore
+          .collection(_bookingsCollection)
+          .where('customerId', isEqualTo: customerId)
+          .get();
 
-      // Mock implementation
-      await Future.delayed(const Duration(milliseconds: 500));
+      final bookings =
+          snapshot.docs.map((doc) => BookingModel.fromMap(doc.data())).toList();
 
-      final index = _bookings.indexWhere((b) => b.bookingId == bookingId);
-      if (index != -1) {
-        _bookings[index] = _bookings[index].copyWith(
-          status: 'completed',
-          finalFare: finalFare,
-          completedAt: DateTime.now(),
-        );
-        print('Booking completed: $bookingId');
-        return true;
-      }
-      return false;
-    } catch (e) {
-      print('Error completing booking: $e');
-      return false;
-    }
-  }
-
-  /// Get booking statistics for a customer
-  Future<Map<String, dynamic>> getBookingStats(String customerId) async {
-    try {
-      final bookings = await getCustomerBookings(customerId);
-
-      final completed = bookings.where((b) => b.status == 'completed').length;
-      final cancelled = bookings.where((b) => b.status == 'cancelled').length;
-      final active = bookings.where((b) => b.isActive).length;
-
-      final totalSpent = bookings
-          .where((b) => b.status == 'completed' && b.finalFare != null)
-          .fold<double>(0, (sum, b) => sum + b.finalFare!);
-
-      return {
+      final stats = <String, int>{
         'total': bookings.length,
-        'completed': completed,
-        'cancelled': cancelled,
-        'active': active,
-        'totalSpent': totalSpent,
+        'completed': bookings.where((b) => b.status == 'completed').length,
+        'cancelled': bookings.where((b) => b.status == 'cancelled').length,
+        'pending': bookings.where((b) => b.status == 'pending').length,
+        'in_progress': bookings.where((b) => b.status == 'in_progress').length,
       };
+
+      return stats;
     } catch (e) {
-      print('Error getting booking stats: $e');
+      debugPrint('Error getting booking stats: $e');
+      return {};
+    }
+  }
+
+  /// Get booking statistics for rider
+  Future<Map<String, int>> getRiderBookingStats(String riderId) async {
+    try {
+      final snapshot = await _firestore
+          .collection(_bookingsCollection)
+          .where('driverId', isEqualTo: riderId)
+          .get();
+
+      final bookings =
+          snapshot.docs.map((doc) => BookingModel.fromMap(doc.data())).toList();
+
+      final stats = <String, int>{
+        'total': bookings.length,
+        'completed': bookings.where((b) => b.status == 'completed').length,
+        'cancelled': bookings.where((b) => b.status == 'cancelled').length,
+        'in_progress': bookings.where((b) => b.status == 'in_progress').length,
+      };
+
+      return stats;
+    } catch (e) {
+      debugPrint('Error getting rider booking stats: $e');
       return {};
     }
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
@@ -13,15 +14,43 @@ class RiderDocumentsScreen extends StatefulWidget {
 
 class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
   final _authService = RiderAuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isUploading = false;
+  Map<String, DocumentStatus> _documents = {};
 
-  final Map<String, DocumentStatus> _documents = {
-    'Driver\'s License': DocumentStatus(status: 'pending', imagePath: null),
-    'Vehicle Registration (OR/CR)':
-        DocumentStatus(status: 'pending', imagePath: null),
-    'Insurance': DocumentStatus(status: 'not_uploaded', imagePath: null),
-    'NBI Clearance': DocumentStatus(status: 'not_uploaded', imagePath: null),
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadDocuments();
+  }
+
+  Future<void> _loadDocuments() async {
+    final rider = _authService.currentRider;
+    if (rider != null) {
+      try {
+        final docSnapshot =
+            await _firestore.collection('riders').doc(rider.riderId).get();
+
+        if (docSnapshot.exists) {
+          final documentsData = docSnapshot.data()?['documents'] as Map?;
+          if (documentsData != null) {
+            setState(() {
+              _documents = documentsData.map((key, doc) => MapEntry(
+                    doc['name'] ?? key,
+                    DocumentStatus(
+                      status: doc['status'] ?? 'not_uploaded',
+                      imagePath:
+                          doc['url']?.isNotEmpty == true ? doc['url'] : null,
+                    ),
+                  ));
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Error loading documents: $e');
+      }
+    }
+  }
 
   Future<void> _pickDocument(String documentName) async {
     if (_isUploading) return;
@@ -45,26 +74,58 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
         _isUploading = true;
       });
 
-      final success = await _authService.uploadRiderDocuments({
-        documentName: image.path,
-      });
+      // Find the correct document key from Firestore
+      String? documentKey;
+      try {
+        final docSnapshot =
+            await _firestore.collection('riders').doc(rider.riderId).get();
 
-      if (!mounted) return;
+        if (docSnapshot.exists) {
+          final documentsData = docSnapshot.data()?['documents'] as Map?;
+          if (documentsData != null) {
+            documentsData.forEach((key, doc) {
+              if (doc['name'] == documentName) {
+                documentKey = key;
+              }
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Error finding document key: $e');
+      }
 
-      setState(() {
-        _isUploading = false;
-        if (!success) {
+      if (documentKey != null) {
+        final success = await _authService.uploadRiderDocuments({
+          documentKey!: image.path,
+        });
+
+        if (!mounted) return;
+
+        setState(() {
+          _isUploading = false;
+          if (!success) {
+            _documents[documentName] = DocumentStatus(
+              status: 'not_uploaded',
+              imagePath: null,
+            );
+          }
+        });
+
+        if (success) {
+          UIHelpers.showSuccessToast('$documentName uploaded');
+          _loadDocuments(); // Refresh data
+        } else {
+          UIHelpers.showErrorToast('Failed to upload $documentName');
+        }
+      } else {
+        setState(() {
+          _isUploading = false;
           _documents[documentName] = DocumentStatus(
             status: 'not_uploaded',
             imagePath: null,
           );
-        }
-      });
-
-      if (success) {
-        UIHelpers.showSuccessToast('$documentName uploaded');
-      } else {
-        UIHelpers.showErrorToast('Failed to upload $documentName');
+        });
+        UIHelpers.showErrorToast('Document type not found');
       }
     }
   }

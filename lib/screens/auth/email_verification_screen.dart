@@ -1,10 +1,10 @@
 import 'package:citimovers/screens/delivery/delivery_tracking_screen.dart';
-import 'package:citimovers/screens/tabs/bookings_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
+import '../../models/booking_model.dart';
 import '../../services/auth_service.dart';
 import '../home_screen.dart';
 
@@ -14,7 +14,7 @@ class EmailVerificationScreen extends StatefulWidget {
   final bool isSignup;
   final String? name;
   final bool isBookingFlow;
-  final BookingData? booking;
+  final BookingModel? booking;
 
   const EmailVerificationScreen({
     super.key,
