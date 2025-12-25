@@ -52,18 +52,331 @@ Customer                      Firebase                        Rider
 
 ### Booking Status States
 
-| Status | Description | Customer View | Rider View |
-|--------|-------------|---------------|-------------|
-| `pending` | Booking created, waiting for rider | Available in delivery requests |
-| `accepted` | Rider accepted, driver assigned | In progress - heading to pickup |
-| `arrived_at_pickup` | Driver at pickup location | At pickup - confirm loading |
-| `loading` | Loading items | Loading items - take photos |
-| `in_transit` | On the way to drop-off | In transit - track on map |
-| `arrived_at_dropoff` | At drop-off location | At drop-off - confirm unloading |
-| `unloading` | Unloading items | Unloading items - take photos |
-| `completed` | Delivery complete, rate driver | Completed - view earnings |
-| `cancelled` | Booking cancelled | Booking cancelled |
-| `cancelled_by_rider` | Rider cancelled booking | Booking cancelled |
+| Status | Description | Customer View | Rider View | Demurrage Tracking |
+|--------|-------------|---------------|-------------|-------------------|
+| `pending` | Booking created, waiting for rider | Available in delivery requests | - | - |
+| `accepted` | Rider accepted, driver assigned | In progress - heading to pickup | Heading to pickup | - |
+| `arrived_at_pickup` | Driver at pickup location | At pickup - confirm loading | Waiting for customer | - |
+| `loading` | Loading items | Loading items - take photos | Loading items - take photos | **Loading timer starts** |
+| `loading_complete` | Loading done, ready for transit | Items loaded, driver en route | Ready to depart | **Calculate loading demurrage** |
+| `in_transit` | On the way to drop-off | In transit - track on map | En route to dropoff | - |
+| `arrived_at_dropoff` | At drop-off location | At drop-off - confirm unloading | Arrived at destination | - |
+| `unloading` | Unloading items | Unloading items - take photos | Unloading items - take photos | **Unloading timer starts** |
+| `unloading_complete` | Unloading done | Items unloaded | Ready for completion | **Calculate unloading demurrage** |
+| `completed` | Delivery complete, rate driver | Completed - rate rider | Completed - view earnings | **Final fare calculated** |
+| `cancelled` | Booking cancelled | Booking cancelled | Booking cancelled | - |
+| `cancelled_by_rider` | Rider cancelled booking | Booking cancelled | Booking cancelled | - |
+
+### Complete Booking Flow with Demurrage
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        COMPLETE BOOKING FLOW                                    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+CUSTOMER SIDE                              FIREBASE                              RIDER SIDE
+    │                                        │                                       │
+    │  1. Create Booking                      │                                       │
+    │     - Select pickup location            │                                       │
+    │     - Select dropoff location           │                                       │
+    │     - Select vehicle type               │                                       │
+    │     - View estimated fare               │                                       │
+    │     ───────────────────────────────────>│  bookings.add({                       │
+    │                                        │    status: 'pending',                 │
+    │                                        │    customerId,                        │
+    │                                        │    pickupLocation,                    │
+    │                                        │    dropoffLocation,                   │
+    │                                        │    vehicle,                           │
+    │                                        │    distance,                          │
+    │                                        │    estimatedFare,                     │
+    │                                        │    loadingDemurrage: 0,               │
+    │                                        │    unloadingDemurrage: 0,             │
+    │                                        │    createdAt                          │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  delivery_requests.add({              │
+    │                                        │    requestId = bookingId,            │
+    │                                        │    status: 'pending',                 │
+    │                                        │    riderId: null                      │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  2. OTP Verification                    │                                       │
+    │     - Verify phone number              │                                       │
+    │     ───────────────────────────────────>│  AuthService.verifyOTP()              │
+    │                                        │                                       │
+    │                                        │                                       │  3. View Delivery Requests
+    │                                        │<──────────────────────────────────────│  RiderHomeTab shows
+    │                                        │                                       │  pending requests
+    │                                        │                                       │
+    │                                        │                                       │  4. Accept Delivery
+    │                                        │<──────────────────────────────────────│  Rider accepts
+    │                                        │  delivery_requests.update({           │
+    │                                        │    status: 'accepted',                 │
+    │                                        │    respondedAt                        │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  bookings.update({                     │
+    │                                        │    riderId,                           │
+    │                                        │    status: 'accepted',                │
+    │                                        │    acceptedAt                         │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  5. Driver Assigned                     │                                       │
+    │  <─────────────────────────────────────│  notifications.add({                   │
+    │     - View driver info                  │    type: 'driver_assigned',           │
+    │     - Track driver location             │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │                                       │  6. Navigate to Pickup
+    │                                        │                                       │  - Update location
+    │                                        │                                       │  - Arrive at pickup
+    │                                        │                                       │
+    │                                        │  bookings.update({                     │
+    │                                        │    status: 'arrived_at_pickup',       │
+    │                                        │    arrivedAtPickup                    │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  7. Driver Arrived at Pickup            │                                       │
+    │  <─────────────────────────────────────│  notifications.add({                   │
+    │     - Confirm loading                  │    type: 'arrived_at_pickup',         │
+    │                                        │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  8. Loading Phase                      │                                       │  9. Loading Phase
+    │     - Customer confirms loading         │                                       │     - Rider starts loading
+    │     - Rider takes loading photos        │                                       │     - Takes photos
+    │     ───────────────────────────────────>│  bookings.update({                     │
+    │                                        │    status: 'loading',                 │
+    │                                        │    loadingStartedAt                   │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  storage.uploadPhoto(                  │
+    │                                        │    stage: 'loading_start'             │
+    │                                        │  )                                    │
+    │                                        │                                       │
+    │                                        │  ⏱️ LOADING DEMURRAGE TIMER STARTS    │
+    │                                        │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+    │                                        │  Base fare: ₱500                      │
+    │                                        │  Loading demurrage: ₱125/4 hours      │
+    │                                        │  (25% of fare)                        │
+    │                                        │                                       │
+    │  10. Loading Complete                   │                                       │  11. Loading Complete
+    │      - Customer confirms items loaded   │                                       │      - Rider finishes loading
+    │      - Rider takes final loading photo  │                                       │      - Takes final photo
+    │      ───────────────────────────────────>│  bookings.update({                     │
+    │                                        │    status: 'loading_complete',        │
+    │                                        │    loadingCompletedAt                 │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  storage.uploadPhoto(                  │
+    │                                        │    stage: 'loading_complete'          │
+    │                                        │  )                                    │
+    │                                        │                                       │
+    │                                        │  ⏱️ CALCULATE LOADING DEMURRAGE        │
+    │                                        │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+    │                                        │  loadingDuration =                    │
+    │                                        │    loadingCompletedAt -               │
+    │                                        │    loadingStartedAt                   │
+    │                                        │                                       │
+    │                                        │  loadingDemurrage =                   │
+    │                                        │    ceil(loadingDuration / 4 hours) *  │
+    │                                        │    (estimatedFare * 0.25)             │
+    │                                        │                                       │
+    │                                        │  bookings.update({                     │
+    │                                        │    loadingDemurrage                    │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  notifications.add({                   │
+    │                                        │    type: 'loading_complete',          │
+    │                                        │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  12. In Transit                         │                                       │  13. In Transit
+    │      - Track driver on map              │                                       │      - Navigate to dropoff
+    │      - View estimated arrival           │                                       │      - Update location
+    │                                        │  bookings.update({                     │
+    │                                        │    status: 'in_transit',              │
+    │                                        │    inTransitStartedAt                 │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  notifications.add({                   │
+    │                                        │    type: 'in_transit',                │
+    │                                        │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │                                       │  14. Arrive at Dropoff
+    │                                        │  bookings.update({                     │
+    │                                        │    status: 'arrived_at_dropoff',      │
+    │                                        │    arrivedAtDropoff                   │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  15. Arrived at Dropoff                 │                                       │
+    │  <─────────────────────────────────────│  notifications.add({                   │
+    │      - Confirm unloading                │    type: 'arrived_at_dropoff',        │
+    │                                        │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  16. Unloading Phase                    │                                       │  17. Unloading Phase
+    │      - Customer confirms unloading      │                                       │      - Rider starts unloading
+    │      - Rider takes unloading photos     │                                       │      - Takes photos
+    │      ───────────────────────────────────>│  bookings.update({                     │
+    │                                        │    status: 'unloading',               │
+    │                                        │    unloadingStartedAt                 │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  storage.uploadPhoto(                  │
+    │                                        │    stage: 'unloading_start'            │
+    │                                        │  )                                    │
+    │                                        │                                       │
+    │                                        │  ⏱️ UNLOADING DEMURRAGE TIMER STARTS  │
+    │                                        │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+    │                                        │  Base fare: ₱500                      │
+    │                                        │  Unloading demurrage: ₱125/4 hours   │
+    │                                        │  (25% of fare)                        │
+    │                                        │                                       │
+    │  18. Unloading Complete                 │                                       │  19. Unloading Complete
+    │      - Customer confirms items unloaded  │                                       │      - Rider finishes unloading
+    │      - Rider takes final unloading photo│                                       │      - Takes final photo
+    │      ───────────────────────────────────>│  bookings.update({                     │
+    │                                        │    status: 'unloading_complete',      │
+    │                                        │    unloadingCompletedAt               │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  storage.uploadPhoto(                  │
+    │                                        │    stage: 'unloading_complete'        │
+    │                                        │  )                                    │
+    │                                        │                                       │
+    │                                        │  ⏱️ CALCULATE UNLOADING DEMURRAGE      │
+    │                                        │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+    │                                        │  unloadingDuration =                  │
+    │                                        │    unloadingCompletedAt -             │
+    │                                        │    unloadingStartedAt                 │
+    │                                        │                                       │
+    │                                        │  unloadingDemurrage =                 │
+    │                                        │    ceil(unloadingDuration / 4 hours) *│
+    │                                        │    (estimatedFare * 0.25)             │
+    │                                        │                                       │
+    │                                        │  bookings.update({                     │
+    │                                        │    unloadingDemurrage                  │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  notifications.add({                   │
+    │                                        │    type: 'unloading_complete',        │
+    │                                        │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  20. Delivery Complete                   │                                       │  21. Delivery Complete
+    │      - View final fare breakdown        │                                       │      - View earnings
+    │      - Rate rider                       │                                       │      - View rating
+    │      - Add tip                          │                                       │
+    │      - Upload photos                    │                                       │
+    │      ───────────────────────────────────>│  reviews.add({                        │
+    │                                        │    bookingId,                         │
+    │                                        │    customerId,                        │
+    │                                        │    riderId,                           │
+    │                                        │    rating,                            │
+    │                                        │    review,                            │
+    │                                        │    photos,                            │
+    │                                        │    tipAmount,                         │
+    │                                        │    createdAt                          │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  ⏱️ CALCULATE FINAL FARE               │
+    │                                        │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+    │                                        │  finalFare =                          │
+    │                                        │    estimatedFare +                    │
+    │                                        │    loadingDemurrage +                 │
+    │                                        │    unloadingDemurrage +               │
+    │                                        │    tipAmount                          │
+    │                                        │                                       │
+    │                                        │  bookings.update({                     │
+    │                                        │    status: 'completed',                │
+    │                                        │    actualFare: finalFare,             │
+    │                                        │    completedAt                        │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  notifications.add({                   │
+    │                                        │    type: 'delivery_complete',         │
+    │                                        │    to: customerId                     │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │                                        │  notifications.add({                   │
+    │                                        │    type: 'review_received',           │
+    │                                        │    to: riderId                        │
+    │                                        │  })                                   │
+    │                                        │                                       │
+    │  22. Booking Completed                   │                                       │  23. Booking Completed
+    │      - View in booking history          │                                       │      - View in delivery history
+    │      - Leave review                      │                                       │      - View earnings
+```
+
+### Demurrage Calculation Details
+
+**Demurrage Rate:** 25% of the estimated fare per 4-hour block
+
+**Loading Demurrage:**
+- Starts when status changes to `loading`
+- Ends when status changes to `loading_complete`
+- Calculated as: `ceil(loadingDuration / 4 hours) × (estimatedFare × 0.25)`
+- Example:
+  - Estimated fare: ₱500
+  - Loading time: 5 hours
+  - Loading demurrage: `ceil(5/4) × ₱125 = 2 × ₱125 = ₱250`
+
+**Unloading Demurrage:**
+- Starts when status changes to `unloading`
+- Ends when status changes to `unloading_complete`
+- Calculated as: `ceil(unloadingDuration / 4 hours) × (estimatedFare × 0.25)`
+- Example:
+  - Estimated fare: ₱500
+  - Unloading time: 3 hours
+  - Unloading demurrage: `ceil(3/4) × ₱125 = 1 × ₱125 = ₱125`
+
+**Total Fare Calculation:**
+```
+totalFare = estimatedFare + loadingDemurrage + unloadingDemurrage + tipAmount
+```
+
+**Example Complete Fare Calculation:**
+```
+Estimated Fare: ₱500
+Loading Time: 5 hours → Loading Demurrage: ₱250
+Unloading Time: 3 hours → Unloading Demurrage: ₱125
+Tip Amount: ₱100
+─────────────────────────────────────
+Total Fare: ₱975
+```
+
+### Firestore Schema for Demurrage Tracking
+
+**Bookings Collection - Additional Fields:**
+```javascript
+{
+  bookingId: string,
+  customerId: string,
+  riderId: string,
+  // ... existing fields ...
+  
+  // Demurrage tracking
+  loadingStartedAt: Timestamp,        // When loading phase started
+  loadingCompletedAt: Timestamp,      // When loading phase completed
+  loadingDemurrage: double,          // Calculated loading demurrage
+  
+  unloadingStartedAt: Timestamp,      // When unloading phase started
+  unloadingCompletedAt: Timestamp,    // When unloading phase completed
+  unloadingDemurrage: double,        // Calculated unloading demurrage
+  
+  // Final fare
+  actualFare: double,                 // Final fare including demurrage and tip
+  
+  // Status timestamps
+  acceptedAt: Timestamp,
+  arrivedAtPickup: Timestamp,
+  inTransitStartedAt: Timestamp,
+  arrivedAtDropoff: Timestamp,
+  completedAt: Timestamp
+}
+```
 
 ---
 
