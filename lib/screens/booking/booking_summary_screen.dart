@@ -151,15 +151,14 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
             isBookingFlow: true,
             booking: BookingModel(
               bookingId: booking.bookingId!,
-              customerId:
-                  'customer_id_placeholder', // Add appropriate customer ID
+              customerId: user.userId,
               pickupLocation: booking.pickupLocation,
               dropoffLocation: booking.dropoffLocation,
               vehicle: booking.vehicle,
-              bookingType: 'now',
-              distance: 0.0, // Add appropriate default or calculate
+              bookingType: booking.bookingType,
+              distance: booking.distance,
               estimatedFare: booking.estimatedFare,
-              paymentMethod: 'cash',
+              paymentMethod: booking.paymentMethod,
               createdAt: booking.scheduledDateTime ?? DateTime.now(),
             ),
           ),

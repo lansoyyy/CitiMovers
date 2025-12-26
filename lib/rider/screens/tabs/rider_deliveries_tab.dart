@@ -27,15 +27,17 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
   List<DeliveryData> _activeDeliveries = [];
   List<DeliveryData> _completedDeliveries = [];
   List<DeliveryData> _cancelledDeliveries = [];
+  List<DeliveryData> _availableDeliveries = [];
 
   StreamSubscription<QuerySnapshot>? _activeSubscription;
   StreamSubscription<QuerySnapshot>? _completedSubscription;
   StreamSubscription<QuerySnapshot>? _cancelledSubscription;
+  StreamSubscription? _availableSubscription;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadRiderDeliveries();
   }
 
@@ -45,6 +47,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     _activeSubscription?.cancel();
     _completedSubscription?.cancel();
     _cancelledSubscription?.cancel();
+    _availableSubscription?.cancel();
     super.dispose();
   }
 
@@ -54,7 +57,22 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
       _listenToActiveDeliveries(rider.riderId);
       _listenToCompletedDeliveries(rider.riderId);
       _listenToCancelledDeliveries(rider.riderId);
+      _listenToAvailableDeliveries();
     }
+  }
+
+  void _listenToAvailableDeliveries() {
+    _availableSubscription =
+        _authService.getAvailableDeliveryRequests().listen((bookings) {
+      if (mounted) {
+        setState(() {
+          _availableDeliveries = bookings
+              .map((booking) =>
+                  _bookingToDeliveryData(booking['bookingId'], booking))
+              .toList();
+        });
+      }
+    });
   }
 
   void _listenToActiveDeliveries(String riderId) {
@@ -336,6 +354,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                         Tab(text: 'Active'),
                         Tab(text: 'Completed'),
                         Tab(text: 'Cancelled'),
+                        Tab(text: 'Available'),
                       ],
                     ),
                   ),
@@ -351,6 +370,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                   _buildActiveDeliveries(),
                   _buildCompletedDeliveries(),
                   _buildCancelledDeliveries(),
+                  _buildAvailableDeliveries(),
                 ],
               ),
             ),
@@ -552,6 +572,285 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
         },
       ),
     );
+  }
+
+  Widget _buildAvailableDeliveries() {
+    if (_isLoading) {
+      return Center(child: UIHelpers.loadingIndicator());
+    }
+
+    if (_availableDeliveries.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search,
+              size: 80,
+              color: AppColors.lightGrey,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No Available Deliveries',
+              style: TextStyle(
+                fontSize: 18,
+                fontFamily: 'Bold',
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'New delivery requests will appear here',
+              style: TextStyle(
+                fontSize: 14,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
+      color: AppColors.primaryRed,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(20),
+        itemCount: _availableDeliveries.length,
+        itemBuilder: (context, index) {
+          return AvailableDeliveryCard(
+            delivery: _availableDeliveries[index],
+            onAccept: () => _acceptDelivery(_availableDeliveries[index]),
+            onReject: () => _rejectDelivery(_availableDeliveries[index]),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _acceptDelivery(DeliveryData delivery) async {
+    final confirmed = await _showAcceptConfirmationDialog(delivery);
+    if (confirmed) {
+      setState(() => _isLoading = true);
+      try {
+        final success = await _authService.acceptDeliveryRequest(delivery.id);
+        if (success && mounted) {
+          UIHelpers.showSuccessToast('Delivery accepted successfully');
+          // Navigate to delivery progress screen
+          final bookingDoc =
+              await _firestore.collection('bookings').doc(delivery.id).get();
+
+          if (bookingDoc.exists && mounted) {
+            final booking = BookingModel.fromMap(bookingDoc.data()!);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DeliveryTrackingScreen(booking: booking),
+              ),
+            );
+          }
+        } else if (mounted) {
+          UIHelpers.showErrorToast('Failed to accept delivery');
+        }
+      } catch (e) {
+        if (mounted) {
+          UIHelpers.showErrorToast('Error: $e');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
+  Future<bool> _showAcceptConfirmationDialog(DeliveryData delivery) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text(
+              'Accept Delivery',
+              style: TextStyle(
+                fontSize: 20,
+                fontFamily: 'Bold',
+                color: AppColors.textPrimary,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDialogDetailRow('Vehicle Type', delivery.vehicleType),
+                _buildDialogDetailRow('Pickup', delivery.pickupLocation),
+                _buildDialogDetailRow('Drop-off', delivery.deliveryLocation),
+                _buildDialogDetailRow('Fare', delivery.fare),
+                _buildDialogDetailRow('Distance',
+                    '${delivery.distance > 0 ? delivery.distance.toStringAsFixed(1) : 'N/A'} km'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                  foregroundColor: AppColors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Accept',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Bold',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Widget _buildDialogDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'Medium',
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'Regular',
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _rejectDelivery(DeliveryData delivery) async {
+    final confirmed = await _showRejectConfirmationDialog(delivery);
+    if (confirmed) {
+      setState(() => _isLoading = true);
+      try {
+        final success = await _authService.rejectDeliveryRequest(delivery.id);
+        if (success && mounted) {
+          UIHelpers.showSuccessToast('Delivery rejected');
+        } else if (mounted) {
+          UIHelpers.showErrorToast('Failed to reject delivery');
+        }
+      } catch (e) {
+        if (mounted) {
+          UIHelpers.showErrorToast('Error: $e');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
+  Future<bool> _showRejectConfirmationDialog(DeliveryData delivery) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text(
+              'Reject Delivery',
+              style: TextStyle(
+                fontSize: 20,
+                fontFamily: 'Bold',
+                color: AppColors.textPrimary,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Are you sure you want to reject this delivery request?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Regular',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildDialogDetailRow('Vehicle Type', delivery.vehicleType),
+                _buildDialogDetailRow('Pickup', delivery.pickupLocation),
+                _buildDialogDetailRow('Drop-off', delivery.deliveryLocation),
+                _buildDialogDetailRow('Fare', delivery.fare),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: AppColors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Reject',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Bold',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   void _showDeliveryDetailsBottomSheet(
@@ -944,6 +1243,540 @@ class DeliveryCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class AvailableDeliveryCard extends StatelessWidget {
+  final DeliveryData delivery;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  const AvailableDeliveryCard({
+    super.key,
+    required this.delivery,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(
+          color: AppColors.primaryRed.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with vehicle type and status badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primaryRed,
+                            AppColors.primaryRed.withValues(alpha: 0.8),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryRed.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.local_shipping,
+                        color: AppColors.white,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          delivery.vehicleType,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'ID: ${delivery.id}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textSecondary,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: AppColors.warning,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'New Request',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Bold',
+                          color: AppColors.warning,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Date and Time Row
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.calendar_today,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      delivery.date,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.2,
+                      ),
+                    ),
+                    Text(
+                      delivery.time,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Regular',
+                        color: AppColors.textSecondary,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // Customer Info
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    size: 18,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        delivery.customerName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                          color: AppColors.textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
+                      Text(
+                        delivery.customerPhone,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // Route
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.scaffoldBackground,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.lightGrey.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Pickup
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryRed,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Pickup',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              delivery.pickupLocation,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Medium',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Drop-off
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryBlue,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Drop-off',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              delivery.deliveryLocation,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Medium',
+                                color: AppColors.textPrimary,
+                                height: 1.2,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Details Row
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailItem(
+                    Icons.straighten,
+                    'Distance',
+                    '${delivery.distance > 0 ? delivery.distance.toStringAsFixed(1) : 'N/A'} km',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDetailItem(
+                    Icons.access_time,
+                    'Est. Time',
+                    delivery.estimatedTime,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // Fare and Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Earnings',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Medium',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        delivery.fare,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontFamily: 'Bold',
+                          color: AppColors.primaryRed,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    // Reject Button
+                    Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: onReject,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.close,
+                                  size: 20,
+                                  color: AppColors.error,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Reject',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontFamily: 'Bold',
+                                    color: AppColors.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Accept Button
+                    Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.success,
+                            AppColors.success.withValues(alpha: 0.8),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.success.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: onAccept,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check,
+                                  size: 20,
+                                  color: AppColors.white,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Accept',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontFamily: 'Bold',
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBackground,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontFamily: 'Medium',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

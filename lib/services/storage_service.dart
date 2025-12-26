@@ -350,4 +350,64 @@ class StorageService {
       return false;
     }
   }
+
+  /// Get all delivery photos for a booking
+  Future<List<String>> getDeliveryPhotos(String bookingId) async {
+    try {
+      final storageRef =
+          _storage.ref().child('delivery_photos').child(bookingId);
+      final result = await storageRef.listAll();
+
+      final photoUrls = <String>[];
+      for (final item in result.items) {
+        final url = await item.getDownloadURL();
+        photoUrls.add(url);
+      }
+
+      return photoUrls;
+    } catch (e) {
+      print('Error getting delivery photos: $e');
+      return [];
+    }
+  }
+
+  /// Get delivery photos by stage
+  Future<Map<String, List<String>>> getDeliveryPhotosByStage(
+      String bookingId) async {
+    try {
+      final storageRef =
+          _storage.ref().child('delivery_photos').child(bookingId);
+      final result = await storageRef.listAll();
+
+      final photosByStage = <String, List<String>>{
+        'start_loading': [],
+        'finish_loading': [],
+        'start_unloading': [],
+        'finish_unloading': [],
+        'receiver_id': [],
+      };
+
+      for (final item in result.items) {
+        final url = await item.getDownloadURL();
+        final name = item.name.toLowerCase();
+
+        if (name.contains('start_loading')) {
+          photosByStage['start_loading']!.add(url);
+        } else if (name.contains('finish_loading')) {
+          photosByStage['finish_loading']!.add(url);
+        } else if (name.contains('start_unloading')) {
+          photosByStage['start_unloading']!.add(url);
+        } else if (name.contains('finish_unloading')) {
+          photosByStage['finish_unloading']!.add(url);
+        } else if (name.contains('receiver_id')) {
+          photosByStage['receiver_id']!.add(url);
+        }
+      }
+
+      return photosByStage;
+    } catch (e) {
+      print('Error getting delivery photos by stage: $e');
+      return {};
+    }
+  }
 }

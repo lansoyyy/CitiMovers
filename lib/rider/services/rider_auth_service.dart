@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
 import '../../services/otp_service.dart';
+import '../../services/booking_service.dart';
 import '../models/rider_model.dart';
 
 /// Authentication service for CitiMovers Riders
@@ -682,5 +683,53 @@ class RiderAuthService {
       debugPrint('Error permanently deleting account: $e');
       return false;
     }
+  }
+
+  /// Accept delivery request
+  Future<bool> acceptDeliveryRequest(String bookingId) async {
+    try {
+      if (_currentRider == null) return false;
+
+      final bookingService = BookingService();
+      return await bookingService.acceptDeliveryRequest(
+        bookingId: bookingId,
+        riderId: _currentRider!.riderId,
+      );
+    } catch (e) {
+      debugPrint('Error accepting delivery request: $e');
+      return false;
+    }
+  }
+
+  /// Reject delivery request
+  Future<bool> rejectDeliveryRequest(String bookingId, {String? reason}) async {
+    try {
+      if (_currentRider == null) return false;
+
+      final bookingService = BookingService();
+      return await bookingService.rejectDeliveryRequest(
+        bookingId: bookingId,
+        riderId: _currentRider!.riderId,
+        reason: reason,
+      );
+    } catch (e) {
+      debugPrint('Error rejecting delivery request: $e');
+      return false;
+    }
+  }
+
+  /// Get available delivery requests for riders
+  Stream<List<Map<String, dynamic>>> getAvailableDeliveryRequests() {
+    final bookingService = BookingService();
+    return bookingService.getAvailableDeliveryRequests();
+  }
+
+  /// Get delivery requests for current rider
+  Stream<List<Map<String, dynamic>>> getRiderDeliveryRequests() {
+    if (_currentRider == null) {
+      return Stream.value([]);
+    }
+    final bookingService = BookingService();
+    return bookingService.getRiderDeliveryRequests(_currentRider!.riderId);
   }
 }

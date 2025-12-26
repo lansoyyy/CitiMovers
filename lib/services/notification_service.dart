@@ -4,7 +4,8 @@ class NotificationModel {
   final String id;
   final String userId; // Can be customer userId or rider riderId
   final String userType; // 'customer' or 'rider'
-  final String type; // 'booking', 'payment', 'system', 'rating'
+  final String
+      type; // 'booking', 'payment', 'system', 'rating', 'delivery_request', 'review', 'tip', 'demurrage'
   final String title;
   final String message;
   final String? referenceId; // booking ID, payment ID, etc.
@@ -313,6 +314,226 @@ class NotificationService {
       userType: 'rider',
       type: 'rating',
       title: 'New Rating Received',
+      message: message,
+      referenceId: bookingId,
+    );
+  }
+
+  /// Create comprehensive booking status notification
+  /// This handles all booking status updates for both customers and riders
+  Future<bool> createBookingStatusNotification({
+    required String bookingId,
+    required String status,
+    String? customerId,
+    String? riderId,
+    String? customerName,
+    String? riderName,
+    double? fare,
+  }) async {
+    String title;
+    String customerMessage;
+    String? riderMessage;
+
+    switch (status) {
+      case 'pending':
+        title = 'Booking Created';
+        customerMessage =
+            'Your booking request has been submitted and is waiting for a rider.';
+        riderMessage = null; // No rider assigned yet
+        break;
+      case 'accepted':
+        title = 'Booking Accepted';
+        customerMessage =
+            'Great news! ${riderName ?? 'A rider'} has accepted your booking.';
+        riderMessage = 'You have accepted the booking request.';
+        break;
+      case 'arrived_at_pickup':
+        title = 'Rider Arrived at Pickup';
+        customerMessage =
+            '${riderName ?? 'Your rider'} has arrived at the pickup location.';
+        riderMessage = 'You have arrived at the pickup location.';
+        break;
+      case 'loading_complete':
+        title = 'Loading Complete';
+        customerMessage =
+            'Your package has been loaded and the rider is now in transit.';
+        riderMessage =
+            'Loading complete. You are now in transit to the delivery location.';
+        break;
+      case 'in_transit':
+        title = 'Delivery In Transit';
+        customerMessage =
+            '${riderName ?? 'Your rider'} is now on the way to the delivery location.';
+        riderMessage = 'You are now in transit to the delivery location.';
+        break;
+      case 'arrived_at_dropoff':
+        title = 'Rider Arrived at Drop-off';
+        customerMessage =
+            '${riderName ?? 'Your rider'} has arrived at the delivery location.';
+        riderMessage = 'You have arrived at the delivery location.';
+        break;
+      case 'unloading_complete':
+        title = 'Unloading Complete';
+        customerMessage = 'Your package has been unloaded at the destination.';
+        riderMessage = 'Unloading complete. Package has been delivered.';
+        break;
+      case 'completed':
+        title = 'Delivery Completed';
+        customerMessage =
+            'Your delivery has been completed successfully! Please rate your rider.';
+        riderMessage =
+            'Delivery completed! You earned P${fare?.toStringAsFixed(0) ?? '0'} for this delivery.';
+        break;
+      case 'cancelled':
+        title = 'Booking Cancelled';
+        customerMessage = 'Your booking has been cancelled.';
+        riderMessage = 'The booking has been cancelled.';
+        break;
+      case 'cancelled_by_rider':
+        title = 'Booking Cancelled by Rider';
+        customerMessage =
+            'The rider has cancelled your booking. We apologize for the inconvenience.';
+        riderMessage = 'You have cancelled this booking.';
+        break;
+      case 'rejected':
+        title = 'Booking Rejected';
+        customerMessage =
+            'Your booking request was rejected by a rider. We are finding another rider for you.';
+        riderMessage = 'You have rejected this booking request.';
+        break;
+      default:
+        title = 'Booking Update';
+        customerMessage = 'Your booking status has been updated.';
+        riderMessage = 'Booking status has been updated.';
+    }
+
+    // Create notification for customer
+    if (customerId != null && customerMessage != null) {
+      await createNotification(
+        userId: customerId,
+        userType: 'customer',
+        type: 'booking',
+        title: title,
+        message: customerMessage,
+        referenceId: bookingId,
+      );
+    }
+
+    // Create notification for rider
+    if (riderId != null && riderMessage != null) {
+      await createNotification(
+        userId: riderId,
+        userType: 'rider',
+        type: 'booking',
+        title: title,
+        message: riderMessage,
+        referenceId: bookingId,
+      );
+    }
+
+    return true;
+  }
+
+  /// Create delivery request notification for rider
+  /// When a new booking is available for the rider
+  Future<bool> createDeliveryRequestNotification({
+    required String riderId,
+    required String bookingId,
+    required String vehicleType,
+    required String pickupLocation,
+    required String dropoffLocation,
+    required double fare,
+  }) async {
+    return createNotification(
+      userId: riderId,
+      userType: 'rider',
+      type: 'delivery_request',
+      title: 'New Delivery Request',
+      message:
+          'A $vehicleType delivery from $pickupLocation to $dropoffLocation is available. Earnings: P${fare.toStringAsFixed(0)}',
+      referenceId: bookingId,
+    );
+  }
+
+  /// Create review notification for rider
+  /// When a customer submits a review and rating
+  Future<bool> createReviewNotification({
+    required String riderId,
+    required String bookingId,
+    required String customerName,
+    required double rating,
+    String? review,
+    double? tipAmount,
+  }) async {
+    String message;
+    if (review != null && review.isNotEmpty) {
+      message = '$customerName rated you $rating.0 stars: "$review"';
+      if (tipAmount != null && tipAmount > 0) {
+        message += ' + P${tipAmount.toStringAsFixed(0)} tip!';
+      }
+    } else {
+      message = '$customerName rated you $rating.0 stars';
+      if (tipAmount != null && tipAmount > 0) {
+        message += ' and gave you a P${tipAmount.toStringAsFixed(0)} tip!';
+      }
+    }
+
+    return createNotification(
+      userId: riderId,
+      userType: 'rider',
+      type: 'review',
+      title: 'New Review Received',
+      message: message,
+      referenceId: bookingId,
+    );
+  }
+
+  /// Create tip notification for rider
+  /// When a customer gives a tip to the rider
+  Future<bool> createTipNotification({
+    required String riderId,
+    required String bookingId,
+    required String customerName,
+    required double tipAmount,
+  }) async {
+    return createNotification(
+      userId: riderId,
+      userType: 'rider',
+      type: 'tip',
+      title: 'Tip Received',
+      message: '$customerName gave you a P${tipAmount.toStringAsFixed(0)} tip!',
+      referenceId: bookingId,
+    );
+  }
+
+  /// Create demurrage notification for customer
+  /// When demurrage fees are applied
+  Future<bool> createDemurrageNotification({
+    required String customerId,
+    required String bookingId,
+    required double loadingDemurrageFee,
+    required double unloadingDemurrageFee,
+    required double totalDemurrageFee,
+  }) async {
+    String message;
+    if (loadingDemurrageFee > 0 && unloadingDemurrageFee > 0) {
+      message =
+          'Demurrage fees applied: P${loadingDemurrageFee.toStringAsFixed(0)} for loading and P${unloadingDemurrageFee.toStringAsFixed(0)} for unloading. Total: P${totalDemurrageFee.toStringAsFixed(0)}';
+    } else if (loadingDemurrageFee > 0) {
+      message =
+          'Loading demurrage fee applied: P${loadingDemurrageFee.toStringAsFixed(0)}';
+    } else if (unloadingDemurrageFee > 0) {
+      message =
+          'Unloading demurrage fee applied: P${unloadingDemurrageFee.toStringAsFixed(0)}';
+    } else {
+      message = 'No demurrage fees applied for this delivery.';
+    }
+
+    return createNotification(
+      userId: customerId,
+      userType: 'customer',
+      type: 'demurrage',
+      title: 'Demurrage Fee Applied',
       message: message,
       referenceId: bookingId,
     );

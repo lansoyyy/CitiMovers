@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:citimovers/rider/models/delivery_request_model.dart';
+import 'package:citimovers/rider/services/rider_auth_service.dart';
+import 'package:citimovers/services/booking_service.dart';
+import 'package:citimovers/services/storage_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:flutter/material.dart';
@@ -36,6 +39,10 @@ enum UnloadingSubStep { arrived, startUnloading, finishUnloading }
 
 class _RiderDeliveryProgressScreenState
     extends State<RiderDeliveryProgressScreen> with TickerProviderStateMixin {
+  final RiderAuthService _riderAuthService = RiderAuthService();
+  final BookingService _bookingService = BookingService();
+  final StorageService _storageService = StorageService();
+
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
   UnloadingSubStep? _unloadingSubStep;
@@ -80,15 +87,30 @@ class _RiderDeliveryProgressScreenState
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    // Start location tracking
+    _startLocationTracking();
   }
 
   @override
   void dispose() {
     _loadingTimer?.cancel();
     _unloadingTimer?.cancel();
+    _locationTrackingTimer?.cancel();
     _receiverNameController.dispose();
     _pulseController.dispose();
     super.dispose();
+  }
+
+  /// Start periodic location tracking
+  void _startLocationTracking() {
+    _locationTrackingTimer =
+        Timer.periodic(const Duration(seconds: 30), (timer) async {
+      // In a real app, get actual GPS location
+      // For now, using mock coordinates
+      await _riderAuthService.updateLocation(
+          _pickup.latitude, _pickup.longitude);
+    });
   }
 
   double get _baseFare {
@@ -103,10 +125,21 @@ class _RiderDeliveryProgressScreenState
 
   final ImagePicker _picker = ImagePicker();
 
-  // Mock Coordinates (In a real app, these would come from the model or geocoding)
+  // Coordinates - In a real app, these would come from the booking model or geocoding
+  // TODO: Get real coordinates from BookingModel using pickupLocation and dropoffLocation addresses
   static const LatLng _manila = LatLng(14.5995, 120.9842);
   static const LatLng _pickup = LatLng(14.5547, 121.0244); // Makati
   static const LatLng _dropoff = LatLng(14.5355, 120.9847); // Pasay
+
+  // Photo URLs for Firebase uploads
+  String? _startLoadingPhotoUrl;
+  String? _finishLoadingPhotoUrl;
+  String? _startUnloadingPhotoUrl;
+  String? _finishUnloadingPhotoUrl;
+  String? _idPhotoUrl;
+
+  // Location tracking timer
+  Timer? _locationTrackingTimer;
 
   Set<Marker> _createMarkers(LatLng position, String id, String title) {
     return {
@@ -138,13 +171,21 @@ class _RiderDeliveryProgressScreenState
 
   // --- Actions ---
 
-  void _arrivedAtWarehouse() {
+  void _arrivedAtWarehouse() async {
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
       _loadingDemurrageStarted = true;
       _startLoadingTimer();
     });
+
+    // Update booking status in Firestore
+    await _bookingService.updateBookingStatusWithDetails(
+      bookingId: widget.request.id,
+      status: 'arrived_at_pickup',
+      loadingStartedAt: DateTime.now(),
+    );
+
     UIHelpers.showSuccessToast(
         'Arrived at warehouse! Demurrage timer started.');
   }
@@ -185,27 +226,77 @@ class _RiderDeliveryProgressScreenState
   Future<void> _takePhoto(Function(File) onPicked, String photoType) async {
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
+      final file = File(image.path);
       setState(() {
-        onPicked(File(image.path));
+        onPicked(file);
       });
-      UIHelpers.showSuccessToast('$photoType photo captured successfully!');
 
-      // Update sub-steps based on photo taken
-      if (onPicked == (file) => _startLoadingPhoto = file) {
-        _startLoadingPhotoProcess();
-      } else if (onPicked == (file) => _finishLoadingPhoto = file) {
-        _finishLoadingPhotoProcess();
+      // Upload photo to Firebase Storage
+      final photoUrl = await _storageService.uploadDeliveryPhoto(
+        file,
+        widget.request.id,
+        photoType,
+      );
+
+      if (photoUrl != null) {
+        // Store the URL based on photo type
+        if (photoType == 'Start Loading') {
+          _startLoadingPhotoUrl = photoUrl;
+          _startLoadingPhotoProcess();
+        } else if (photoType == 'Finished Loading') {
+          _finishLoadingPhotoUrl = photoUrl;
+          _finishLoadingPhotoProcess();
+        } else if (photoType == 'Start Unloading') {
+          _startUnloadingPhotoUrl = photoUrl;
+          _startUnloadingPhotoProcess();
+        } else if (photoType == 'Finished Unloading') {
+          _finishUnloadingPhotoUrl = photoUrl;
+          _finishUnloadingPhotoProcess();
+        } else if (photoType == 'Receiver ID') {
+          _idPhotoUrl = photoUrl;
+        }
+
+        // Add photo URL to booking document
+        await _bookingService.addDeliveryPhoto(
+          bookingId: widget.request.id,
+          stage: photoType.toLowerCase().replaceAll(' ', '_'),
+          photoUrl: photoUrl,
+        );
+
+        UIHelpers.showSuccessToast('$photoType photo captured and uploaded!');
+      } else {
+        UIHelpers.showErrorToast('Failed to upload $photoType photo');
       }
     }
   }
 
-  void _finishLoading() {
+  void _finishLoading() async {
     if (_startLoadingPhoto == null || _finishLoadingPhoto == null) {
       UIHelpers.showInfoToast('Please take both photos to finish loading.');
       return;
     }
+
+    // Ensure photos are uploaded
+    if (_startLoadingPhotoUrl == null || _finishLoadingPhotoUrl == null) {
+      UIHelpers.showInfoToast('Please wait for photos to upload.');
+      return;
+    }
+
     _loadingTimer?.cancel();
     _loadingDemurrageStarted = false;
+
+    // Update booking status in Firestore with demurrage data
+    await _bookingService.updateBookingStatusWithDetails(
+      bookingId: widget.request.id,
+      status: 'loading_complete',
+      loadingCompletedAt: DateTime.now(),
+      loadingDemurrageFee: _loadingDemurrageFee,
+      deliveryPhotos: {
+        'start_loading': _startLoadingPhotoUrl,
+        'finish_loading': _finishLoadingPhotoUrl,
+      },
+    );
+
     setState(() {
       _currentStep = DeliveryStep.delivering;
       _loadingSubStep = null;
@@ -213,7 +304,7 @@ class _RiderDeliveryProgressScreenState
     UIHelpers.showSuccessToast('Loading completed! Ready for delivery.');
   }
 
-  void _arrivedAtClient() {
+  void _arrivedAtClient() async {
     // Geo-fencing check
     if (!_isWithinGeofence) {
       _showGeofenceWarning();
@@ -226,6 +317,14 @@ class _RiderDeliveryProgressScreenState
       _unloadingDemurrageStarted = true;
       _startUnloadingTimer();
     });
+
+    // Update booking status in Firestore
+    await _bookingService.updateBookingStatusWithDetails(
+      bookingId: widget.request.id,
+      status: 'arrived_at_dropoff',
+      unloadingStartedAt: DateTime.now(),
+    );
+
     UIHelpers.showSuccessToast(
         'Arrived at destination! Demurrage timer started.');
   }
@@ -280,13 +379,33 @@ class _RiderDeliveryProgressScreenState
     });
   }
 
-  void _finishUnloading() {
+  void _finishUnloading() async {
     if (_startUnloadingPhoto == null || _finishUnloadingPhoto == null) {
       UIHelpers.showInfoToast('Please take both photos to finish unloading.');
       return;
     }
+
+    // Ensure photos are uploaded
+    if (_startUnloadingPhotoUrl == null || _finishUnloadingPhotoUrl == null) {
+      UIHelpers.showInfoToast('Please wait for photos to upload.');
+      return;
+    }
+
     _unloadingTimer?.cancel();
     _unloadingDemurrageStarted = false;
+
+    // Update booking status in Firestore with demurrage data
+    await _bookingService.updateBookingStatusWithDetails(
+      bookingId: widget.request.id,
+      status: 'unloading_complete',
+      unloadingCompletedAt: DateTime.now(),
+      unloadingDemurrageFee: _unloadingDemurrageFee,
+      deliveryPhotos: {
+        'start_unloading': _startUnloadingPhotoUrl,
+        'finish_unloading': _finishUnloadingPhotoUrl,
+      },
+    );
+
     setState(() {
       _currentStep = DeliveryStep.receiving;
       _unloadingSubStep = null;
@@ -295,7 +414,7 @@ class _RiderDeliveryProgressScreenState
         'Unloading completed! Ready for receiver confirmation.');
   }
 
-  void _completeDelivery() {
+  void _completeDelivery() async {
     if (_receiverNameController.text.isEmpty) {
       UIHelpers.showInfoToast('Please enter receiver name.');
       return;
@@ -308,6 +427,23 @@ class _RiderDeliveryProgressScreenState
       UIHelpers.showInfoToast('Receiver signature is required.');
       return;
     }
+
+    // Ensure ID photo is uploaded
+    if (_idPhotoUrl == null) {
+      UIHelpers.showInfoToast('Please wait for ID photo to upload.');
+      return;
+    }
+
+    // Update booking status in Firestore with completion data
+    await _bookingService.updateBookingStatusWithDetails(
+      bookingId: widget.request.id,
+      status: 'completed',
+      completedAt: DateTime.now(),
+      receiverName: _receiverNameController.text,
+      deliveryPhotos: {
+        'receiver_id': _idPhotoUrl,
+      },
+    );
 
     setState(() {
       _currentStep = DeliveryStep.completed;

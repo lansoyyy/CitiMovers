@@ -4,6 +4,10 @@ import 'package:image_picker/image_picker.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
+import '../../services/booking_service.dart';
+import '../../services/storage_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/driver_service.dart';
 
 class DeliveryCompletionScreen extends StatefulWidget {
   final BookingModel booking;
@@ -24,6 +28,11 @@ class DeliveryCompletionScreen extends StatefulWidget {
 
 class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     with SingleTickerProviderStateMixin {
+  final BookingService _bookingService = BookingService();
+  final StorageService _storageService = StorageService();
+  final AuthService _authService = AuthService();
+  final DriverService _driverService = DriverService.instance;
+
   final TextEditingController _reviewController = TextEditingController();
   final TextEditingController _customTipController = TextEditingController();
   final TextEditingController _otherTipReasonController =
@@ -34,6 +43,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   double _rating = 0.0;
   bool _isConfirmed = false;
   bool _isSubmitting = false;
+  String? _driverName;
 
   // Tip-related variables
   bool _wantsToTip = false;
@@ -88,6 +98,21 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     );
 
     _animationController.forward();
+
+    // Fetch driver name
+    _fetchDriverName();
+  }
+
+  Future<void> _fetchDriverName() async {
+    if (widget.booking.driverId != null) {
+      final driver =
+          await _driverService.getDriverById(widget.booking.driverId!);
+      if (driver != null) {
+        setState(() {
+          _driverName = driver.name;
+        });
+      }
+    }
   }
 
   @override
@@ -230,36 +255,48 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
       _isSubmitting = true;
     });
 
-    // Simulate API call with tip data
-    await Future.delayed(const Duration(seconds: 2));
+    // Get current user
+    final user = _authService.currentUser;
+    if (user == null) {
+      UIHelpers.showErrorToast('Please login to submit review');
+      setState(() => _isSubmitting = false);
+      return;
+    }
+
+    // Submit review to Firebase
+    final success = await _bookingService.submitReview(
+      bookingId: widget.booking.bookingId!,
+      customerId: user.userId,
+      riderId: widget.booking.driverId!,
+      rating: _rating,
+      review: _reviewController.text.trim().isEmpty
+          ? null
+          : _reviewController.text.trim(),
+      tipAmount: _wantsToTip ? _selectedTipAmount : null,
+      tipReasons: _selectedTipReasons.isNotEmpty ? _selectedTipReasons : null,
+    );
 
     if (mounted) {
       setState(() {
         _isSubmitting = false;
       });
 
-      // Show success message with tip info
-      String message = 'Thank you for your feedback!';
-      if (_wantsToTip &&
-          _selectedTipAmount != null &&
-          _selectedTipAmount! > 0) {
-        message =
-            'Thank you for your feedback and generous tip of P${_selectedTipAmount!.toStringAsFixed(0)}!';
-      }
-      UIHelpers.showSuccessToast(message);
-
-      // Log tip data (in real app, send to API)
-      if (_wantsToTip && _selectedTipAmount != null) {
-        debugPrint('Tip Amount: P${_selectedTipAmount}');
-        debugPrint('Tip Reasons: ${_selectedTipReasons.join(", ")}');
-        if (_selectedTipReasons.contains('Others') &&
-            _otherTipReasonController.text.isNotEmpty) {
-          debugPrint('Other Reason: ${_otherTipReasonController.text}');
+      if (success) {
+        // Show success message with tip info
+        String message = 'Thank you for your feedback!';
+        if (_wantsToTip &&
+            _selectedTipAmount != null &&
+            _selectedTipAmount! > 0) {
+          message =
+              'Thank you for your feedback and generous tip of P${_selectedTipAmount!.toStringAsFixed(0)}!';
         }
-      }
+        UIHelpers.showSuccessToast(message);
 
-      // Navigate back to home or bookings
-      Navigator.of(context).popUntil((route) => route.isFirst);
+        // Navigate back to home or bookings
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        UIHelpers.showErrorToast('Failed to submit review. Please try again.');
+      }
     }
   }
 
@@ -369,7 +406,8 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   const SizedBox(height: 16),
                   _buildSummaryRow(Icons.local_shipping, 'Vehicle',
                       widget.booking.vehicle.name),
-                  _buildSummaryRow(Icons.person, 'Driver', 'Driver Name'),
+                  _buildSummaryRow(
+                      Icons.person, 'Driver', _driverName ?? 'Loading...'),
                   _buildSummaryRow(Icons.calendar_today, 'Date',
                       '${widget.booking.createdAt.day}/${widget.booking.createdAt.month}/${widget.booking.createdAt.year}'),
                   _buildSummaryRow(Icons.access_time, 'Time',
