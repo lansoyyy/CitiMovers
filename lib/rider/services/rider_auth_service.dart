@@ -7,6 +7,8 @@ import 'package:get_storage/get_storage.dart';
 
 import '../../services/otp_service.dart';
 import '../../services/booking_service.dart';
+import '../../services/location_service.dart';
+import 'rider_location_service.dart';
 import '../models/rider_model.dart';
 
 /// Authentication service for CitiMovers Riders
@@ -21,6 +23,8 @@ class RiderAuthService {
   final GetStorage _storage = GetStorage();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _firebaseStorage = FirebaseStorage.instance;
+  final LocationService _locationService = LocationService();
+  final RiderLocationService _riderLocationService = RiderLocationService();
 
   // Current rider (in-memory for now, will be replaced with Firebase)
   RiderModel? _currentRider;
@@ -601,6 +605,7 @@ class RiderAuthService {
         updatedAt: DateTime.now(),
       );
 
+      // Update Firestore
       await _firestore.collection('riders').doc(updatedRider.riderId).set(
         {
           'currentLatitude': latitude,
@@ -608,6 +613,13 @@ class RiderAuthService {
           'updatedAt': updatedRider.updatedAt.toIso8601String(),
         },
         SetOptions(merge: true),
+      );
+
+      // Update Realtime Database for real-time location tracking
+      await _riderLocationService.updateRiderLocation(
+        riderId: updatedRider.riderId,
+        latitude: latitude,
+        longitude: longitude,
       );
 
       _currentRider = updatedRider;

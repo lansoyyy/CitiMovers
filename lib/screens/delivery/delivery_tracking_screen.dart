@@ -8,6 +8,7 @@ import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
 import '../../services/booking_service.dart';
+import '../../rider/services/rider_location_service.dart';
 import 'delivery_completion_screen.dart';
 
 enum DeliveryStep {
@@ -39,9 +40,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   late GoogleMapController _mapController;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
-  Timer? _locationUpdateTimer;
   Timer? _loadingTimer;
   Timer? _unloadingTimer;
+  StreamSubscription? _riderLocationSubscription;
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -67,35 +68,29 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   // Firebase Firestore
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final RiderLocationService _riderLocationService = RiderLocationService();
 
   // Driver data
   DriverModel? _driver;
   bool _isLoadingDriver = true;
 
-  // Hardcoded locations for simulation (using Manila coordinates)
-  static const LatLng _pickupLocation = LatLng(14.5995, 120.9842); // Manila
-  static const LatLng _dropoffLocation = LatLng(14.5764, 121.0851); // Pasig
-  LatLng _driverLocation = const LatLng(14.5900, 120.9900); // Starting position
+  // Real-time locations from booking
+  LatLng? _pickupLocation;
+  LatLng? _dropoffLocation;
+  LatLng? _driverLocation;
 
   // Route points for polyline
-  final List<LatLng> _routePoints = [
-    const LatLng(14.5995, 120.9842), // Pickup location
-    const LatLng(14.5950, 121.0100),
-    const LatLng(14.5900, 121.0200),
-    const LatLng(14.5850, 121.0300),
-    const LatLng(14.5800, 121.0400),
-    const LatLng(14.5764, 121.0851), // Drop-off location
-  ];
+  List<LatLng> _routePoints = [];
 
-  int _currentRouteIndex = 0;
   bool _isDelivered = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeMap();
+    _initializeLocations();
     _fetchDriverData();
-    _startLocationSimulation();
+    _startRealTimeLocationTracking();
+    _listenToBookingStatus();
   }
 
   // Fetch driver data from Firestore
@@ -132,55 +127,57 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   @override
   void dispose() {
-    _locationUpdateTimer?.cancel();
+    _riderLocationSubscription?.cancel();
     _loadingTimer?.cancel();
     _unloadingTimer?.cancel();
     super.dispose();
   }
 
-  void _initializeMap() async {
+  /// Initialize locations from booking data
+  void _initializeLocations() {
+    _pickupLocation = LatLng(
+      widget.booking.pickupLocation.latitude,
+      widget.booking.pickupLocation.longitude,
+    );
+    _dropoffLocation = LatLng(
+      widget.booking.dropoffLocation.latitude,
+      widget.booking.dropoffLocation.longitude,
+    );
+
+    // Initialize route points
+    _routePoints = [
+      _pickupLocation!,
+      _dropoffLocation!,
+    ];
+
     // Initialize markers
     _markers.add(
       Marker(
         markerId: const MarkerId('pickup'),
-        position: _pickupLocation,
+        position: _pickupLocation!,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        infoWindow: const InfoWindow(title: 'Pickup Location'),
+        infoWindow: InfoWindow(
+            title: 'Pickup: ${widget.booking.pickupLocation.address}'),
       ),
     );
 
     _markers.add(
       Marker(
         markerId: const MarkerId('dropoff'),
-        position: _dropoffLocation,
+        position: _dropoffLocation!,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: const InfoWindow(title: 'Drop-off Location'),
+        infoWindow: InfoWindow(
+            title: 'Drop-off: ${widget.booking.dropoffLocation.address}'),
       ),
     );
 
-    // Create vehicle icon for driver
-    final BitmapDescriptor vehicleIcon = await _getVehicleIcon();
-
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('driver'),
-        position: _driverLocation,
-        icon: vehicleIcon,
-        infoWindow: const InfoWindow(title: 'Driver Location'),
-        rotation: 45.0,
-      ),
-    );
-
-    // Initialize polyline from pickup to driver location
+    // Initialize polyline from pickup to dropoff
     _polylines.add(
       Polyline(
         polylineId: const PolylineId('route'),
         color: AppColors.primaryRed,
         width: 4,
-        points: [
-          _pickupLocation,
-          _driverLocation
-        ], // Start from pickup to current driver location
+        points: _routePoints,
       ),
     );
   }
@@ -192,119 +189,118 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
   }
 
-  void _startLocationSimulation() {
-    _locationUpdateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (_currentRouteIndex < _routePoints.length - 1) {
+  /// Start real-time location tracking from Firebase Realtime Database
+  void _startRealTimeLocationTracking() {
+    if (widget.booking.driverId == null) return;
+
+    _riderLocationSubscription = _riderLocationService
+        .listenToRiderLocation(widget.booking.driverId!)
+        .listen((location) {
+      if (location != null) {
         setState(() {
-          _currentRouteIndex++;
-          _driverLocation = _routePoints[_currentRouteIndex];
-
-          // Update delivery step based on route progress
-          _updateDeliveryStep();
-
-          // Update driver marker
-          _markers.removeWhere((marker) => marker.markerId.value == 'driver');
-          _markers.add(
-            Marker(
-              markerId: const MarkerId('driver'),
-              position: _driverLocation,
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen),
-              infoWindow: InfoWindow(
-                title: 'Driver Location',
-                snippet: widget.booking.vehicle.name,
-              ),
-              rotation: _calculateRotation(_currentRouteIndex),
-            ),
-          );
-
-          // Update polyline to show complete route from pickup to drop-off
-          _polylines.clear();
-
-          // Show the complete route from pickup to drop-off location
-          _polylines.add(
-            Polyline(
-              polylineId: const PolylineId('route'),
-              color: AppColors.primaryRed,
-              width: 4,
-              points: _routePoints, // Show complete route
-            ),
-          );
+          _driverLocation = location;
+          _updateDriverMarker();
         });
-
-        // Make camera follow driver
-        _mapController.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: _driverLocation,
-              zoom: 15.0,
-            ),
-          ),
-        );
-
-        // Check if delivered
-        if (_currentRouteIndex == _routePoints.length - 1) {
-          setState(() {
-            _isDelivered = true;
-          });
-          _locationUpdateTimer?.cancel();
-          UIHelpers.showSuccessToast('Package has arrived at destination!');
-        }
       }
     });
   }
 
-  void _updateDeliveryStep() {
-    // Simulate delivery progress based on route completion
-    double progress = _currentRouteIndex / _routePoints.length;
+  /// Listen to booking status changes from Firestore
+  void _listenToBookingStatus() {
+    _firestore
+        .collection('bookings')
+        .doc(widget.booking.bookingId)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        final booking = BookingModel.fromMap(snapshot.data()!);
+        _updateDeliveryStepFromStatus(booking.status);
+      }
+    });
+  }
 
-    if (progress < 0.2) {
-      _currentStep = DeliveryStep.headingToWarehouse;
-    } else if (progress < 0.4) {
-      if (_currentStep != DeliveryStep.loading) {
+  /// Update delivery step based on booking status
+  void _updateDeliveryStepFromStatus(String status) {
+    switch (status) {
+      case 'pending':
+        _currentStep = DeliveryStep.headingToWarehouse;
+        break;
+      case 'accepted':
+        _currentStep = DeliveryStep.headingToWarehouse;
+        break;
+      case 'arrived_at_pickup':
         _currentStep = DeliveryStep.loading;
         _loadingSubStep = LoadingSubStep.arrived;
         _loadingDemurrageStarted = true;
         _startLoadingTimer();
-      }
-    } else if (progress < 0.5) {
-      if (_loadingSubStep != LoadingSubStep.startLoading) {
-        _loadingSubStep = LoadingSubStep.startLoading;
-        _startLoadingPhotoTaken = true;
-      }
-    } else if (progress < 0.6) {
-      if (_loadingSubStep != LoadingSubStep.finishLoading) {
-        _loadingSubStep = LoadingSubStep.finishLoading;
-        _finishLoadingPhotoTaken = true;
+        break;
+      case 'loading_complete':
+        _currentStep = DeliveryStep.delivering;
         _loadingDemurrageStarted = false;
         _loadingTimer?.cancel();
-      }
-    } else if (progress < 0.8) {
-      _currentStep = DeliveryStep.delivering;
-    } else if (progress < 0.85) {
-      if (_currentStep != DeliveryStep.unloading) {
+        break;
+      case 'in_transit':
+        _currentStep = DeliveryStep.delivering;
+        break;
+      case 'arrived_at_dropoff':
         _currentStep = DeliveryStep.unloading;
         _unloadingSubStep = UnloadingSubStep.arrived;
         _unloadingDemurrageStarted = true;
         _startUnloadingTimer();
-      }
-    } else if (progress < 0.9) {
-      if (_unloadingSubStep != UnloadingSubStep.startUnloading) {
-        _unloadingSubStep = UnloadingSubStep.startUnloading;
-        _startUnloadingPhotoTaken = true;
-      }
-    } else if (progress < 0.95) {
-      if (_unloadingSubStep != UnloadingSubStep.finishUnloading) {
-        _unloadingSubStep = UnloadingSubStep.finishUnloading;
-        _finishUnloadingPhotoTaken = true;
+        break;
+      case 'unloading_complete':
+        _currentStep = DeliveryStep.receiving;
         _unloadingDemurrageStarted = false;
         _unloadingTimer?.cancel();
-      }
-    } else {
-      _currentStep = DeliveryStep.receiving;
-      _receiverIdPhotoTaken = true;
-      _receiverSignatureTaken = true;
+        break;
+      case 'completed':
+      case 'delivered':
+        _currentStep = DeliveryStep.completed;
+        _isDelivered = true;
+        UIHelpers.showSuccessToast('Package has arrived at destination!');
+        break;
+      case 'cancelled':
+      case 'cancelled_by_rider':
+      case 'rejected':
+        _currentStep = DeliveryStep.completed;
+        break;
     }
+  }
+
+  /// Update driver marker on the map
+  void _updateDriverMarker() async {
+    if (_driverLocation == null) return;
+
+    final vehicleIcon = await _getVehicleIcon();
+
+    _markers.removeWhere((marker) => marker.markerId.value == 'driver');
+    _markers.add(
+      Marker(
+        markerId: const MarkerId('driver'),
+        position: _driverLocation!,
+        icon: vehicleIcon,
+        infoWindow: InfoWindow(
+          title: 'Driver: ${_driver?.name ?? 'Unknown'}',
+          snippet: widget.booking.vehicle.name,
+        ),
+        rotation: _calculateRotation(),
+      ),
+    );
+
+    // Update polyline to show route from pickup to driver location
+    _polylines.clear();
+    _polylines.add(
+      Polyline(
+        polylineId: const PolylineId('route'),
+        color: AppColors.primaryRed,
+        width: 4,
+        points: [
+          _pickupLocation!,
+          _driverLocation!,
+          _dropoffLocation!,
+        ],
+      ),
+    );
   }
 
   void _startLoadingTimer() {
@@ -350,14 +346,14 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     }
   }
 
-  double _calculateRotation(int currentIndex) {
-    if (currentIndex >= _routePoints.length - 1) return 0.0;
+  double _calculateRotation() {
+    if (_driverLocation == null || _pickupLocation == null) return 0.0;
 
-    final current = _routePoints[currentIndex];
-    final next = _routePoints[currentIndex + 1];
-
+    // Calculate rotation based on direction from pickup to current driver location
     final angle = atan2(
-        next.latitude - current.latitude, next.longitude - current.longitude);
+      _driverLocation!.latitude - _pickupLocation!.latitude,
+      _driverLocation!.longitude - _pickupLocation!.longitude,
+    );
     return angle * 180 / pi;
   }
 
@@ -367,17 +363,26 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _animateCameraToRoute() {
-    // Calculate bounds to show the entire route
-    double minLat = _routePoints.first.latitude;
-    double maxLat = _routePoints.first.latitude;
-    double minLng = _routePoints.first.longitude;
-    double maxLng = _routePoints.first.longitude;
+    if (_pickupLocation == null || _dropoffLocation == null) return;
 
-    for (final point in _routePoints) {
-      minLat = min(minLat, point.latitude);
-      maxLat = max(maxLat, point.latitude);
-      minLng = min(minLng, point.longitude);
-      maxLng = max(maxLng, point.longitude);
+    // Calculate bounds to show the entire route
+    double minLat = _pickupLocation!.latitude;
+    double maxLat = _pickupLocation!.latitude;
+    double minLng = _pickupLocation!.longitude;
+    double maxLng = _pickupLocation!.longitude;
+
+    if (_dropoffLocation != null) {
+      minLat = min(minLat, _dropoffLocation!.latitude);
+      maxLat = max(maxLat, _dropoffLocation!.latitude);
+      minLng = min(minLng, _dropoffLocation!.longitude);
+      maxLng = max(maxLng, _dropoffLocation!.longitude);
+    }
+
+    if (_driverLocation != null) {
+      minLat = min(minLat, _driverLocation!.latitude);
+      maxLat = max(maxLat, _driverLocation!.latitude);
+      minLng = min(minLng, _driverLocation!.longitude);
+      maxLng = max(maxLng, _driverLocation!.longitude);
     }
 
     final bounds = LatLngBounds(
@@ -527,7 +532,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                '${(_currentRouteIndex / _routePoints.length * 100).toInt()}%',
+                                '${_calculateProgress()}%',
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontFamily: 'Bold',
@@ -539,7 +544,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                         ),
                         const SizedBox(height: 12),
                         LinearProgressIndicator(
-                          value: _currentRouteIndex / _routePoints.length,
+                          value: _calculateProgress() / 100,
                           backgroundColor: AppColors.lightGrey,
                           valueColor: AlwaysStoppedAnimation<Color>(
                             _isDelivered
@@ -606,7 +611,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                     child: GoogleMap(
                       onMapCreated: _onMapCreated,
                       initialCameraPosition: CameraPosition(
-                        target: _driverLocation,
+                        target:
+                            _pickupLocation ?? const LatLng(14.5995, 120.9842),
                         zoom: 13.0,
                       ),
                       markers: _markers,
@@ -1167,5 +1173,29 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ],
       ),
     );
+  }
+
+  /// Calculate delivery progress percentage based on current step
+  int _calculateProgress() {
+    switch (_currentStep) {
+      case DeliveryStep.headingToWarehouse:
+        return 10;
+      case DeliveryStep.loading:
+        if (_loadingSubStep == LoadingSubStep.arrived) return 20;
+        if (_loadingSubStep == LoadingSubStep.startLoading) return 30;
+        if (_loadingSubStep == LoadingSubStep.finishLoading) return 40;
+        return 20;
+      case DeliveryStep.delivering:
+        return 60;
+      case DeliveryStep.unloading:
+        if (_unloadingSubStep == UnloadingSubStep.arrived) return 70;
+        if (_unloadingSubStep == UnloadingSubStep.startUnloading) return 80;
+        if (_unloadingSubStep == UnloadingSubStep.finishUnloading) return 90;
+        return 70;
+      case DeliveryStep.receiving:
+        return 95;
+      case DeliveryStep.completed:
+        return 100;
+    }
   }
 }

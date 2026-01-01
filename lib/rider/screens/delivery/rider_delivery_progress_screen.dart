@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:citimovers/rider/models/delivery_request_model.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
+import 'package:citimovers/rider/services/rider_location_service.dart';
 import 'package:citimovers/services/booking_service.dart';
 import 'package:citimovers/services/storage_service.dart';
 import 'package:citimovers/services/location_service.dart';
@@ -45,6 +46,7 @@ class _RiderDeliveryProgressScreenState
   final BookingService _bookingService = BookingService();
   final StorageService _storageService = StorageService();
   final LocationService _locationService = LocationService();
+  final RiderLocationService _riderLocationService = RiderLocationService();
   final MapsService _mapsService = MapsService();
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
@@ -116,9 +118,15 @@ class _RiderDeliveryProgressScreenState
       // Get actual GPS location using LocationService
       final location = await _locationService.getCurrentLocation();
       if (location != null) {
+        // Update location in both Firestore (via RiderAuthService) and Realtime Database (via RiderLocationService)
         await _riderAuthService.updateLocation(
           location!.latitude,
           location!.longitude,
+        );
+        await _riderLocationService.updateRiderLocation(
+          riderId: _riderAuthService.currentRider?.riderId ?? '',
+          latitude: location!.latitude,
+          longitude: location!.longitude,
         );
       }
     });
@@ -135,12 +143,6 @@ class _RiderDeliveryProgressScreenState
   double get _totalEarnings => _baseFare + _totalDemurrageFee;
 
   final ImagePicker _picker = ImagePicker();
-
-  // Coordinates - In a real app, these would come from the booking model or geocoding
-  // TODO: Get real coordinates from BookingModel using pickupLocation and dropoffLocation addresses
-  static const LatLng _manila = LatLng(14.5995, 120.9842);
-  static const LatLng _pickup = LatLng(14.5547, 121.0244); // Makati
-  static const LatLng _dropoff = LatLng(14.5355, 120.9847); // Pasay
 
   // Photo URLs for Firebase uploads
   String? _startLoadingPhotoUrl;
