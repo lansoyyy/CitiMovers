@@ -93,9 +93,9 @@ class DriverCredentialsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   _WatermarkedImage(
-                    imageUrl: driver.licensePhotoUrl ??
-                        'https://via.placeholder.com/400x250',
+                    imageUrl: driver.licensePhotoUrl,
                     watermarkText: 'FOR VERIFICATION ONLY\n${driver.name}',
+                    showPlaceholder: driver.licensePhotoUrl == null,
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -165,6 +165,7 @@ class DriverCredentialsScreen extends StatelessWidget {
                       imageUrl: driver.vehiclePhotoUrl!,
                       watermarkText:
                           'FOR VERIFICATION ONLY\n${driver.vehiclePlateNumber}',
+                      showPlaceholder: false,
                     ),
                     const SizedBox(height: 12),
                     Container(
@@ -321,12 +322,14 @@ class DriverCredentialsScreen extends StatelessWidget {
 
 // Watermarked Image Widget
 class _WatermarkedImage extends StatelessWidget {
-  final String imageUrl;
+  final String? imageUrl;
   final String watermarkText;
+  final bool showPlaceholder;
 
   const _WatermarkedImage({
     required this.imageUrl,
     required this.watermarkText,
+    this.showPlaceholder = false,
   });
 
   @override
@@ -335,27 +338,54 @@ class _WatermarkedImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: Stack(
         children: [
-          // Image
-          Image.network(
-            imageUrl,
-            width: double.infinity,
-            height: 200,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                width: double.infinity,
-                height: 200,
-                color: Colors.grey.shade800,
-                child: const Center(
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: Colors.grey,
-                    size: 50,
-                  ),
+          // Image or Placeholder
+          if (showPlaceholder)
+            Container(
+              width: double.infinity,
+              height: 200,
+              color: Colors.grey.shade800,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.badge,
+                      color: Colors.grey,
+                      size: 50,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'No License Photo',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+            )
+          else
+            Image.network(
+              imageUrl ?? '',
+              width: double.infinity,
+              height: 200,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: double.infinity,
+                  height: 200,
+                  color: Colors.grey.shade800,
+                  child: const Center(
+                    child: Icon(
+                      Icons.image_not_supported,
+                      color: Colors.grey,
+                      size: 50,
+                    ),
+                  ),
+                );
+              },
+            ),
 
           // Watermark Overlay
           Positioned.fill(

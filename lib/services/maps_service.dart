@@ -369,6 +369,65 @@ class MapsService {
       return null;
     }
   }
+
+  /// Get coordinates from address (forward geocoding)
+  Future<LocationModel?> getCoordinatesFromAddress(String address) async {
+    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+      // Mock implementation if API key is not set
+      await Future.delayed(const Duration(milliseconds: 500));
+      return LocationModel(
+        address: address,
+        latitude: 14.5995,
+        longitude: 120.9842,
+        city: 'Manila',
+        province: 'Metro Manila',
+        country: 'Philippines',
+      );
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_geocodingApiBase/json'
+            '?address=${Uri.encodeComponent(address)}'
+            '&key=$_apiKey'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final result = data['results'][0];
+          final location = result['geometry']['location'];
+          final addressComponents = result['address_components'] as List;
+
+          String? city, province, country;
+
+          for (var component in addressComponents) {
+            final types = component['types'] as List;
+            if (types.contains('locality')) {
+              city = component['long_name'];
+            } else if (types.contains('administrative_area_level_1')) {
+              province = component['long_name'];
+            } else if (types.contains('country')) {
+              country = component['long_name'];
+            }
+          }
+
+          return LocationModel(
+            address: result['formatted_address'],
+            latitude: location['lat'],
+            longitude: location['lng'],
+            city: city,
+            province: province,
+            country: country,
+          );
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error getting coordinates from address: $e');
+      return null;
+    }
+  }
 }
 
 /// Place Suggestion Model

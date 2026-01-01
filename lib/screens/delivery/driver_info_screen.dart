@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/driver_model.dart';
@@ -13,14 +14,23 @@ class DriverInfoScreen extends StatelessWidget {
     required this.driver,
   });
 
-  void _callDriver(BuildContext context) {
-    // TODO: Implement phone call
-    UIHelpers.showInfoToast('Calling ${driver.name}...');
+  void _callDriver(BuildContext context) async {
+    final phoneUrl = Uri.parse('tel:${driver.phoneNumber}');
+    if (await canLaunchUrl(phoneUrl)) {
+      await launchUrl(phoneUrl);
+    } else {
+      UIHelpers.showErrorToast('Could not make phone call');
+    }
   }
 
-  void _messageDriver(BuildContext context) {
-    // TODO: Implement messaging
-    UIHelpers.showInfoToast('Opening chat with ${driver.name}...');
+  void _messageDriver(BuildContext context) async {
+    // For SMS messaging
+    final smsUrl = Uri.parse('sms:${driver.phoneNumber}');
+    if (await canLaunchUrl(smsUrl)) {
+      await launchUrl(smsUrl);
+    } else {
+      UIHelpers.showErrorToast('Could not open messaging app');
+    }
   }
 
   void _viewCredentials(BuildContext context) {

@@ -52,6 +52,7 @@ class DefaultFirebaseOptions {
   static const FirebaseOptions android = FirebaseOptions(
       apiKey: "AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278",
       authDomain: "citimovers-346f2.firebaseapp.com",
+      databaseURL: "https://citimovers-346f2-default-rtdb.firebaseio.com",
       projectId: "citimovers-346f2",
       storageBucket: "citimovers-346f2.firebasestorage.app",
       messagingSenderId: "212204568146",
@@ -60,6 +61,7 @@ class DefaultFirebaseOptions {
   static const FirebaseOptions ios = FirebaseOptions(
       apiKey: "AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278",
       authDomain: "citimovers-346f2.firebaseapp.com",
+      databaseURL: "https://citimovers-346f2-default-rtdb.firebaseio.com",
       projectId: "citimovers-346f2",
       storageBucket: "citimovers-346f2.firebasestorage.app",
       messagingSenderId: "212204568146",

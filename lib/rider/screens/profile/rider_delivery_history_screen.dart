@@ -59,6 +59,7 @@ class _RiderDeliveryHistoryScreenState
 
       List<DeliveryHistory> deliveries = [];
       Map<String, String> customerNames = {};
+      Map<String, double> ratings = {};
 
       for (var doc in bookingsQuery.docs) {
         final booking = BookingModel.fromMap(doc.data());
@@ -76,7 +77,22 @@ class _RiderDeliveryHistoryScreenState
           }
         }
 
-        // Calculate distance and duration (mock calculation for now)
+        // Fetch rating from reviews collection if not already cached
+        if (!ratings.containsKey(doc.id)) {
+          final reviewQuery = await _firestore
+              .collection('reviews')
+              .where('bookingId', isEqualTo: doc.id)
+              .limit(1)
+              .get();
+          if (reviewQuery.docs.isNotEmpty) {
+            final review = reviewQuery.docs.first.data();
+            ratings[doc.id] = (review['rating'] as num?)?.toDouble() ?? 0.0;
+          } else {
+            ratings[doc.id] = 0.0;
+          }
+        }
+
+        // Calculate distance and duration using Haversine formula
         final distance = _calculateDistance(
             booking.pickupLocation.latitude,
             booking.pickupLocation.longitude,
@@ -99,7 +115,7 @@ class _RiderDeliveryHistoryScreenState
           fare: booking.estimatedFare ?? 0.0,
           customerName: customerNames[booking.customerId] ?? 'Unknown',
           vehicleType: booking.vehicle.type,
-          rating: 0.0, // Rating would be stored separately
+          rating: ratings[doc.id] ?? 0.0,
         );
         deliveries.add(delivery);
       }

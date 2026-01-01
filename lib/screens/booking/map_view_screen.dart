@@ -464,18 +464,6 @@ class _MapViewScreenState extends State<MapViewScreen> {
     }
   }
 
-  void _getCurrentLocation() async {
-    // This would integrate with LocationService
-    // For now, we'll use a mock location
-    final mockLocation = LocationModel(
-      address: 'Current Location',
-      latitude: 14.5995,
-      longitude: 120.9842,
-    );
-
-    _onMapTap(LatLng(mockLocation.latitude, mockLocation.longitude));
-  }
-
   bool get isSelectingDropoff => !widget.isSelectingPickup;
 
   @override

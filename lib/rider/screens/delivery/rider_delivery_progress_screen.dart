@@ -4,6 +4,8 @@ import 'package:citimovers/rider/models/delivery_request_model.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
 import 'package:citimovers/services/booking_service.dart';
 import 'package:citimovers/services/storage_service.dart';
+import 'package:citimovers/services/location_service.dart';
+import 'package:citimovers/services/maps_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +44,8 @@ class _RiderDeliveryProgressScreenState
   final RiderAuthService _riderAuthService = RiderAuthService();
   final BookingService _bookingService = BookingService();
   final StorageService _storageService = StorageService();
+  final LocationService _locationService = LocationService();
+  final MapsService _mapsService = MapsService();
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -88,6 +92,9 @@ class _RiderDeliveryProgressScreenState
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    // Geocode addresses to get coordinates
+    _geocodeAddresses();
+
     // Start location tracking
     _startLocationTracking();
   }
@@ -106,10 +113,14 @@ class _RiderDeliveryProgressScreenState
   void _startLocationTracking() {
     _locationTrackingTimer =
         Timer.periodic(const Duration(seconds: 30), (timer) async {
-      // In a real app, get actual GPS location
-      // For now, using mock coordinates
-      await _riderAuthService.updateLocation(
-          _pickup.latitude, _pickup.longitude);
+      // Get actual GPS location using LocationService
+      final location = await _locationService.getCurrentLocation();
+      if (location != null) {
+        await _riderAuthService.updateLocation(
+          location!.latitude,
+          location!.longitude,
+        );
+      }
     });
   }
 
@@ -141,6 +152,10 @@ class _RiderDeliveryProgressScreenState
   // Location tracking timer
   Timer? _locationTrackingTimer;
 
+  // Actual coordinates from geocoding
+  LatLng? _pickupCoordinates;
+  LatLng? _dropoffCoordinates;
+
   Set<Marker> _createMarkers(LatLng position, String id, String title) {
     return {
       Marker(
@@ -153,16 +168,19 @@ class _RiderDeliveryProgressScreenState
   }
 
   Set<Marker> _createRouteMarkers() {
+    if (_pickupCoordinates == null || _dropoffCoordinates == null) {
+      return {};
+    }
     return {
       Marker(
         markerId: const MarkerId('pickup'),
-        position: _pickup,
+        position: _pickupCoordinates!,
         infoWindow: const InfoWindow(title: 'Pickup'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
       ),
       Marker(
         markerId: const MarkerId('dropoff'),
-        position: _dropoff,
+        position: _dropoffCoordinates!,
         infoWindow: const InfoWindow(title: 'Dropoff'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       ),
@@ -170,6 +188,61 @@ class _RiderDeliveryProgressScreenState
   }
 
   // --- Actions ---
+
+  /// Geocode address to get coordinates
+  Future<void> _geocodeAddresses() async {
+    try {
+      // Geocode pickup location
+      final pickupCoords = await _mapsService.getCoordinatesFromAddress(
+        widget.request.pickupLocation,
+      );
+      if (pickupCoords != null) {
+        setState(() {
+          _pickupCoordinates = LatLng(
+            pickupCoords!.latitude,
+            pickupCoords!.longitude,
+          );
+        });
+      }
+
+      // Geocode dropoff location
+      final dropoffCoords = await _mapsService.getCoordinatesFromAddress(
+        widget.request.deliveryLocation,
+      );
+      if (dropoffCoords != null) {
+        setState(() {
+          _dropoffCoordinates = LatLng(
+            dropoffCoords!.latitude,
+            dropoffCoords!.longitude,
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('Error geocoding addresses: $e');
+      // Fallback to Manila coordinates if geocoding fails
+      setState(() {
+        _pickupCoordinates = const LatLng(14.5995, 120.9842);
+        _dropoffCoordinates = const LatLng(14.5995, 120.9842);
+      });
+    }
+  }
+
+  /// Get center position between pickup and dropoff for map camera
+  LatLng _getCenterPosition() {
+    if (_pickupCoordinates == null && _dropoffCoordinates == null) {
+      return const LatLng(14.5995, 120.9842); // Manila fallback
+    }
+    if (_pickupCoordinates == null) {
+      return _dropoffCoordinates!;
+    }
+    if (_dropoffCoordinates == null) {
+      return _pickupCoordinates!;
+    }
+    return LatLng(
+      (_pickupCoordinates!.latitude + _dropoffCoordinates!.latitude) / 2,
+      (_pickupCoordinates!.longitude + _dropoffCoordinates!.longitude) / 2,
+    );
+  }
 
   void _arrivedAtWarehouse() async {
     setState(() {
@@ -662,11 +735,15 @@ class _RiderDeliveryProgressScreenState
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: GoogleMap(
-              initialCameraPosition: const CameraPosition(
-                target: _pickup,
+              initialCameraPosition: CameraPosition(
+                target: _pickupCoordinates ?? const LatLng(14.5995, 120.9842),
                 zoom: 14,
               ),
-              markers: _createMarkers(_pickup, 'warehouse', 'Pickup Location'),
+              markers: _createMarkers(
+                _pickupCoordinates ?? const LatLng(14.5995, 120.9842),
+                'warehouse',
+                'Pickup Location',
+              ),
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
               myLocationEnabled: true,
@@ -815,18 +892,19 @@ class _RiderDeliveryProgressScreenState
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: GoogleMap(
-              initialCameraPosition: const CameraPosition(
-                target: _manila, // Center between points approx
+              initialCameraPosition: CameraPosition(
+                target: _getCenterPosition(),
                 zoom: 12,
               ),
               markers: _createRouteMarkers(),
               polylines: {
-                const Polyline(
-                  polylineId: PolylineId('route'),
-                  points: [_pickup, _dropoff],
-                  color: AppColors.primaryBlue,
-                  width: 5,
-                ),
+                if (_pickupCoordinates != null && _dropoffCoordinates != null)
+                  Polyline(
+                    polylineId: const PolylineId('route'),
+                    points: [_pickupCoordinates!, _dropoffCoordinates!],
+                    color: AppColors.primaryBlue,
+                    width: 5,
+                  ),
               },
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,

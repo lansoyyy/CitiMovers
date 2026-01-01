@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "212204568146",
+    "firebase_url": "https://citimovers-346f2-default-rtdb.firebaseio.com",
     "project_id": "citimovers-346f2",
     "storage_bucket": "citimovers-346f2.firebasestorage.app"
   },
