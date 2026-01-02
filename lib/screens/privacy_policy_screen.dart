@@ -1,8 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../utils/app_colors.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
+
+  void _sharePrivacyPolicy(BuildContext context) {
+    final shareText = '''
+CitiMovers Privacy Policy
+
+Your Privacy Matters
+We are committed to protecting your personal information and ensuring your privacy while using CitiMovers services.
+
+Key Points:
+• Information Collected: Personal data, location, transactions, device info
+• Usage: Service delivery, payment processing, driver matching, communication
+• Sharing: With drivers, payment processors, and service providers only
+• Security: 256-bit SSL encryption, secure servers, regular audits
+• Your Rights: Access, correct, delete data, opt-out of marketing
+• Data Retention: Transactions 7 years, account until deletion
+• Children's Privacy: Not intended for users under 18
+
+For full details, download the CitiMovers app.
+
+Contact: privacy@citimovers.com | Phone: 09090104355
+© 2025 CitiMovers. Privacy is our priority.
+    ''';
+
+    Share.share(
+      shareText.trim(),
+      subject: 'CitiMovers Privacy Policy',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,9 +64,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               color: AppColors.primaryRed,
               size: 20,
             ),
-            onPressed: () {
-              // TODO: Implement share functionality
-            },
+            onPressed: () => _sharePrivacyPolicy(context),
           ),
         ],
       ),
@@ -300,11 +327,13 @@ class PrivacyPolicyScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        _buildContactItem('Email', 'privacy@citimovers.com', Icons.email),
+                        _buildContactItem(
+                            'Email', 'privacy@citimovers.com', Icons.email),
                         const SizedBox(height: 12),
                         _buildContactItem('Phone', '09090104355', Icons.phone),
                         const SizedBox(height: 12),
-                        _buildContactItem('Office', '123 Business Ave, Makati City', Icons.location_on),
+                        _buildContactItem('Office',
+                            '123 Business Ave, Makati City', Icons.location_on),
                       ],
                     ),
                   ),

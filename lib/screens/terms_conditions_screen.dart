@@ -1,8 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../utils/app_colors.dart';
 
 class TermsConditionsScreen extends StatelessWidget {
   const TermsConditionsScreen({super.key});
+
+  void _shareTermsAndConditions(BuildContext context) {
+    final shareText = '''
+CitiMovers Terms & Conditions
+
+Welcome to CitiMovers. These Terms and Conditions govern your use of our delivery services and mobile application.
+
+Key Points:
+• Services: Professional delivery drivers with various vehicle types
+• User Account: Must be 18+, provide accurate information
+• Booking: Prices based on distance, vehicle type, and time
+• Prohibited Items: Illegal substances, weapons, hazardous materials
+• Insurance: Basic coverage up to ₱5,000 included
+• Cancellation: Free within 5 minutes, charges apply after
+
+For full details, download the CitiMovers app or visit our website.
+
+Contact: legal@citimovers.com | Phone: 09090104355
+© 2025 CitiMovers. All rights reserved.
+    ''';
+
+    Share.share(
+      shareText.trim(),
+      subject: 'CitiMovers Terms & Conditions',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,9 +62,7 @@ class TermsConditionsScreen extends StatelessWidget {
               color: AppColors.primaryRed,
               size: 20,
             ),
-            onPressed: () {
-              // TODO: Implement share functionality
-            },
+            onPressed: () => _shareTermsAndConditions(context),
           ),
         ],
       ),
@@ -95,116 +120,116 @@ class TermsConditionsScreen extends StatelessWidget {
             _buildSection(
               '3. User Account',
               'To use our services, you must:\n'
-              '• Be at least 18 years old\n'
-              '• Provide accurate and complete information\n'
-              '• Maintain the security of your account\n'
-              '• Notify us immediately of unauthorized use\n'
-              '• Not share your account credentials with others',
+                  '• Be at least 18 years old\n'
+                  '• Provide accurate and complete information\n'
+                  '• Maintain the security of your account\n'
+                  '• Notify us immediately of unauthorized use\n'
+                  '• Not share your account credentials with others',
             ),
 
             _buildSection(
               '4. Booking and Payment',
               '• All bookings are subject to availability\n'
-              '• Prices are calculated based on distance, vehicle type, and time\n'
-              '• Payment must be made using accepted payment methods\n'
-              '• Additional charges may apply for special requirements\n'
-              '• Cancellation fees may apply after 5 minutes of booking',
+                  '• Prices are calculated based on distance, vehicle type, and time\n'
+                  '• Payment must be made using accepted payment methods\n'
+                  '• Additional charges may apply for special requirements\n'
+                  '• Cancellation fees may apply after 5 minutes of booking',
             ),
 
             _buildSection(
               '5. Delivery Guidelines',
               '• Items must be legally permissible for transport\n'
-              '• Hazardous materials are strictly prohibited\n'
-              '• Items must be properly packaged and secured\n'
-              '• Weight limits vary by vehicle type\n'
-              '• Users must provide accurate pickup and delivery locations',
+                  '• Hazardous materials are strictly prohibited\n'
+                  '• Items must be properly packaged and secured\n'
+                  '• Weight limits vary by vehicle type\n'
+                  '• Users must provide accurate pickup and delivery locations',
             ),
 
             _buildSection(
               '6. Prohibited Items',
               'The following items are prohibited from delivery:\n'
-              '• Illegal substances and controlled drugs\n'
-              '• Weapons and ammunition\n'
-              '• Explosive and flammable materials\n'
-              '• Perishable goods requiring refrigeration\n'
-              '• Live animals and pets\n'
-              '• Human remains or body parts\n'
-              '• Stolen property',
+                  '• Illegal substances and controlled drugs\n'
+                  '• Weapons and ammunition\n'
+                  '• Explosive and flammable materials\n'
+                  '• Perishable goods requiring refrigeration\n'
+                  '• Live animals and pets\n'
+                  '• Human remains or body parts\n'
+                  '• Stolen property',
             ),
 
             _buildSection(
               '7. Liability and Insurance',
               '• Basic insurance coverage up to ₱5,000 is included\n'
-              '• Additional insurance available for high-value items\n'
-              '• CitiMovers is not liable for undocumented damages\n'
-              '• Users must report damages within 24 hours\n'
-              '• We are not responsible for delays due to traffic or weather',
+                  '• Additional insurance available for high-value items\n'
+                  '• CitiMovers is not liable for undocumented damages\n'
+                  '• Users must report damages within 24 hours\n'
+                  '• We are not responsible for delays due to traffic or weather',
             ),
 
             _buildSection(
               '8. Driver Conduct',
               'All drivers must:\n'
-              '• Maintain professional conduct\n'
-              '• Follow traffic laws and regulations\n'
-              '• Handle items with reasonable care\n'
-              '• Maintain clean and roadworthy vehicles\n'
-              '• Respect user privacy and property',
+                  '• Maintain professional conduct\n'
+                  '• Follow traffic laws and regulations\n'
+                  '• Handle items with reasonable care\n'
+                  '• Maintain clean and roadworthy vehicles\n'
+                  '• Respect user privacy and property',
             ),
 
             _buildSection(
               '9. Cancellation Policy',
               '• Free cancellation within 5 minutes of booking\n'
-              '• 50% charge for cancellation after 5 minutes but before pickup\n'
-              '• Full charge for cancellation after driver arrival\n'
-              '• No charge for cancellations due to driver issues\n'
-              '• Refunds processed within 5-7 business days',
+                  '• 50% charge for cancellation after 5 minutes but before pickup\n'
+                  '• Full charge for cancellation after driver arrival\n'
+                  '• No charge for cancellations due to driver issues\n'
+                  '• Refunds processed within 5-7 business days',
             ),
 
             _buildSection(
               '10. Privacy and Data Protection',
               'We collect and use your information in accordance with our Privacy Policy. By using CitiMovers, you consent to:\n'
-              '• Collection of location data for service delivery\n'
-              '• Storage of transaction history\n'
-              '• Communication regarding your bookings\n'
-              '• Use of data for service improvement\n'
-              '• Sharing information with drivers for delivery purposes',
+                  '• Collection of location data for service delivery\n'
+                  '• Storage of transaction history\n'
+                  '• Communication regarding your bookings\n'
+                  '• Use of data for service improvement\n'
+                  '• Sharing information with drivers for delivery purposes',
             ),
 
             _buildSection(
               '11. Dispute Resolution',
               '• Contact customer support within 24 hours of incident\n'
-              '• Provide evidence such as photos or videos\n'
-              '• Allow 48-72 hours for investigation\n'
-              '• Accept final resolution from CitiMovers\n'
-              '• Legal disputes shall be governed by Philippine laws',
+                  '• Provide evidence such as photos or videos\n'
+                  '• Allow 48-72 hours for investigation\n'
+                  '• Accept final resolution from CitiMovers\n'
+                  '• Legal disputes shall be governed by Philippine laws',
             ),
 
             _buildSection(
               '12. Suspension and Termination',
               'We may suspend or terminate your account for:\n'
-              '• Violation of these terms and conditions\n'
-              '• Fraudulent activities or false reports\n'
-              '• Harassment of drivers or staff\n'
-              '• Multiple unjustified cancellations\n'
-              '• Security concerns or suspicious activities',
+                  '• Violation of these terms and conditions\n'
+                  '• Fraudulent activities or false reports\n'
+                  '• Harassment of drivers or staff\n'
+                  '• Multiple unjustified cancellations\n'
+                  '• Security concerns or suspicious activities',
             ),
 
             _buildSection(
               '13. Changes to Terms',
               'We reserve the right to modify these terms at any time. Changes will be:\n'
-              '• Posted in the app with effective date\n'
-              '• Sent via email or notification\n'
-              '• Effective upon posting\n'
-              '• Your continued use constitutes acceptance',
+                  '• Posted in the app with effective date\n'
+                  '• Sent via email or notification\n'
+                  '• Effective upon posting\n'
+                  '• Your continued use constitutes acceptance',
             ),
 
             _buildSection(
               '14. Contact Information',
               'For questions about these Terms and Conditions, contact us:\n'
-              '• Email: legal@citimovers.com\n'
-              '• Phone: 09090104355\n'
-              '• Office: 123 Business Ave, Makati City\n'
-              '• Hours: Monday to Saturday, 8:00 AM to 6:00 PM',
+                  '• Email: legal@citimovers.com\n'
+                  '• Phone: 09090104355\n'
+                  '• Office: 123 Business Ave, Makati City\n'
+                  '• Hours: Monday to Saturday, 8:00 AM to 6:00 PM',
             ),
 
             const SizedBox(height: 32),

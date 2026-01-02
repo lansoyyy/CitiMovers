@@ -1,10 +1,11 @@
-import 'package:citimovers/screens/tabs/notifications_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/auth_service.dart';
 import '../../services/wallet_service.dart';
 import '../../utils/app_colors.dart';
 import 'edit_profile_screen.dart';
+import 'notifications_settings_screen.dart';
+import 'language_settings_screen.dart';
 import '../help_center_screen.dart';
 import '../terms_conditions_screen.dart';
 import '../privacy_policy_screen.dart';
@@ -331,11 +332,10 @@ class ProfileScreen extends StatelessWidget {
               title: 'Notifications',
               subtitle: 'Manage notification preferences',
               onTap: () {
-                // TODO: Navigate to notifications settings
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const NotificationsTab(),
+                    builder: (context) => const NotificationsSettingsScreen(),
                   ),
                 );
               },
@@ -345,7 +345,12 @@ class ProfileScreen extends StatelessWidget {
               title: 'Language',
               subtitle: 'English',
               onTap: () {
-                // TODO: Navigate to language settings
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LanguageSettingsScreen(),
+                  ),
+                );
               },
             ),
 

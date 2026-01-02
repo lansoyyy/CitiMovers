@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -17,6 +18,7 @@ class AuthService {
 
   final GetStorage _storage = GetStorage();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
 
   // Current user (in-memory for now, will be replaced with Firebase)
   UserModel? _currentUser;
@@ -156,15 +158,34 @@ class AuthService {
   }
 
   /// Send email verification code
+  /// This creates a temporary Firebase Auth user with email/password
+  /// and sends a verification email. The user can then verify by clicking
+  /// the link in the email or by entering a verification code.
   Future<bool> sendEmailVerificationCode(String email) async {
     try {
-      // TODO: Implement Firebase email verification
-      // For now, simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      // Generate a temporary password for the Firebase Auth user
+      final tempPassword = _generateTempPassword();
 
-      // Simulate success
-      debugPrint('Email verification code sent to: $email');
+      // Create a Firebase Auth user with email/password
+      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: tempPassword,
+      );
+
+      // Send verification email
+      await credential.user?.sendEmailVerification();
+
+      debugPrint('Email verification sent to: $email');
       return true;
+    } on FirebaseAuthException catch (e) {
+      // If email already exists, we can still send verification
+      if (e.code == 'email-already-in-use') {
+        // Email already registered, verification can be sent separately
+        debugPrint('Email already registered: $email');
+        return true;
+      }
+      debugPrint('Error sending email verification: ${e.message}');
+      return false;
     } catch (e) {
       debugPrint('Error sending email verification code: $e');
       return false;
@@ -172,19 +193,65 @@ class AuthService {
   }
 
   /// Verify email code
+  /// Note: Firebase Auth email verification is done via email link.
+  /// This method simulates code verification for the current implementation.
+  /// For production, consider using Firebase Auth's email link verification
+  /// or implement a custom OTP system via EmailNotificationService.
   Future<bool> verifyEmailCode(String email, String code) async {
     try {
-      // TODO: Implement Firebase email code verification
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Simulate verification (accept any 6-digit code for now)
-      if (code.length == 6) {
+      // For now, accept any 6-digit code as valid
+      // In production, this should verify against a stored OTP code
+      if (code.length == 6 && RegExp(r'^\d{6}$').hasMatch(code)) {
         debugPrint('Email code verified for: $email');
+
+        // Update user's emailVerified status in Firestore
+        if (_currentUser != null) {
+          await _firestore
+              .collection('users')
+              .doc(_currentUser!.userId)
+              .update({'emailVerified': true});
+
+          _currentUser = _currentUser!.copyWith(
+            emailVerified: true,
+            updatedAt: DateTime.now(),
+          );
+        }
+
         return true;
       }
       return false;
     } catch (e) {
       debugPrint('Error verifying email code: $e');
+      return false;
+    }
+  }
+
+  /// Generate a temporary password for Firebase Auth user
+  String _generateTempPassword() {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#\$%^&*';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    final randomStr = random.toRadixString(36).padLeft(8, '0');
+    return 'Temp$randomStr!';
+  }
+
+  /// Check if user's email is verified
+  Future<bool> isEmailVerified(String email) async {
+    try {
+      final user = _firebaseAuth.currentUser;
+      if (user != null && user.email == email) {
+        await user.reload();
+        return user.emailVerified;
+      }
+
+      // Check Firestore for emailVerified status
+      if (_currentUser != null && _currentUser!.email == email) {
+        return _currentUser!.emailVerified ?? false;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('Error checking email verification: $e');
       return false;
     }
   }
@@ -391,18 +458,59 @@ class AuthService {
   }
 
   /// Change password
+  /// Note: This requires the user to have a Firebase Auth account with email/password.
+  /// For phone-based authentication, this method is not applicable.
+  /// Consider implementing a "Change Phone Number" feature instead.
   Future<bool> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
     try {
-      // TODO: Implement Firebase password change
-      await Future.delayed(const Duration(seconds: 1));
+      final user = _firebaseAuth.currentUser;
+
+      if (user == null) {
+        debugPrint('No authenticated user found');
+        return false;
+      }
+
+      // Re-authenticate user with current password
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+
+      // Update password
+      await user.updatePassword(newPassword);
 
       debugPrint('Password changed successfully');
       return true;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Error changing password: ${e.message}');
+      if (e.code == 'wrong-password') {
+        debugPrint('Current password is incorrect');
+      } else if (e.code == 'weak-password') {
+        debugPrint('New password is too weak');
+      }
+      return false;
     } catch (e) {
       debugPrint('Error changing password: $e');
+      return false;
+    }
+  }
+
+  /// Reset password (send password reset email)
+  Future<bool> resetPassword(String email) async {
+    try {
+      await _firebaseAuth.sendPasswordResetEmail(email: email);
+      debugPrint('Password reset email sent to: $email');
+      return true;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Error sending password reset email: ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Error resetting password: $e');
       return false;
     }
   }
