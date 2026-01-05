@@ -4,6 +4,18 @@ This document tracks all TODO items for the customer interface, including implem
 
 ---
 
+## ⚠️ CONFIGURATION REQUIRED
+
+### Google Maps API Key
+- **File:** [`lib/services/maps_service.dart`](lib/services/maps_service.dart:15)
+- **Status:** ⚠️ NEEDS USER ACTION
+- **Details:**
+  - The app uses a placeholder Google Maps API key
+  - Replace `'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o'` with your actual API key
+  - Without a valid API key, the app will use mock data for maps functionality
+
+---
+
 ## ✅ COMPLETED ITEMS
 
 ### 1. Firebase Email Verification
