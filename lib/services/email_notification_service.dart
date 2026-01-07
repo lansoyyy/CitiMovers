@@ -80,9 +80,15 @@ class EmailNotificationModel {
 
 /// Service for managing Email Notifications
 ///
-/// NOTE: This service stores email requests in Firestore.
-/// Actual email sending should be handled by Firebase Cloud Functions
-/// or a backend service using providers like SendGrid, Mailgun, or AWS SES.
+/// NOTE: This service uses Firebase Extensions + Mailgun for email sending.
+/// Emails are written to the 'mail' collection in Firestore, which triggers
+/// the Mailgun extension to send the actual email.
+///
+/// Setup required:
+/// 1. Install Firebase CLI: npm install -g firebase-tools
+/// 2. Install Mailgun extension: firebase extensions:install mailgun/send-email
+/// 3. Configure with your Mailgun API key and domain
+/// 4. Deploy: firebase deploy --only extensions
 class EmailNotificationService {
   static EmailNotificationService? _instance;
   static EmailNotificationService get instance {
@@ -91,11 +97,14 @@ class EmailNotificationService {
   }
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  static const String _collection = 'email_notifications';
+  static const String _collection = 'mail'; // Firebase Extension collection
 
   EmailNotificationService._internal();
 
-  /// Send email notification
+  /// Send email notification using Firebase Extensions + Mailgun
+  ///
+  /// This writes to the 'mail' collection which triggers the Mailgun extension
+  /// to send the actual email. No Cloud Functions code needed.
   Future<bool> sendEmail({
     required String to,
     required String subject,
@@ -107,24 +116,24 @@ class EmailNotificationService {
     String? referenceId,
   }) async {
     try {
-      final email = EmailNotificationModel(
-        id: _firestore.collection(_collection).doc().id,
-        to: to,
-        subject: subject,
-        htmlBody: htmlBody,
-        textBody: textBody,
-        templateId: templateId,
-        templateData: templateData,
-        type: type,
-        referenceId: referenceId,
-        createdAt: DateTime.now(),
-      );
+      // Write to 'mail' collection for Firebase Extension to process
+      await _firestore.collection(_collection).add({
+        'to': to,
+        'message': {
+          'subject': subject,
+          'html': htmlBody,
+          if (textBody != null) 'text': textBody,
+        },
+        // Optional: Store metadata for tracking
+        'metadata': {
+          'type': type,
+          if (referenceId != null) 'referenceId': referenceId,
+          if (templateId != null) 'templateId': templateId,
+          if (templateData != null) 'templateData': templateData,
+          'createdAt': DateTime.now().toIso8601String(),
+        },
+      });
 
-      await _firestore.collection(_collection).doc(email.id).set(email.toMap());
-
-      // Note: The actual email sending should be handled by a Cloud Function
-      // that listens to this collection or by a backend service.
-      // This function only stores the email request in Firestore.
       return true;
     } catch (e) {
       print('Error sending email: $e');
