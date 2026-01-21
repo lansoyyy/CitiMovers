@@ -34,6 +34,9 @@ class BookingService {
       final now = DateTime.now();
       final bookingId = _firestore.collection(_bookingsCollection).doc().id;
 
+      final initialStatus =
+          paymentMethod == 'Dragonpay' ? 'awaiting_payment' : 'pending';
+
       final booking = BookingModel(
         bookingId: bookingId,
         customerId: customerId,
@@ -46,8 +49,7 @@ class BookingService {
         distance: distance,
         estimatedFare: estimatedFare,
         finalFare: estimatedFare, // Initially same as estimated
-        status:
-            'pending', // pending, accepted, in_progress, completed, cancelled
+        status: initialStatus,
         paymentMethod: paymentMethod,
         notes: notes,
         createdAt: now,
@@ -410,7 +412,30 @@ class BookingService {
       }
 
       if (deliveryPhotos != null) {
-        updateData['deliveryPhotos'] = deliveryPhotos;
+        final existingRaw = bookingData?['deliveryPhotos'];
+        final existing = (existingRaw is Map)
+            ? existingRaw.map(
+                (key, value) => MapEntry(key.toString(), value),
+              )
+            : <String, dynamic>{};
+
+        final merged = <String, dynamic>{...existing};
+        for (final entry in deliveryPhotos.entries) {
+          final stage = entry.key;
+          final value = entry.value;
+          if (value is Map) {
+            merged[stage] = value;
+          } else if (value is String) {
+            merged[stage] = {
+              'url': value,
+              'uploadedAt': DateTime.now().toIso8601String(),
+            };
+          } else {
+            merged[stage] = value;
+          }
+        }
+
+        updateData['deliveryPhotos'] = merged;
       }
 
       await _firestore

@@ -1,5 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../config/integrations_config.dart';
+import '../models/payment_transaction_model.dart';
+import 'dragonpay_service.dart';
+import 'dragonpay_status_service.dart';
+
 class PaymentMethod {
   final String id;
   final String userId;
@@ -54,12 +59,352 @@ class PaymentMethod {
   }
 }
 
+class DragonpayInitiationResult {
+  final PaymentTransactionModel transaction;
+  final String paymentUrl;
+
+  DragonpayInitiationResult({
+    required this.transaction,
+    required this.paymentUrl,
+  });
+}
+
 class PaymentService {
   static final PaymentService _instance = PaymentService._internal();
   factory PaymentService() => _instance;
   PaymentService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  static const Set<String> _finalStatuses = <String>{
+    'success',
+    'failed',
+    'cancelled',
+    'refunded',
+    'chargeback',
+    'voided',
+  };
+
+  static bool _isFinal(String status) => _finalStatuses.contains(status);
+
+  Future<PaymentTransactionModel?> getActiveTransactionForBooking(
+    String bookingId,
+  ) async {
+    try {
+      final snap = await _firestore
+          .collection('payment_transactions')
+          .where('bookingId', isEqualTo: bookingId)
+          .where('status', whereIn: ['pending', 'in_progress'])
+          .limit(1)
+          .get();
+
+      if (snap.docs.isEmpty) return null;
+      return PaymentTransactionModel.fromMap(snap.docs.first.data());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> getStoredPaymentUrl(String transactionId) async {
+    try {
+      final docRef =
+          _firestore.collection('payment_transactions').doc(transactionId);
+      final snap = await docRef.get();
+      final data = snap.data();
+      final metadata = data?['metadata'];
+      if (metadata is Map) {
+        final url = metadata['paymentUrl'];
+        if (url is String && url.isNotEmpty) return url;
+      }
+
+      // Fallback: regenerate paymentUrl from stored transaction data
+      if (data == null) return null;
+      final amount = (data['amount'] as num?)?.toDouble();
+      final currency =
+          (data['currency'] as String?) ?? IntegrationsConfig.dragonpayCurrency;
+      final description = (data['description'] as String?) ?? '';
+      String? customerEmail;
+      if (metadata is Map) {
+        final value = metadata['customerEmail'];
+        if (value is String && value.isNotEmpty) {
+          customerEmail = value;
+        }
+      }
+
+      if (amount == null || description.isEmpty || customerEmail == null) {
+        return null;
+      }
+
+      final regenerated = DragonpayService.instance.createPaymentUrl(
+        txnId: transactionId,
+        amount: amount,
+        description: description,
+        customerEmail: customerEmail,
+        currency: currency,
+      );
+
+      await docRef.set(
+        {
+          'metadata': {
+            'paymentUrl': regenerated,
+          },
+        },
+        SetOptions(merge: true),
+      );
+
+      return regenerated;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<DragonpayInitiationResult?> initiateOrResumeDragonpayBookingPayment({
+    required String bookingId,
+    required String userId,
+    required double amount,
+    required String description,
+    required String customerEmail,
+    required String paymentMethod,
+  }) async {
+    final active = await getActiveTransactionForBooking(bookingId);
+    if (active != null) {
+      final url = await getStoredPaymentUrl(active.transactionId);
+      if (url != null && url.isNotEmpty) {
+        return DragonpayInitiationResult(transaction: active, paymentUrl: url);
+      }
+    }
+
+    return initiateDragonpayBookingPayment(
+      bookingId: bookingId,
+      userId: userId,
+      amount: amount,
+      description: description,
+      customerEmail: customerEmail,
+      paymentMethod: paymentMethod,
+    );
+  }
+
+  Future<DragonpayInitiationResult?> initiateDragonpayBookingPayment({
+    required String bookingId,
+    required String userId,
+    required double amount,
+    required String description,
+    required String customerEmail,
+    required String paymentMethod,
+  }) async {
+    try {
+      if (bookingId.isNotEmpty) {
+        final bookingSnap =
+            await _firestore.collection('bookings').doc(bookingId).get();
+        final bookingData = bookingSnap.data();
+        final status = (bookingData?['status'] ?? '').toString();
+        if (status == 'cancelled' || status == 'completed') {
+          return null;
+        }
+      }
+
+      final active = await getActiveTransactionForBooking(bookingId);
+      if (active != null) {
+        final url = await getStoredPaymentUrl(active.transactionId);
+        if (url != null && url.isNotEmpty) {
+          return DragonpayInitiationResult(
+              transaction: active, paymentUrl: url);
+        }
+      }
+
+      final docRef = _firestore.collection('payment_transactions').doc();
+      final transactionId = docRef.id;
+
+      final txn = PaymentTransactionModel(
+        transactionId: transactionId,
+        bookingId: bookingId,
+        userId: userId,
+        amount: amount,
+        currency: IntegrationsConfig.dragonpayCurrency,
+        paymentMethod: paymentMethod,
+        status: 'pending',
+        createdAt: DateTime.now(),
+        description: description,
+        metadata: {
+          'gateway': 'dragonpay',
+          'customerEmail': customerEmail,
+        },
+      );
+
+      await docRef.set(txn.toMap());
+
+      // Lock booking and persist expected payment snapshot
+      if (bookingId.isNotEmpty) {
+        await _firestore.collection('bookings').doc(bookingId).set(
+          {
+            'paymentStatus': 'pending',
+            'paymentTransactionId': transactionId,
+            'paymentLocked': true,
+            'paymentLockedAt': Timestamp.now(),
+            'paymentExpectedAmount': amount,
+            'paymentCurrency': IntegrationsConfig.dragonpayCurrency,
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      final paymentUrl = DragonpayService.instance.createPaymentUrl(
+        txnId: transactionId,
+        amount: amount,
+        description: description,
+        customerEmail: customerEmail,
+      );
+
+      await docRef.update({
+        'metadata.paymentUrl': paymentUrl,
+      });
+
+      return DragonpayInitiationResult(
+        transaction: txn,
+        paymentUrl: paymentUrl,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  String _mapDragonpayStatusToLocal(String? dpStatus) {
+    switch (dpStatus) {
+      case 'S':
+        return 'success';
+      case 'F':
+        return 'failed';
+      case 'P':
+        return 'pending';
+      case 'R':
+        return 'refunded';
+      case 'K':
+        return 'chargeback';
+      case 'V':
+        return 'voided';
+      case 'A':
+        return 'authorized';
+      case 'G':
+        return 'in_progress';
+      case 'U':
+      default:
+        return 'unknown';
+    }
+  }
+
+  Future<PaymentTransactionModel?> refreshDragonpayTransactionStatus({
+    required String transactionId,
+  }) async {
+    try {
+      final docRef =
+          _firestore.collection('payment_transactions').doc(transactionId);
+      final snap = await docRef.get();
+      final data = snap.data();
+      if (data == null) return null;
+
+      final current = PaymentTransactionModel.fromMap(data);
+      if (_isFinal(current.status)) return current;
+
+      final statusResult =
+          await DragonpayStatusService.instance.getStatus(txnId: transactionId);
+      if (statusResult == null) return current;
+
+      final newStatus = _mapDragonpayStatusToLocal(statusResult.status);
+
+      final expectedAmount = current.amount;
+      final expectedCurrency = current.currency;
+      final returnedAmount = statusResult.amount;
+      final returnedCurrency = statusResult.currency;
+      final amountMismatch = returnedAmount != null &&
+          (returnedAmount - expectedAmount).abs() > 0.009;
+      final currencyMismatch = returnedCurrency != null &&
+          returnedCurrency.toUpperCase() != expectedCurrency.toUpperCase();
+
+      await _firestore.runTransaction((tx) async {
+        final latestSnap = await tx.get(docRef);
+        final latestData = latestSnap.data();
+        if (latestData == null) return;
+        final latest = PaymentTransactionModel.fromMap(latestData);
+        if (_isFinal(latest.status)) return;
+
+        final update = <String, dynamic>{
+          'status': amountMismatch || currencyMismatch ? 'failed' : newStatus,
+          'updatedAt': Timestamp.now(),
+          'metadata.lastCheckedAt': Timestamp.now(),
+          'metadata.dpStatus': statusResult.status,
+          'metadata.dpRefNo': statusResult.refNo,
+          'metadata.dpProcId': statusResult.procId,
+          'metadata.dpProcMsg': statusResult.procMsg,
+          if (returnedAmount != null) 'metadata.dpAmount': returnedAmount,
+          if (returnedCurrency != null) 'metadata.dpCurrency': returnedCurrency,
+          if (amountMismatch) 'metadata.amountMismatch': true,
+          if (currencyMismatch) 'metadata.currencyMismatch': true,
+        };
+
+        final finalStatus = update['status'] as String;
+        if (_isFinal(finalStatus)) {
+          update['completedAt'] = Timestamp.now();
+        }
+
+        tx.update(docRef, update);
+
+        final bookingId = latest.bookingId;
+        if (bookingId.isEmpty) return;
+
+        final bookingRef = _firestore.collection('bookings').doc(bookingId);
+
+        if (finalStatus == 'success') {
+          tx.set(
+            bookingRef,
+            {
+              'paymentStatus': 'paid',
+              'paymentTransactionId': transactionId,
+              'paidAt': Timestamp.now(),
+              'paymentLocked': false,
+              'status': 'pending',
+            },
+            SetOptions(merge: true),
+          );
+        } else if (_isFinal(finalStatus)) {
+          tx.set(
+            bookingRef,
+            {
+              'paymentStatus': finalStatus,
+              'paymentLocked': false,
+              'paymentTransactionId': transactionId,
+            },
+            SetOptions(merge: true),
+          );
+        }
+      });
+
+      final updated = await docRef.get();
+      final updatedData = updated.data();
+      if (updatedData == null) return null;
+      return PaymentTransactionModel.fromMap(updatedData);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> reconcilePendingTransactionsForUser(String userId) async {
+    try {
+      final snap = await _firestore
+          .collection('payment_transactions')
+          .where('userId', isEqualTo: userId)
+          .where('status', whereIn: ['pending', 'in_progress', 'unknown'])
+          .limit(10)
+          .get();
+
+      for (final doc in snap.docs) {
+        final transactionId = (doc.data()['transactionId'] ?? '').toString();
+        if (transactionId.isEmpty) continue;
+        await refreshDragonpayTransactionStatus(transactionId: transactionId);
+      }
+    } catch (_) {
+      return;
+    }
+  }
 
   /// Get payment methods for a user (customer or rider)
   Stream<List<PaymentMethod>> getPaymentMethods(String userId) {

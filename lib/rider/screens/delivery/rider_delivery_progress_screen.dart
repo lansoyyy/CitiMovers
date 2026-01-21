@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:citimovers/rider/models/delivery_request_model.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
 import 'package:citimovers/rider/services/rider_location_service.dart';
@@ -9,10 +10,15 @@ import 'package:citimovers/services/location_service.dart';
 import 'package:citimovers/services/maps_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+
+import 'package:citimovers/config/integrations_config.dart';
+import 'package:citimovers/services/emailjs_service.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -48,6 +54,7 @@ class _RiderDeliveryProgressScreenState
   final LocationService _locationService = LocationService();
   final RiderLocationService _riderLocationService = RiderLocationService();
   final MapsService _mapsService = MapsService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -78,6 +85,7 @@ class _RiderDeliveryProgressScreenState
   File? _idPhoto;
   List<Offset?> _signaturePoints = [];
   bool _isSignatureEmpty = true;
+  final GlobalKey _signatureKey = GlobalKey();
 
   // Animation controllers
   late AnimationController _pulseController;
@@ -509,6 +517,12 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
+    final signatureUrl = await _captureAndUploadSignature();
+    if (signatureUrl == null) {
+      UIHelpers.showInfoToast('Please wait for signature to upload.');
+      return;
+    }
+
     // Update booking status in Firestore with completion data
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
@@ -517,6 +531,7 @@ class _RiderDeliveryProgressScreenState
       receiverName: _receiverNameController.text,
       deliveryPhotos: {
         'receiver_id': _idPhotoUrl,
+        'receiver_signature': signatureUrl,
       },
     );
 
@@ -524,8 +539,7 @@ class _RiderDeliveryProgressScreenState
       _currentStep = DeliveryStep.completed;
     });
 
-    // Send Email Logic Mock
-    _sendCompletionEmails();
+    await _sendCompletionEmails();
     UIHelpers.showSuccessToast(
         'Delivery Completed! Confirmation emails sent to Customer, Admin, and Driver.');
 
@@ -537,15 +551,218 @@ class _RiderDeliveryProgressScreenState
     });
   }
 
-  void _sendCompletionEmails() {
-    // Mock email sending functionality
-    final now = DateTime.now();
-    final formattedTime = DateFormat('MMM dd, yyyy - hh:mm a').format(now);
+  String _formatMilitaryTime(DateTime? dateTime) {
+    if (dateTime == null) return '';
+    return DateFormat('HH:mm').format(dateTime);
+  }
 
-    // In a real app, these would be actual API calls
-    print('Email to Customer: Delivery completed at $formattedTime');
-    print('Email to Admin: Delivery #${widget.request.id} completed by rider');
-    print('Email to Driver: Delivery confirmation and earnings summary');
+  Future<Map<String, dynamic>?> _getBookingDoc(String bookingId) async {
+    final snap = await _firestore.collection('bookings').doc(bookingId).get();
+    return snap.data();
+  }
+
+  Future<Map<String, dynamic>?> _getUserDoc(String userId) async {
+    final snap = await _firestore.collection('users').doc(userId).get();
+    return snap.data();
+  }
+
+  Future<Map<String, dynamic>?> _getRiderDoc(String riderId) async {
+    final snap = await _firestore.collection('riders').doc(riderId).get();
+    return snap.data();
+  }
+
+  Future<void> _sendCompletionEmails() async {
+    try {
+      final now = DateTime.now();
+
+      final bookingData = await _getBookingDoc(widget.request.id);
+      final customerId = (bookingData?['customerId'] as String?) ?? '';
+      final riderId = (bookingData?['driverId'] as String?) ??
+          (_riderAuthService.currentRider?.riderId ?? '');
+
+      final customerData = customerId.isNotEmpty
+          ? await _getUserDoc(customerId)
+          : <String, dynamic>{};
+      final riderData = riderId.isNotEmpty
+          ? await _getRiderDoc(riderId)
+          : <String, dynamic>{};
+
+      final customerEmail =
+          (customerData?['email'] as String?) ?? 'customer@example.com';
+      final customerName =
+          (customerData?['name'] as String?) ?? widget.request.customerName;
+
+      final driverName = (riderData?['name'] as String?) ??
+          _riderAuthService.currentRider?.name;
+      final driverPhone = (riderData?['phoneNumber'] as String?) ??
+          _riderAuthService.currentRider?.phoneNumber ??
+          widget.request.customerPhone;
+
+      final plate = (riderData?['vehiclePlateNumber'] as String?) ?? '';
+
+      final vehicleType = (riderData?['vehicleType'] as String?) ??
+          (bookingData?['vehicle'] is Map
+              ? ((bookingData?['vehicle'] as Map)['name'] as String?)
+              : null) ??
+          '';
+
+      final pickupAddress = widget.request.pickupLocation;
+      final destinationAddress = widget.request.deliveryLocation;
+
+      final bookingCreatedAt = bookingData?['createdAt'];
+      DateTime? createdAt;
+      if (bookingCreatedAt is int) {
+        createdAt = DateTime.fromMillisecondsSinceEpoch(bookingCreatedAt);
+      }
+
+      final scheduledMs = bookingData?['scheduledDateTime'];
+      DateTime? scheduledAt;
+      if (scheduledMs is int) {
+        scheduledAt = DateTime.fromMillisecondsSinceEpoch(scheduledMs);
+      }
+
+      DateTime? parseIso(dynamic value) {
+        if (value is String && value.isNotEmpty) {
+          return DateTime.tryParse(value);
+        }
+        return null;
+      }
+
+      final pickupArrival = parseIso(bookingData?['loadingStartedAt']);
+      final loadingStart = pickupArrival;
+      final loadingFinish = parseIso(bookingData?['loadingCompletedAt']);
+
+      final destArrival = parseIso(bookingData?['unloadingStartedAt']);
+      final unloadingStart = destArrival;
+      final unloadingFinish = parseIso(bookingData?['unloadingCompletedAt']);
+
+      final receiverName = (bookingData?['receiverName'] as String?) ??
+          _receiverNameController.text;
+
+      final deliveryPhotosRaw = bookingData?['deliveryPhotos'];
+      final deliveryPhotos = (deliveryPhotosRaw is Map)
+          ? deliveryPhotosRaw.map((k, v) => MapEntry(k.toString(), v))
+          : <String, dynamic>{};
+
+      String? extractUrl(dynamic v) {
+        if (v is String) return v;
+        if (v is Map) {
+          final url = v['url'];
+          if (url is String) return url;
+        }
+        return null;
+      }
+
+      final startLoadingUrl = extractUrl(deliveryPhotos['start_loading']) ??
+          extractUrl(deliveryPhotos['start_loading_photo']);
+      final finishLoadingUrl = extractUrl(deliveryPhotos['finish_loading']) ??
+          extractUrl(deliveryPhotos['finished_loading']);
+      final startUnloadingUrl = extractUrl(deliveryPhotos['start_unloading']) ??
+          extractUrl(deliveryPhotos['start_unloading_photo']);
+      final finishUnloadingUrl =
+          extractUrl(deliveryPhotos['finish_unloading']) ??
+              extractUrl(deliveryPhotos['finished_unloading']);
+      final receiverIdUrl = extractUrl(deliveryPhotos['receiver_id']) ??
+          extractUrl(deliveryPhotos['receiver_id_photo']);
+      final receiverSignatureUrl =
+          extractUrl(deliveryPhotos['receiver_signature']) ??
+              extractUrl(deliveryPhotos['signature']);
+
+      final rdd = scheduledAt ?? createdAt ?? now;
+      final rddStr = DateFormat('yyyyMMdd').format(rdd);
+      final subject =
+          '${vehicleType.isNotEmpty ? vehicleType : 'TYPE'}_${plate.isNotEmpty ? plate : 'PLATE'}_${rddStr}_Citimovers';
+
+      final templateParams = <String, dynamic>{
+        'sender': IntegrationsConfig.reportSenderEmail,
+        'receiver_name': customerName,
+        'plate': plate,
+        'driver': driverName ?? '',
+        'phone': driverPhone,
+        'pickup_address': pickupAddress,
+        'destination': destinationAddress,
+        'fo_number': '',
+        'trip_number': widget.request.id,
+        'pickup_arrival': _formatMilitaryTime(pickupArrival),
+        'pickup_start_loading': _formatMilitaryTime(loadingStart),
+        'pickup_finished_loading': _formatMilitaryTime(loadingFinish),
+        'destination_arrival': _formatMilitaryTime(destArrival),
+        'destination_start_unloading': _formatMilitaryTime(unloadingStart),
+        'destination_finished_unloading': _formatMilitaryTime(unloadingFinish),
+        'receiver': receiverName,
+        'start_loading_photo_url': startLoadingUrl ?? '',
+        'finish_loading_photo_url': finishLoadingUrl ?? '',
+        'start_unloading_photo_url': startUnloadingUrl ?? '',
+        'finish_unloading_photo_url': finishUnloadingUrl ?? '',
+        'receiver_id_photo_url': receiverIdUrl ?? '',
+        'receiver_signature_url': receiverSignatureUrl ?? '',
+      };
+
+      // Customer + internal recipients. Internal recipients are sent as individual emails.
+      final allRecipients = <String>{
+        customerEmail,
+        ...IntegrationsConfig.sampleClientReportRecipients,
+        ...IntegrationsConfig.internalReportRecipients,
+      };
+
+      for (final to in allRecipients) {
+        await EmailJsService.instance.sendTemplateEmail(
+          toEmail: to,
+          subject: subject,
+          templateParams: templateParams,
+        );
+
+        await Future.delayed(const Duration(milliseconds: 1100));
+      }
+    } catch (e) {
+      debugPrint('Error sending completion emails: $e');
+    }
+  }
+
+  Future<String?> _captureAndUploadSignature() async {
+    try {
+      final boundary = _signatureKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+
+      if (boundary == null) {
+        return null;
+      }
+
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        return null;
+      }
+
+      final bytes = byteData.buffer.asUint8List();
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final tempPath =
+          '${Directory.systemTemp.path}/receiver_signature_${widget.request.id}_$timestamp.png';
+      final file = File(tempPath);
+      await file.writeAsBytes(bytes);
+
+      final url = await _storageService.uploadDeliveryPhoto(
+        file,
+        widget.request.id,
+        'Receiver Signature',
+      );
+
+      if (url == null) {
+        return null;
+      }
+
+      await _bookingService.addDeliveryPhoto(
+        bookingId: widget.request.id,
+        stage: 'receiver_signature',
+        photoUrl: url,
+      );
+
+      return url;
+    } catch (e) {
+      debugPrint('Error uploading signature: $e');
+      return null;
+    }
   }
 
   // --- UI Builders ---
@@ -1063,38 +1280,40 @@ class _RiderDeliveryProgressScreenState
           decoration: BoxDecoration(
             border: Border.all(color: AppColors.lightGrey),
             borderRadius: BorderRadius.circular(12),
-            color: Colors.grey[50],
+            color: Colors.white,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: GestureDetector(
-              onPanUpdate: (details) {
-                setState(() {
-                  // Need to find local position within the Container
-                  // Using a stack key or similar is better, but here we use simple setState
-                  // For simplicity in this constraint, just adding points
-                  _signaturePoints.add(details.localPosition);
-                  _isSignatureEmpty = false;
-                });
-              },
-              onPanEnd: (details) => _signaturePoints.add(null),
-              child: CustomPaint(
-                painter: SignaturePainter(points: _signaturePoints),
-                size: Size.infinite,
+            child: RepaintBoundary(
+              key: _signatureKey,
+              child: GestureDetector(
+                onPanUpdate: (details) {
+                  setState(() {
+                    _signaturePoints.add(details.localPosition);
+                    _isSignatureEmpty = false;
+                  });
+                },
+                onPanEnd: (details) => _signaturePoints.add(null),
+                child: CustomPaint(
+                  painter: SignaturePainter(points: _signaturePoints),
+                  size: Size.infinite,
+                ),
               ),
             ),
           ),
         ),
+        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
-              onPressed: () {
-                setState(() {
-                  _signaturePoints.clear();
-                  _isSignatureEmpty = true;
-                });
-              },
-              child: const Text('Clear Signature')),
+            onPressed: () {
+              setState(() {
+                _signaturePoints.clear();
+                _isSignatureEmpty = true;
+              });
+            },
+            child: const Text('Clear Signature'),
+          ),
         ),
       ],
     );

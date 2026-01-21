@@ -231,6 +231,7 @@ class _BookingsTabState extends State<BookingsTab>
       case 'active':
         return bookings
             .where((booking) =>
+                booking.status == 'awaiting_payment' ||
                 booking.status == 'pending' ||
                 booking.status == 'accepted' ||
                 booking.status == 'in_progress')

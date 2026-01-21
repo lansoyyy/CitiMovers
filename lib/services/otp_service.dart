@@ -36,7 +36,7 @@ class OtpService {
           'X-TXTBOX-Auth': ApiKeys.txtBoxApiKey,
         },
         body: {
-          'message': '$otp is your OTP. Do not share it.',
+          'message': '$otp is your OTP from CitiMovers. Do not share it.',
           'number': normalizedPhoneNumber,
         },
       );

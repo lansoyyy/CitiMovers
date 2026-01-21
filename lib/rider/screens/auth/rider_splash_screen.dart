@@ -2,6 +2,7 @@ import 'package:citimovers/rider/screens/auth/rider_login_screen.dart';
 import 'package:citimovers/rider/screens/auth/rider_onboarding_screen.dart';
 import 'package:citimovers/rider/screens/rider_home_screen.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
+import 'package:citimovers/services/payment_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
 import 'package:citimovers/utils/app_constants.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
@@ -88,6 +89,12 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
     if (isLoggedIn) {
       await authService.getCurrentRider();
       if (!mounted) return;
+
+      final rider = authService.currentRider;
+      if (rider != null) {
+        await PaymentService()
+            .reconcilePendingTransactionsForUser(rider.riderId);
+      }
     }
 
     // Navigate to appropriate screen

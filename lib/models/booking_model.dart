@@ -141,6 +141,8 @@ class BookingModel {
   /// Get status display text
   String get statusText {
     switch (status) {
+      case 'awaiting_payment':
+        return 'Awaiting Payment';
       case 'pending':
         return 'Waiting for Driver';
       case 'accepted':
@@ -158,12 +160,15 @@ class BookingModel {
 
   /// Check if booking can be cancelled
   bool get canBeCancelled {
-    return status == 'pending' || status == 'accepted';
+    return status == 'awaiting_payment' ||
+        status == 'pending' ||
+        status == 'accepted';
   }
 
   /// Check if booking is active
   bool get isActive {
-    return status == 'pending' ||
+    return status == 'awaiting_payment' ||
+        status == 'pending' ||
         status == 'accepted' ||
         status == 'in_progress';
   }
