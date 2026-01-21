@@ -338,7 +338,14 @@ class _BookingCardState extends State<BookingCard> {
   }
 
   String getFare() {
-    return 'P${widget.booking.finalFare?.toStringAsFixed(2) ?? widget.booking.estimatedFare.toStringAsFixed(2)}';
+    final base =
+        (widget.booking.finalFare != null && widget.booking.finalFare! > 0)
+            ? widget.booking.finalFare!
+            : widget.booking.estimatedFare;
+    final loading = widget.booking.loadingDemurrageFee ?? 0.0;
+    final unloading = widget.booking.unloadingDemurrageFee ?? 0.0;
+    final total = base + loading + unloading;
+    return 'P${total.toStringAsFixed(2)}';
   }
 
   Color getStatusColor() {
@@ -922,7 +929,14 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
   }
 
   String getFare() {
-    return 'P${widget.booking.finalFare?.toStringAsFixed(2) ?? widget.booking.estimatedFare.toStringAsFixed(2)}';
+    final base =
+        (widget.booking.finalFare != null && widget.booking.finalFare! > 0)
+            ? widget.booking.finalFare!
+            : widget.booking.estimatedFare;
+    final loading = widget.booking.loadingDemurrageFee ?? 0.0;
+    final unloading = widget.booking.unloadingDemurrageFee ?? 0.0;
+    final total = base + loading + unloading;
+    return 'P${total.toStringAsFixed(2)}';
   }
 
   String getPaymentMethod() {
@@ -980,7 +994,13 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
 
   String getInsurance() {
     // Insurance based on fare amount
-    final fare = widget.booking.finalFare ?? widget.booking.estimatedFare;
+    final base =
+        (widget.booking.finalFare != null && widget.booking.finalFare! > 0)
+            ? widget.booking.finalFare!
+            : widget.booking.estimatedFare;
+    final fare = base +
+        (widget.booking.loadingDemurrageFee ?? 0.0) +
+        (widget.booking.unloadingDemurrageFee ?? 0.0);
     if (fare < 500) return 'Basic Coverage';
     if (fare < 1000) return 'Standard Coverage';
     if (fare < 2000) return 'Premium Coverage';

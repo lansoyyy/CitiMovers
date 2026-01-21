@@ -22,6 +22,16 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   final AuthService _authService = AuthService();
   final WalletService _walletService = WalletService();
 
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
   String _selectedPeriod = 'This Week';
   final List<String> _periods = [
     'Today',
@@ -618,14 +628,11 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                   final createdAt = transaction['createdAt'];
                                   String dateStr = 'Unknown';
 
-                                  if (createdAt != null) {
-                                    if (createdAt is DateTime) {
-                                      dateStr = DateFormat('MMM d, yyyy')
-                                          .format(createdAt);
-                                    } else if (createdAt is Timestamp) {
-                                      dateStr = DateFormat('MMM d, yyyy')
-                                          .format(createdAt.toDate());
-                                    }
+                                  final createdAtDate =
+                                      _parseDateTime(createdAt);
+                                  if (createdAtDate != null) {
+                                    dateStr = DateFormat('MMM d, yyyy')
+                                        .format(createdAtDate);
                                   }
 
                                   return _TransactionCard(
@@ -712,35 +719,37 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
       for (var doc in bookingsQuery.docs) {
         final booking = BookingModel.fromMap(doc.data());
 
-        if (booking.estimatedFare != null) {
-          final earnings = booking.estimatedFare!;
-          totalEarnings += earnings;
-          totalDeliveries++;
+        final baseFare = (booking.finalFare != null && booking.finalFare! > 0)
+            ? booking.finalFare!
+            : booking.estimatedFare;
+        final loading = booking.loadingDemurrageFee ?? 0.0;
+        final unloading = booking.unloadingDemurrageFee ?? 0.0;
+        final earnings = baseFare + loading + unloading;
 
-          // Check if today's earnings - fixed to check same day
-          final bookingDate = booking.createdAt;
-          if (bookingDate != null &&
-              bookingDate.isAfter(today) &&
-              bookingDate.isBefore(tomorrow)) {
-            todayEarnings += earnings;
+        totalEarnings += earnings;
+        totalDeliveries++;
+
+        // Check if today's earnings - fixed to check same day
+        final bookingDate = booking.createdAt;
+        if (bookingDate.isAfter(today) && bookingDate.isBefore(tomorrow)) {
+          todayEarnings += earnings;
+        }
+
+        // Weekly data
+        if (bookingDate.isAfter(startOfWeek)) {
+          final dayIndex = bookingDate.weekday - 1; // 0 = Monday
+          if (dayIndex >= 0 && dayIndex < 7) {
+            weeklyEarnings[dayIndex] += earnings;
+            weeklyDeliveries[dayIndex]++;
           }
+        }
 
-          // Weekly data
-          if (bookingDate != null && bookingDate.isAfter(startOfWeek)) {
-            final dayIndex = bookingDate.weekday - 1; // 0 = Monday
-            if (dayIndex >= 0 && dayIndex < 7) {
-              weeklyEarnings[dayIndex] += earnings;
-              weeklyDeliveries[dayIndex]++;
-            }
-          }
-
-          // Monthly data - fixed to use all 12 months
-          if (bookingDate != null && bookingDate.isAfter(startOfMonth)) {
-            final monthIndex = bookingDate.month - 1; // 0 = January
-            if (monthIndex >= 0 && monthIndex < 12) {
-              monthlyEarnings[monthIndex] += earnings;
-              monthlyDeliveries[monthIndex]++;
-            }
+        // Monthly data - fixed to use all 12 months
+        if (bookingDate.isAfter(startOfMonth)) {
+          final monthIndex = bookingDate.month - 1; // 0 = January
+          if (monthIndex >= 0 && monthIndex < 12) {
+            monthlyEarnings[monthIndex] += earnings;
+            monthlyDeliveries[monthIndex]++;
           }
         }
       }

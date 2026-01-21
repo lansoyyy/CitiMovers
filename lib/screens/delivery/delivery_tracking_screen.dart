@@ -43,6 +43,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   Timer? _loadingTimer;
   Timer? _unloadingTimer;
   StreamSubscription? _riderLocationSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _bookingSubscription;
+
+  late BookingModel _booking;
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -87,6 +91,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   @override
   void initState() {
     super.initState();
+    _booking = widget.booking;
     _initializeLocations();
     _fetchDriverData();
     _startRealTimeLocationTracking();
@@ -128,6 +133,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   @override
   void dispose() {
     _riderLocationSubscription?.cancel();
+    _bookingSubscription?.cancel();
     _loadingTimer?.cancel();
     _unloadingTimer?.cancel();
     super.dispose();
@@ -207,16 +213,115 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   /// Listen to booking status changes from Firestore
   void _listenToBookingStatus() {
-    _firestore
+    final bookingId = widget.booking.bookingId;
+    if (bookingId == null || bookingId.isEmpty) return;
+
+    _bookingSubscription = _firestore
         .collection('bookings')
-        .doc(widget.booking.bookingId)
+        .doc(bookingId)
         .snapshots()
         .listen((snapshot) {
-      if (snapshot.exists && snapshot.data() != null) {
-        final booking = BookingModel.fromMap(snapshot.data()!);
-        _updateDeliveryStepFromStatus(booking.status);
+      if (!snapshot.exists || snapshot.data() == null || !mounted) return;
+      final booking = BookingModel.fromMap(snapshot.data()!);
+      _applyBookingUpdate(booking);
+    });
+  }
+
+  double get _baseFare {
+    final finalFare = _booking.finalFare;
+    if (finalFare != null && finalFare > 0) return finalFare;
+    return _booking.estimatedFare;
+  }
+
+  double _computeDemurrageFee(Duration duration, double baseFare) {
+    final blocks = duration.inHours ~/ 4;
+    if (blocks <= 0) return 0.0;
+    return blocks * 0.25 * baseFare;
+  }
+
+  void _applyBookingUpdate(BookingModel booking) {
+    final now = DateTime.now();
+
+    final loadingStartedAt = booking.loadingStartedAt;
+    final loadingCompletedAt = booking.loadingCompletedAt;
+    final unloadingStartedAt = booking.unloadingStartedAt;
+    final unloadingCompletedAt = booking.unloadingCompletedAt;
+
+    final loadingDuration = (loadingStartedAt == null)
+        ? Duration.zero
+        : (loadingCompletedAt ?? now).difference(loadingStartedAt);
+
+    final unloadingDuration = (unloadingStartedAt == null)
+        ? Duration.zero
+        : (unloadingCompletedAt ?? now).difference(unloadingStartedAt);
+
+    final loadingActive =
+        loadingStartedAt != null && loadingCompletedAt == null;
+    final unloadingActive =
+        unloadingStartedAt != null && unloadingCompletedAt == null;
+
+    final baseFare = (booking.finalFare != null && booking.finalFare! > 0)
+        ? booking.finalFare!
+        : booking.estimatedFare;
+
+    final loadingFee = booking.loadingDemurrageFee ??
+        _computeDemurrageFee(loadingDuration, baseFare);
+    final unloadingFee = booking.unloadingDemurrageFee ??
+        _computeDemurrageFee(unloadingDuration, baseFare);
+
+    setState(() {
+      _booking = booking;
+      _updateDeliveryStepFromStatus(booking.status);
+
+      _loadingDuration = loadingDuration;
+      _unloadingDuration = unloadingDuration;
+      _loadingDemurrageStarted = loadingActive;
+      _unloadingDemurrageStarted = unloadingActive;
+      _loadingDemurrageFee = loadingFee;
+      _unloadingDemurrageFee = unloadingFee;
+
+      final photos = booking.deliveryPhotos;
+      if (photos != null) {
+        bool hasPhoto(String key) {
+          final v = photos[key];
+          if (v is String) return v.isNotEmpty;
+          if (v is Map) {
+            final url = v['url'];
+            return url is String && url.isNotEmpty;
+          }
+          return false;
+        }
+
+        _startLoadingPhotoTaken =
+            hasPhoto('start_loading') || hasPhoto('start_loading_photo');
+        _finishLoadingPhotoTaken = hasPhoto('finish_loading') ||
+            hasPhoto('finished_loading') ||
+            hasPhoto('finish_loading_photo');
+        _startUnloadingPhotoTaken =
+            hasPhoto('start_unloading') || hasPhoto('start_unloading_photo');
+        _finishUnloadingPhotoTaken = hasPhoto('finish_unloading') ||
+            hasPhoto('finished_unloading') ||
+            hasPhoto('finish_unloading_photo');
+        _receiverIdPhotoTaken =
+            hasPhoto('receiver_id') || hasPhoto('receiver_id_photo');
+        _receiverSignatureTaken =
+            hasPhoto('receiver_signature') || hasPhoto('signature');
       }
     });
+
+    if (loadingActive) {
+      if (_loadingTimer == null) _startLoadingTimer();
+    } else {
+      _loadingTimer?.cancel();
+      _loadingTimer = null;
+    }
+
+    if (unloadingActive) {
+      if (_unloadingTimer == null) _startUnloadingTimer();
+    } else {
+      _unloadingTimer?.cancel();
+      _unloadingTimer = null;
+    }
   }
 
   /// Update delivery step based on booking status
@@ -231,33 +336,28 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       case 'arrived_at_pickup':
         _currentStep = DeliveryStep.loading;
         _loadingSubStep = LoadingSubStep.arrived;
-        _loadingDemurrageStarted = true;
-        _startLoadingTimer();
         break;
       case 'loading_complete':
         _currentStep = DeliveryStep.delivering;
-        _loadingDemurrageStarted = false;
-        _loadingTimer?.cancel();
         break;
       case 'in_transit':
+      case 'in_progress':
         _currentStep = DeliveryStep.delivering;
         break;
       case 'arrived_at_dropoff':
         _currentStep = DeliveryStep.unloading;
         _unloadingSubStep = UnloadingSubStep.arrived;
-        _unloadingDemurrageStarted = true;
-        _startUnloadingTimer();
         break;
       case 'unloading_complete':
         _currentStep = DeliveryStep.receiving;
-        _unloadingDemurrageStarted = false;
-        _unloadingTimer?.cancel();
         break;
       case 'completed':
       case 'delivered':
         _currentStep = DeliveryStep.completed;
-        _isDelivered = true;
-        UIHelpers.showSuccessToast('Package has arrived at destination!');
+        if (!_isDelivered) {
+          _isDelivered = true;
+          UIHelpers.showSuccessToast('Package has arrived at destination!');
+        }
         break;
       case 'cancelled':
       case 'cancelled_by_rider':
@@ -304,12 +404,18 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _startLoadingTimer() {
+    if (_loadingTimer != null) return;
     _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final start = _booking.loadingStartedAt;
+      if (_booking.loadingCompletedAt != null) {
+        timer.cancel();
+        _loadingTimer = null;
+        return;
+      }
+      if (start == null || !mounted) return;
       setState(() {
-        _loadingDuration += const Duration(seconds: 1);
-        if (_loadingDemurrageStarted) {
-          _calculateLoadingFee();
-        }
+        _loadingDuration = DateTime.now().difference(start);
+        _calculateLoadingFee();
       });
     });
   }
@@ -318,7 +424,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     // "Every 4 hours - 25% of the delivery fare"
     int blocks = _loadingDuration.inHours ~/ 4;
     if (blocks > 0) {
-      final baseFare = widget.booking.estimatedFare;
+      final baseFare = _baseFare;
       _loadingDemurrageFee = blocks * 0.25 * baseFare;
     } else {
       _loadingDemurrageFee = 0.0;
@@ -326,12 +432,18 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _startUnloadingTimer() {
+    if (_unloadingTimer != null) return;
     _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final start = _booking.unloadingStartedAt;
+      if (_booking.unloadingCompletedAt != null) {
+        timer.cancel();
+        _unloadingTimer = null;
+        return;
+      }
+      if (start == null || !mounted) return;
       setState(() {
-        _unloadingDuration += const Duration(seconds: 1);
-        if (_unloadingDemurrageStarted) {
-          _calculateUnloadingFee();
-        }
+        _unloadingDuration = DateTime.now().difference(start);
+        _calculateUnloadingFee();
       });
     });
   }
@@ -339,7 +451,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   void _calculateUnloadingFee() {
     int blocks = _unloadingDuration.inHours ~/ 4;
     if (blocks > 0) {
-      final baseFare = widget.booking.estimatedFare;
+      final baseFare = _baseFare;
       _unloadingDemurrageFee = blocks * 0.25 * baseFare;
     } else {
       _unloadingDemurrageFee = 0.0;
@@ -653,7 +765,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => DeliveryCompletionScreen(
-                                  booking: widget.booking,
+                                  booking: _booking,
                                   loadingDemurrage: _loadingDemurrageFee,
                                   unloadingDemurrage: _unloadingDemurrageFee,
                                 ),

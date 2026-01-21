@@ -23,6 +23,26 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
   final RiderAuthService _authService = RiderAuthService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  DateTime _parseDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  double _parseDouble(dynamic value, {double fallback = 0.0}) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  double? _parseOptionalDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
   bool _isLoading = false;
   List<DeliveryData> _activeDeliveries = [];
   List<DeliveryData> _completedDeliveries = [];
@@ -151,15 +171,14 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     final deliveryLocation = deliveryLocationData?['address'] as String? ?? '';
 
     // Get date and time
-    final createdAt =
-        (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final createdAt = _parseDateTime(data['createdAt']);
     final date = DateFormat('MMM dd, yyyy').format(createdAt);
     final time = DateFormat('h:mm a').format(createdAt);
 
     // Get fare
-    final fare =
-        (data['estimatedFare'] as num? ?? data['fare'] as num? ?? 0).toDouble();
-    final finalFare = (data['finalFare'] as num?)?.toDouble();
+    final fare = _parseDouble(data['estimatedFare'],
+        fallback: _parseDouble(data['fare']));
+    final finalFare = _parseOptionalDouble(data['finalFare']);
 
     // Get status
     final status = data['status'] as String? ?? 'pending';
@@ -215,7 +234,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     final customerRating = (data['customerRating'] as num?)?.toDouble() ?? 0.0;
 
     // Get estimated duration
-    final estimatedDuration = data['estimatedDuration'] as num? ?? 0;
+    final estimatedDuration = _parseDouble(data['estimatedDuration']);
 
     // Get payment method
     final paymentMethod = data['paymentMethod'] as String? ?? 'Cash';
@@ -224,7 +243,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     final notes = data['notes'] as String?;
 
     // Get distance
-    final distance = (data['distance'] as num?)?.toDouble() ?? 0.0;
+    final distance = _parseDouble(data['distance']);
 
     // Derive package type from vehicle type
     String packageType;

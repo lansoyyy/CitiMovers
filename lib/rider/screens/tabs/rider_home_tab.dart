@@ -27,6 +27,19 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
   final _authService = RiderAuthService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  DateTime _parseDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  double _parseDouble(dynamic value, {double fallback = 0.0}) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
   bool _isOnline = true;
   int _todayDeliveries = 0;
   double _todayEarnings = 0.0;
@@ -69,13 +82,21 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
+    final startMs = startOfDay.millisecondsSinceEpoch;
+    final endMs = endOfDay.millisecondsSinceEpoch;
+
     _bookingsSubscription = _firestore
         .collection('bookings')
         .where('driverId', isEqualTo: riderId)
-        .where('status', whereIn: ['completed', 'in_progress'])
-        .where('createdAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .where('status', whereIn: [
+          'completed',
+          'arrived_at_pickup',
+          'loading_complete',
+          'arrived_at_dropoff',
+          'unloading_complete'
+        ])
+        .where('createdAt', isGreaterThanOrEqualTo: startMs)
+        .where('createdAt', isLessThan: endMs)
         .snapshots()
         .listen((snapshot) {
           if (mounted) {
@@ -85,7 +106,13 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                 0.0,
                 (sum, doc) {
                   final data = doc.data();
-                  return sum + ((data['fare'] as num?)?.toDouble() ?? 0.0);
+                  final base = _parseDouble(data['finalFare']) > 0
+                      ? _parseDouble(data['finalFare'])
+                      : _parseDouble(data['estimatedFare'],
+                          fallback: _parseDouble(data['fare']));
+                  final loading = _parseDouble(data['loadingDemurrageFee']);
+                  final unloading = _parseDouble(data['unloadingDemurrageFee']);
+                  return sum + base + loading + unloading;
                 },
               );
             });
@@ -116,8 +143,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
   DeliveryRequest _bookingToDeliveryRequest(
       String bookingId, Map<String, dynamic> data) {
     // Calculate request time
-    final createdAt =
-        (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final createdAt = _parseDateTime(data['createdAt']);
     final now = DateTime.now();
     final difference = now.difference(createdAt);
 
@@ -137,21 +163,33 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
     final customerPhone = data['customerPhone'] as String? ?? 'N/A';
 
     // Get locations
-    final pickupLocation = data['pickupLocation'] as String? ?? '';
-    final deliveryLocation = data['deliveryLocation'] as String? ?? '';
+    final pickupLocationRaw = data['pickupLocation'];
+    final dropoffLocationRaw = data['dropoffLocation'];
+    final pickupLocation = pickupLocationRaw is Map
+        ? (pickupLocationRaw['address'] ?? '').toString()
+        : (pickupLocationRaw ?? '').toString();
+    final deliveryLocation = dropoffLocationRaw is Map
+        ? (dropoffLocationRaw['address'] ?? '').toString()
+        : (dropoffLocationRaw ?? '').toString();
 
     // Get distance and time
-    final distance = data['distance'] as num? ?? 0;
-    final estimatedDuration = data['estimatedDuration'] as num? ?? 0;
+    final distance = _parseDouble(data['distance']);
+    final estimatedDuration = _parseDouble(data['estimatedDuration']);
 
     // Get fare
-    final fare = data['fare'] as num? ?? 0;
+    final fare = _parseDouble(data['finalFare']) > 0
+        ? _parseDouble(data['finalFare'])
+        : _parseDouble(data['estimatedFare']);
 
     // Get package info
-    final packageType = data['packageType'] as String? ?? 'Standard';
-    final weight = data['weight'] as num? ?? 0;
-    final specialInstructions =
-        data['specialInstructions'] as String? ?? 'None';
+    final vehicleRaw = data['vehicle'];
+    final vehicleType =
+        vehicleRaw is Map ? (vehicleRaw['type'] ?? '').toString() : '';
+    final vehicleCapacity =
+        vehicleRaw is Map ? (vehicleRaw['capacity'] ?? '').toString() : '';
+    final packageType = vehicleType.isNotEmpty ? vehicleType : 'Standard';
+    final weight = vehicleCapacity.isNotEmpty ? vehicleCapacity : 'N/A';
+    final specialInstructions = data['notes'] as String? ?? 'None';
 
     // Get urgency
     final urgency = data['urgency'] as String? ?? 'Normal';
@@ -166,7 +204,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
       estimatedTime: '${estimatedDuration.toStringAsFixed(0)} mins',
       fare: 'P${fare.toStringAsFixed(0)}',
       packageType: packageType,
-      weight: '${weight.toStringAsFixed(1)} kg',
+      weight: weight,
       urgency: urgency,
       specialInstructions: specialInstructions,
       requestTime: requestTime,
@@ -190,26 +228,37 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
   void _acceptDelivery(DeliveryRequest request) {
     Navigator.pop(context);
 
-    // Navigate to delivery process
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => RiderDeliveryProgressScreen(request: request),
-      ),
-    );
+    _authService.acceptDeliveryRequest(request.id).then((success) {
+      if (!mounted) return;
+      if (!success) {
+        UIHelpers.showErrorToast('Failed to accept delivery');
+        return;
+      }
 
-    setState(() {
-      _deliveryRequests.removeWhere((r) => r.id == request.id);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RiderDeliveryProgressScreen(request: request),
+        ),
+      );
+
+      setState(() {
+        _deliveryRequests.removeWhere((r) => r.id == request.id);
+      });
     });
     // UIHelpers.showSuccessToast('Delivery request accepted! Navigate to pickup location.');
   }
 
   void _rejectDelivery(DeliveryRequest request) {
     Navigator.pop(context);
-    setState(() {
-      _deliveryRequests.removeWhere((r) => r.id == request.id);
+
+    _authService.rejectDeliveryRequest(request.id).then((_) {
+      if (!mounted) return;
+      setState(() {
+        _deliveryRequests.removeWhere((r) => r.id == request.id);
+      });
+      UIHelpers.showInfoToast('Delivery request rejected');
     });
-    UIHelpers.showInfoToast('Delivery request rejected');
   }
 
   Future<void> _toggleOnlineStatus() async {

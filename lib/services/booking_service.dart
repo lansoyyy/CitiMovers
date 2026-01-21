@@ -20,6 +20,8 @@ class BookingService {
   /// Create a new booking
   Future<BookingModel?> createBooking({
     required String customerId,
+    String? customerName,
+    String? customerPhone,
     required LocationModel pickupLocation,
     required LocationModel dropoffLocation,
     required VehicleModel vehicle,
@@ -27,6 +29,7 @@ class BookingService {
     DateTime? scheduledDateTime,
     required double distance,
     required double estimatedFare,
+    int? estimatedDurationMinutes,
     required String paymentMethod,
     String? notes,
   }) async {
@@ -57,10 +60,15 @@ class BookingService {
         cancellationReason: null,
       );
 
-      await _firestore
-          .collection(_bookingsCollection)
-          .doc(bookingId)
-          .set(booking.toMap());
+      await _firestore.collection(_bookingsCollection).doc(bookingId).set({
+        ...booking.toMap(),
+        if (customerName != null && customerName.trim().isNotEmpty)
+          'customerName': customerName.trim(),
+        if (customerPhone != null && customerPhone.trim().isNotEmpty)
+          'customerPhone': customerPhone.trim(),
+        if (estimatedDurationMinutes != null)
+          'estimatedDuration': estimatedDurationMinutes,
+      });
 
       // Create delivery request record for rider assignment
       await _firestore.collection('delivery_requests').add({
@@ -82,7 +90,7 @@ class BookingService {
         },
         'distance': distance,
         'estimatedFare': estimatedFare,
-        'createdAt': now.toIso8601String(),
+        'createdAt': now.millisecondsSinceEpoch,
         'respondedAt': null,
       });
 
@@ -138,6 +146,7 @@ class BookingService {
     try {
       final updateData = {
         'status': status,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
       };
 
       if (driverId != null) {
@@ -165,7 +174,8 @@ class BookingService {
       await _firestore.collection(_bookingsCollection).doc(bookingId).update({
         'status': 'completed',
         'finalFare': finalFare,
-        'completedAt': completedAt.toIso8601String(),
+        'completedAt': completedAt.millisecondsSinceEpoch,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
       return true;
     } catch (e) {
@@ -180,6 +190,7 @@ class BookingService {
       await _firestore.collection(_bookingsCollection).doc(bookingId).update({
         'status': 'cancelled',
         'cancellationReason': reason,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
       return true;
     } catch (e) {
@@ -281,7 +292,7 @@ class BookingService {
         'review': review,
         'tipAmount': tipAmount,
         'tipReasons': tipReasons,
-        'createdAt': now.toIso8601String(),
+        'createdAt': now.millisecondsSinceEpoch,
       };
 
       await _firestore.collection('reviews').add(reviewData);
@@ -291,7 +302,8 @@ class BookingService {
         'reviewId': reviewData['reviewId'],
         'rating': rating,
         'tipAmount': tipAmount,
-        'reviewedAt': now.toIso8601String(),
+        'reviewedAt': now.millisecondsSinceEpoch,
+        'updatedAt': now.millisecondsSinceEpoch,
       });
 
       // Update rider's rating and total deliveries
@@ -311,7 +323,7 @@ class BookingService {
           'rating': newRating,
           'totalDeliveries': totalDeliveries + 1,
           'totalEarnings': totalEarnings + (tipAmount ?? 0.0),
-          'updatedAt': now.toIso8601String(),
+          'updatedAt': now.millisecondsSinceEpoch,
         });
       }
 
@@ -371,7 +383,7 @@ class BookingService {
 
       final updateData = <String, dynamic>{
         'status': status,
-        'updatedAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
       };
 
       if (driverId != null) {
@@ -379,24 +391,27 @@ class BookingService {
       }
 
       if (loadingStartedAt != null) {
-        updateData['loadingStartedAt'] = loadingStartedAt.toIso8601String();
+        updateData['loadingStartedAt'] =
+            loadingStartedAt.millisecondsSinceEpoch;
       }
 
       if (loadingCompletedAt != null) {
-        updateData['loadingCompletedAt'] = loadingCompletedAt.toIso8601String();
+        updateData['loadingCompletedAt'] =
+            loadingCompletedAt.millisecondsSinceEpoch;
       }
 
       if (unloadingStartedAt != null) {
-        updateData['unloadingStartedAt'] = unloadingStartedAt.toIso8601String();
+        updateData['unloadingStartedAt'] =
+            unloadingStartedAt.millisecondsSinceEpoch;
       }
 
       if (unloadingCompletedAt != null) {
         updateData['unloadingCompletedAt'] =
-            unloadingCompletedAt.toIso8601String();
+            unloadingCompletedAt.millisecondsSinceEpoch;
       }
 
       if (completedAt != null) {
-        updateData['completedAt'] = completedAt.toIso8601String();
+        updateData['completedAt'] = completedAt.millisecondsSinceEpoch;
       }
 
       if (receiverName != null) {
@@ -428,7 +443,7 @@ class BookingService {
           } else if (value is String) {
             merged[stage] = {
               'url': value,
-              'uploadedAt': DateTime.now().toIso8601String(),
+              'uploadedAt': DateTime.now().millisecondsSinceEpoch,
             };
           } else {
             merged[stage] = value;
@@ -469,33 +484,54 @@ class BookingService {
   }) async {
     try {
       final now = DateTime.now();
+      final nowMs = now.millisecondsSinceEpoch;
 
-      // Get booking details for notification
-      final bookingDoc =
-          await _firestore.collection(_bookingsCollection).doc(bookingId).get();
-      final bookingData = bookingDoc.data();
-      final customerId = bookingData?['customerId'] as String?;
-      final customerName = bookingData?['customerName'] as String?;
-      final riderName = bookingData?['driverName'] as String?;
-      final fare = (bookingData?['estimatedFare'] as num?)?.toDouble() ?? 0.0;
+      final bookingRef =
+          _firestore.collection(_bookingsCollection).doc(bookingId);
+      final acceptedRequestRef =
+          _firestore.collection('delivery_requests').doc();
 
-      // Update booking with rider assignment
-      await _firestore.collection(_bookingsCollection).doc(bookingId).update({
-        'driverId': riderId,
-        'status': 'accepted',
-        'acceptedAt': now.toIso8601String(),
-        'updatedAt': now.toIso8601String(),
+      late Map<String, dynamic> bookingData;
+
+      final accepted = await _firestore.runTransaction<bool>((txn) async {
+        final snap = await txn.get(bookingRef);
+        if (!snap.exists) return false;
+
+        final data = snap.data() as Map<String, dynamic>;
+        bookingData = data;
+
+        final currentStatus = data['status'] as String?;
+        final currentDriverId = data['driverId'] as String?;
+
+        if (currentStatus != 'pending' || currentDriverId != null) {
+          return false;
+        }
+
+        txn.update(bookingRef, {
+          'driverId': riderId,
+          'status': 'accepted',
+          'acceptedAt': nowMs,
+          'updatedAt': nowMs,
+        });
+
+        txn.set(acceptedRequestRef, {
+          'requestId': acceptedRequestRef.id,
+          'bookingId': bookingId,
+          'riderId': riderId,
+          'status': 'accepted',
+          'acceptedAt': nowMs,
+          'createdAt': nowMs,
+        });
+
+        return true;
       });
 
-      // Create delivery request record
-      await _firestore.collection('delivery_requests').add({
-        'requestId': _firestore.collection('delivery_requests').doc().id,
-        'bookingId': bookingId,
-        'riderId': riderId,
-        'status': 'accepted',
-        'acceptedAt': now.toIso8601String(),
-        'createdAt': now.toIso8601String(),
-      });
+      if (!accepted) return false;
+
+      final customerId = bookingData['customerId'] as String?;
+      final customerName = bookingData['customerName'] as String?;
+      final riderName = bookingData['driverName'] as String?;
+      final fare = (bookingData['estimatedFare'] as num?)?.toDouble() ?? 0.0;
 
       // Send notification to customer
       await _notificationService.createBookingStatusNotification(
@@ -541,8 +577,8 @@ class BookingService {
         'riderId': riderId,
         'status': 'rejected',
         'reason': reason,
-        'rejectedAt': now.toIso8601String(),
-        'createdAt': now.toIso8601String(),
+        'rejectedAt': now.millisecondsSinceEpoch,
+        'createdAt': now.millisecondsSinceEpoch,
       });
 
       // Send notification to customer
@@ -586,12 +622,12 @@ class BookingService {
 
       existingPhotos[stage] = {
         'url': photoUrl,
-        'uploadedAt': DateTime.now().toIso8601String(),
+        'uploadedAt': DateTime.now().millisecondsSinceEpoch,
       };
 
       await bookingRef.update({
         'deliveryPhotos': existingPhotos,
-        'updatedAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
 
       debugPrint('Delivery photo added for booking: $bookingId, stage: $stage');
@@ -636,11 +672,30 @@ class BookingService {
 
   /// Get delivery requests for a specific rider
   Stream<List<Map<String, dynamic>>> getRiderDeliveryRequests(String riderId) {
+    int _parseCreatedAtMs(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is Timestamp) return value.millisecondsSinceEpoch;
+      if (value is String) {
+        final parsed = DateTime.tryParse(value);
+        return parsed?.millisecondsSinceEpoch ?? 0;
+      }
+      if (value is num) return value.toInt();
+      return 0;
+    }
+
     return _firestore
         .collection('delivery_requests')
         .where('riderId', isEqualTo: riderId)
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+        .map((snapshot) {
+      final list = snapshot.docs.map((doc) => doc.data()).toList();
+      list.sort((a, b) {
+        final aMs = _parseCreatedAtMs(a['createdAt']);
+        final bMs = _parseCreatedAtMs(b['createdAt']);
+        return bMs.compareTo(aMs);
+      });
+      return list;
+    });
   }
 }

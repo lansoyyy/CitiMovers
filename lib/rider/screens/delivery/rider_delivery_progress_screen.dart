@@ -622,6 +622,12 @@ class _RiderDeliveryProgressScreenState
       }
 
       DateTime? parseIso(dynamic value) {
+        if (value == null) return null;
+        if (value is Timestamp) return value.toDate();
+        if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+        if (value is num) {
+          return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+        }
         if (value is String && value.isNotEmpty) {
           return DateTime.tryParse(value);
         }

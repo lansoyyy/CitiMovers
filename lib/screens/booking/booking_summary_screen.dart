@@ -117,6 +117,8 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
 
     final booking = await _bookingService.createBooking(
       customerId: user.userId,
+      customerName: user.name,
+      customerPhone: user.phoneNumber,
       pickupLocation: widget.pickupLocation,
       dropoffLocation: widget.dropoffLocation,
       vehicle: widget.vehicle,
@@ -124,6 +126,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       scheduledDateTime: _scheduledDateTime,
       distance: widget.distance,
       estimatedFare: _estimatedFare,
+      estimatedDurationMinutes: _travelDurationMinutes,
       paymentMethod: _selectedPaymentMethod,
       notes: _notesController.text.trim().isEmpty
           ? null

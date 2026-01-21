@@ -64,16 +64,19 @@ class _RiderDeliveryHistoryScreenState
       for (var doc in bookingsQuery.docs) {
         final booking = BookingModel.fromMap(doc.data());
 
+        if (booking.customerName != null && booking.customerName!.isNotEmpty) {
+          customerNames[booking.customerId] = booking.customerName!;
+        }
+
         // Fetch customer name if not already cached
-        if (booking.customerId != null &&
-            !customerNames.containsKey(booking.customerId)) {
+        if (!customerNames.containsKey(booking.customerId)) {
           final customerDoc = await _firestore
               .collection('users')
               .doc(booking.customerId)
               .get();
           if (customerDoc.exists) {
             final customer = UserModel.fromMap(customerDoc.data()!);
-            customerNames[booking.customerId!] = customer.name;
+            customerNames[booking.customerId] = customer.name;
           }
         }
 
@@ -102,18 +105,16 @@ class _RiderDeliveryHistoryScreenState
 
         final delivery = DeliveryHistory(
           bookingId: doc.id,
-          date: booking.createdAt != null
-              ? DateFormat('MMM d, yyyy').format(booking.createdAt!)
-              : 'Unknown',
-          time: booking.createdAt != null
-              ? DateFormat('h:mm a').format(booking.createdAt!)
-              : 'Unknown',
+          date: DateFormat('MMM d, yyyy').format(booking.createdAt),
+          time: DateFormat('h:mm a').format(booking.createdAt),
           from: booking.pickupLocation.address,
           to: booking.dropoffLocation.address,
           distance: distance,
           duration: duration,
-          fare: booking.estimatedFare ?? 0.0,
-          customerName: customerNames[booking.customerId] ?? 'Unknown',
+          fare: booking.finalFare ?? booking.estimatedFare,
+          customerName: customerNames[booking.customerId] ??
+              booking.customerName ??
+              'Unknown',
           vehicleType: booking.vehicle.type,
           rating: ratings[doc.id] ?? 0.0,
         );
