@@ -4,12 +4,12 @@ import '../../utils/app_colors.dart';
 
 /// Supported languages for the app
 enum AppLanguage {
-  english('English', 'en', '🇺🇸'),
-  filipino('Filipino', 'fil', '🇵🇭'),
-  spanish('Español', 'es', '🇪🇸'),
-  chinese('中文', 'zh', '🇨🇳'),
-  japanese('日本語', 'ja', '🇯🇵'),
-  korean('한국어', 'ko', '🇰🇷');
+  english('English', 'en', '🇺🇸');
+  // filipino('Filipino', 'fil', '🇵🇭'),
+  // spanish('Español', 'es', '🇪🇸'),
+  // chinese('中文', 'zh', '🇨🇳'),
+  // japanese('日本語', 'ja', '🇯🇵'),
+  // korean('한국어', 'ko', '🇰🇷');
 
   const AppLanguage(this.displayName, this.code, this.flag);
 
