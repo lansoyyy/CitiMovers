@@ -12,10 +12,19 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  await Firebase.initializeApp(
-    name: 'citimovers-346f2',
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase with duplicate app error handling
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    // Ignore duplicate app error - Firebase is already initialized
+    if (e.toString().contains('[core/duplicate-app]')) {
+      // Firebase is already initialized, continue
+    } else {
+      rethrow;
+    }
+  }
 
   const seedSchema = bool.fromEnvironment('FIRESTORE_SEED_SCHEMA');
   if (seedSchema) {
