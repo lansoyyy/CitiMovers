@@ -12,6 +12,7 @@ import '../profile/rider_vehicle_details_screen.dart';
 import '../profile/rider_documents_screen.dart';
 import '../profile/rider_payment_methods_screen.dart';
 import '../profile/rider_settings_screen.dart';
+import '../reports/rider_reports_screen.dart';
 
 class RiderProfileTab extends StatefulWidget {
   const RiderProfileTab({super.key});
@@ -478,12 +479,12 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                         label: 'Online',
                         value: rider?.isOnline == true ? 'Yes' : 'No',
                       ),
-                      _InfoRow(
-                        label: 'Total Earnings',
-                        value: rider != null
-                            ? 'P${rider.totalEarnings.toStringAsFixed(2)}'
-                            : 'N/A',
-                      ),
+                      // _InfoRow(
+                      //   label: 'Total Earnings',
+                      //   value: rider != null
+                      //       ? 'P${rider.totalEarnings.toStringAsFixed(2)}'
+                      //       : 'N/A',
+                      // ),
                       _InfoRow(
                         label: 'Latitude',
                         value: rider?.currentLatitude != null
@@ -735,6 +736,18 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                           context,
                           MaterialPageRoute(
                             builder: (context) => const RiderDocumentsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: FontAwesomeIcons.chartColumn,
+                      title: 'Reports',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RiderReportsScreen(),
                           ),
                         );
                       },
@@ -1064,8 +1077,6 @@ class HelpSupportBottomSheet extends StatelessWidget {
                         subtitle: AppConstants.hotlinePhone,
                         onTap: () {
                           Navigator.pop(context);
-                          final uri =
-                              Uri.parse('tel:${AppConstants.supportPhone}');
                           // Note: url_launcher would be needed to actually make the call
                           UIHelpers.showInfoToast(
                               'Calling ${AppConstants.supportPhone}...');

@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
-import '../../../screens/delivery/delivery_tracking_screen.dart';
-import '../../../models/booking_model.dart';
+import '../delivery/rider_delivery_progress_screen.dart';
 import '../../../models/location_model.dart';
 import '../../../models/vehicle_model.dart';
+import '../../models/delivery_request_model.dart';
 import '../../services/rider_auth_service.dart';
 import 'package:intl/intl.dart';
 
@@ -41,6 +41,24 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value);
     return null;
+  }
+
+  DeliveryRequest _deliveryDataToRequest(DeliveryData delivery) {
+    return DeliveryRequest(
+      id: delivery.id,
+      customerName: delivery.customerName,
+      customerPhone: delivery.customerPhone,
+      pickupLocation: delivery.pickupLocation,
+      deliveryLocation: delivery.deliveryLocation,
+      distance: '${delivery.distance.toStringAsFixed(1)} km',
+      estimatedTime: delivery.estimatedTime,
+      fare: delivery.fare,
+      packageType: delivery.packageType,
+      weight: delivery.weight,
+      urgency: 'Normal',
+      specialInstructions: delivery.specialInstructions,
+      requestTime: '${delivery.date} ${delivery.time}',
+    );
   }
 
   bool _isLoading = false;
@@ -99,14 +117,25 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     _activeSubscription = _firestore
         .collection('bookings')
         .where('driverId', isEqualTo: riderId)
-        .where('status',
-            whereIn: ['pending', 'accepted', 'driver_assigned', 'in_progress'])
-        .orderBy('createdAt', descending: true)
+        .where('status', whereIn: [
+          'pending',
+          'accepted',
+          'driver_assigned',
+          'arrived_at_pickup',
+          'loading_complete',
+          'in_transit',
+          'in_progress',
+          'arrived_at_dropoff',
+          'unloading_complete',
+        ])
         .snapshots()
         .listen((snapshot) {
           if (mounted) {
             setState(() {
-              _activeDeliveries = snapshot.docs
+              final docs = snapshot.docs.toList();
+              docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
+                  .compareTo(_parseDateTime(a.data()['createdAt'])));
+              _activeDeliveries = docs
                   .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
                   .toList();
             });
@@ -118,33 +147,38 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     _completedSubscription = _firestore
         .collection('bookings')
         .where('driverId', isEqualTo: riderId)
-        .where('status', isEqualTo: 'completed')
-        .orderBy('createdAt', descending: true)
-        .limit(20)
+        .where('status', whereIn: ['completed', 'delivered'])
         .snapshots()
         .listen((snapshot) {
-      if (mounted) {
-        setState(() {
-          _completedDeliveries = snapshot.docs
-              .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
-              .toList();
+          if (mounted) {
+            setState(() {
+              final docs = snapshot.docs.toList();
+              docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
+                  .compareTo(_parseDateTime(a.data()['createdAt'])));
+              _completedDeliveries = docs
+                  .take(20)
+                  .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
+                  .toList();
+            });
+          }
         });
-      }
-    });
   }
 
   void _listenToCancelledDeliveries(String riderId) {
     _cancelledSubscription = _firestore
         .collection('bookings')
         .where('driverId', isEqualTo: riderId)
-        .where('status', whereIn: ['cancelled', 'rejected'])
-        .orderBy('createdAt', descending: true)
-        .limit(20)
+        .where('status',
+            whereIn: ['cancelled', 'cancelled_by_rider', 'rejected'])
         .snapshots()
         .listen((snapshot) {
           if (mounted) {
             setState(() {
-              _cancelledDeliveries = snapshot.docs
+              final docs = snapshot.docs.toList();
+              docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
+                  .compareTo(_parseDateTime(a.data()['createdAt'])));
+              _cancelledDeliveries = docs
+                  .take(20)
                   .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
                   .toList();
             });
@@ -204,17 +238,44 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
         statusText = 'Driver Assigned';
         estimatedTimeText = 'Heading to pickup';
         break;
+      case 'arrived_at_pickup':
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Arrived at Pickup';
+        estimatedTimeText = 'Loading';
+        break;
+      case 'loading_complete':
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Loading Complete';
+        estimatedTimeText = 'Heading to drop-off';
+        break;
+      case 'arrived_at_dropoff':
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Arrived at Drop-off';
+        estimatedTimeText = 'Unloading';
+        break;
+      case 'unloading_complete':
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Unloading Complete';
+        estimatedTimeText = 'Receiving';
+        break;
+      case 'in_transit':
       case 'in_progress':
         statusColor = AppColors.primaryRed;
         statusText = 'In Transit';
         estimatedTimeText = 'On the way';
         break;
       case 'completed':
+      case 'delivered':
         statusColor = AppColors.success;
         statusText = 'Completed';
         estimatedTimeText = 'Delivered';
         break;
       case 'cancelled':
+        statusColor = AppColors.error;
+        statusText = 'Cancelled';
+        estimatedTimeText = 'Cancelled';
+        break;
+      case 'cancelled_by_rider':
         statusColor = AppColors.error;
         statusText = 'Cancelled';
         estimatedTimeText = 'Cancelled';
@@ -457,12 +518,16 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                   .get();
 
               if (bookingDoc.exists && context.mounted) {
-                final booking = BookingModel.fromMap(bookingDoc.data()!);
+                final delivery = _bookingToDeliveryData(
+                  bookingDoc.id,
+                  bookingDoc.data()!,
+                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) =>
-                        DeliveryTrackingScreen(booking: booking),
+                    builder: (context) => RiderDeliveryProgressScreen(
+                      request: _deliveryDataToRequest(delivery),
+                    ),
                   ),
                 );
               }
@@ -663,11 +728,16 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
               await _firestore.collection('bookings').doc(delivery.id).get();
 
           if (bookingDoc.exists && mounted) {
-            final booking = BookingModel.fromMap(bookingDoc.data()!);
+            final delivery = _bookingToDeliveryData(
+              bookingDoc.id,
+              bookingDoc.data()!,
+            );
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => DeliveryTrackingScreen(booking: booking),
+                builder: (context) => RiderDeliveryProgressScreen(
+                  request: _deliveryDataToRequest(delivery),
+                ),
               ),
             );
           }
@@ -708,7 +778,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                 _buildDialogDetailRow('Vehicle Type', delivery.vehicleType),
                 _buildDialogDetailRow('Pickup', delivery.pickupLocation),
                 _buildDialogDetailRow('Drop-off', delivery.deliveryLocation),
-                _buildDialogDetailRow('Fare', delivery.fare),
+                // _buildDialogDetailRow('Fare', delivery.fare),
                 _buildDialogDetailRow('Distance',
                     '${delivery.distance > 0 ? delivery.distance.toStringAsFixed(1) : 'N/A'} km'),
               ],
@@ -834,7 +904,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                 _buildDialogDetailRow('Vehicle Type', delivery.vehicleType),
                 _buildDialogDetailRow('Pickup', delivery.pickupLocation),
                 _buildDialogDetailRow('Drop-off', delivery.deliveryLocation),
-                _buildDialogDetailRow('Fare', delivery.fare),
+                // _buildDialogDetailRow('Fare', delivery.fare),
               ],
             ),
             actions: [
@@ -1208,22 +1278,22 @@ class DeliveryCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        delivery.fare,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontFamily: 'Bold',
-                          color: AppColors.primaryRed,
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
+                    // Container(
+                    //   padding: const EdgeInsets.all(8),
+                    //   decoration: BoxDecoration(
+                    //     color: AppColors.primaryRed.withValues(alpha: 0.08),
+                    //     borderRadius: BorderRadius.circular(12),
+                    //   ),
+                    //   child: Text(
+                    //     delivery.fare,
+                    //     style: const TextStyle(
+                    //       fontSize: 20,
+                    //       fontFamily: 'Bold',
+                    //       color: AppColors.primaryRed,
+                    //       height: 1.2,
+                    //     ),
+                    //   ),
+                    // ),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
@@ -1620,36 +1690,36 @@ class AvailableDeliveryCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Earnings',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'Medium',
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        delivery.fare,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontFamily: 'Bold',
-                          color: AppColors.primaryRed,
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // Container(
+                //   padding: const EdgeInsets.all(12),
+                //   decoration: BoxDecoration(
+                //     color: AppColors.primaryRed.withValues(alpha: 0.08),
+                //     borderRadius: BorderRadius.circular(12),
+                //   ),
+                //   child: Column(
+                //     crossAxisAlignment: CrossAxisAlignment.start,
+                //     children: [
+                //       const Text(
+                //         'Earnings',
+                //         style: TextStyle(
+                //           fontSize: 11,
+                //           fontFamily: 'Medium',
+                //           color: AppColors.textSecondary,
+                //         ),
+                //       ),
+                //       const SizedBox(height: 2),
+                //       Text(
+                //         delivery.fare,
+                //         style: const TextStyle(
+                //           fontSize: 20,
+                //           fontFamily: 'Bold',
+                //           color: AppColors.primaryRed,
+                //           height: 1.2,
+                //         ),
+                //       ),
+                //     ],
+                //   ),
+                // ),
                 Row(
                   children: [
                     // Reject Button
@@ -1998,7 +2068,7 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
                     'Payment Information',
                     Icons.payment,
                     [
-                      _buildDetailRow('Total Fare', delivery.fare),
+                      // _buildDetailRow('Total Fare', delivery.fare),
                       _buildDetailRow('Payment Method', delivery.paymentMethod),
                       _buildDetailRow('Payment Status',
                           delivery.status == 'Completed' ? 'Paid' : 'Pending'),

@@ -714,7 +714,7 @@ class FirestoreSchemaSeeder {
         'estimatedFare': 697.50,
         'finalFare': 750.00,
         'status': 'pending',
-        'paymentMethod': 'gcash',
+        'paymentMethod': 'Cash',
         'notes': 'Please handle with care',
         'createdAt': DateTime.now().millisecondsSinceEpoch,
         'completedAt': null,

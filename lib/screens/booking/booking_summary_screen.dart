@@ -8,9 +8,7 @@ import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/payment_service.dart';
 import '../auth/otp_verification_screen.dart';
-import '../payment/dragonpay_payment_processing_screen.dart';
 import '../terms_conditions_screen.dart';
 
 class BookingSummaryScreen extends StatefulWidget {
@@ -35,11 +33,10 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   final TextEditingController _notesController = TextEditingController();
   final BookingService _bookingService = BookingService();
   final MapsService _mapsService = MapsService();
-  final PaymentService _paymentService = PaymentService();
 
   String _bookingType = 'now'; // 'now' or 'scheduled'
   DateTime? _scheduledDateTime;
-  String _selectedPaymentMethod = 'Gcash'; // Default payment method
+  String _selectedPaymentMethod = 'Cash'; // Default payment method
   bool _isLoading = false;
   int? _travelDurationMinutes; // Store travel duration
   bool _termsAccepted = false; // Terms & Conditions checkbox state
@@ -127,7 +124,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       distance: widget.distance,
       estimatedFare: _estimatedFare,
       estimatedDurationMinutes: _travelDurationMinutes,
-      paymentMethod: _selectedPaymentMethod,
+      paymentMethod: 'Cash',
       notes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
@@ -137,52 +134,6 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     setState(() => _isLoading = false);
 
     if (booking != null && mounted) {
-      if (_selectedPaymentMethod == 'Dragonpay') {
-        final customerEmail = (user.email != null && user.email!.isNotEmpty)
-            ? user.email!
-            : 'customer@example.com';
-        if (user.email == null || user.email!.isEmpty) {
-          UIHelpers.showWarningToast(
-              'No email found for this account. Using placeholder email for Dragonpay.');
-        }
-
-        final description =
-            '${widget.vehicle.name} - ${widget.pickupLocation.address} to ${widget.dropoffLocation.address}';
-
-        final result =
-            await _paymentService.initiateOrResumeDragonpayBookingPayment(
-          bookingId: booking.bookingId!,
-          userId: user.userId,
-          amount: _estimatedFare,
-          description: description,
-          customerEmail: customerEmail,
-          paymentMethod: _selectedPaymentMethod,
-        );
-
-        if (!mounted) return;
-
-        if (result == null) {
-          UIHelpers.showErrorToast('Failed to initiate Dragonpay payment');
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        setState(() => _isLoading = false);
-
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DragonpayPaymentProcessingScreen(
-              bookingId: booking.bookingId!,
-              transactionId: result.transaction.transactionId,
-              paymentUrl: result.paymentUrl,
-            ),
-          ),
-        );
-
-        // Continue to OTP verification regardless; payment can be verified later
-      }
-
       setState(() => _isLoading = true);
       final otpSent = await authService.sendOTP(user.phoneNumber);
       if (!mounted) return;
@@ -925,48 +876,12 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                     child: Column(
                       children: [
                         _PaymentOption(
-                          icon: FontAwesomeIcons.g,
-                          title: 'Gcash',
-                          subtitle: 'Digital wallet',
-                          isSelected: _selectedPaymentMethod == 'Gcash',
+                          icon: FontAwesomeIcons.moneyBill,
+                          title: 'Cash',
+                          subtitle: 'Pay upon delivery',
+                          isSelected: _selectedPaymentMethod == 'Cash',
                           onTap: () =>
-                              setState(() => _selectedPaymentMethod = 'Gcash'),
-                        ),
-                        const SizedBox(height: 8),
-                        _PaymentOption(
-                          icon: FontAwesomeIcons.m,
-                          title: 'Maya',
-                          subtitle: 'Digital wallet',
-                          isSelected: _selectedPaymentMethod == 'Maya',
-                          onTap: () =>
-                              setState(() => _selectedPaymentMethod = 'Maya'),
-                        ),
-                        const SizedBox(height: 8),
-                        _PaymentOption(
-                          icon: FontAwesomeIcons.creditCard,
-                          title: 'Debit Card',
-                          subtitle: 'Bank debit card',
-                          isSelected: _selectedPaymentMethod == 'Debit Card',
-                          onTap: () => setState(
-                              () => _selectedPaymentMethod = 'Debit Card'),
-                        ),
-                        const SizedBox(height: 8),
-                        _PaymentOption(
-                          icon: FontAwesomeIcons.creditCard,
-                          title: 'Credit Card',
-                          subtitle: 'Bank credit card',
-                          isSelected: _selectedPaymentMethod == 'Credit Card',
-                          onTap: () => setState(
-                              () => _selectedPaymentMethod = 'Credit Card'),
-                        ),
-                        const SizedBox(height: 8),
-                        _PaymentOption(
-                          icon: FontAwesomeIcons.moneyBillTransfer,
-                          title: 'Dragonpay',
-                          subtitle: 'Online payment gateway',
-                          isSelected: _selectedPaymentMethod == 'Dragonpay',
-                          onTap: () => setState(
-                              () => _selectedPaymentMethod = 'Dragonpay'),
+                              setState(() => _selectedPaymentMethod = 'Cash'),
                         ),
                       ],
                     ),

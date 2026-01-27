@@ -37,8 +37,13 @@ class BookingService {
       final now = DateTime.now();
       final bookingId = _firestore.collection(_bookingsCollection).doc().id;
 
-      final initialStatus =
-          paymentMethod == 'Dragonpay' ? 'awaiting_payment' : 'pending';
+      const enforcedPaymentMethod = 'Cash';
+      const initialStatus = 'pending';
+
+      if (paymentMethod != enforcedPaymentMethod) {
+        debugPrint(
+            'Payment method "$paymentMethod" requested but payments are currently enforced to "$enforcedPaymentMethod".');
+      }
 
       final booking = BookingModel(
         bookingId: bookingId,
@@ -53,7 +58,7 @@ class BookingService {
         estimatedFare: estimatedFare,
         finalFare: estimatedFare, // Initially same as estimated
         status: initialStatus,
-        paymentMethod: paymentMethod,
+        paymentMethod: enforcedPaymentMethod,
         notes: notes,
         createdAt: now,
         completedAt: null,
@@ -70,29 +75,31 @@ class BookingService {
           'estimatedDuration': estimatedDurationMinutes,
       });
 
-      // Create delivery request record for rider assignment
-      await _firestore.collection('delivery_requests').add({
-        'requestId': bookingId,
-        'bookingId': bookingId,
-        'customerId': customerId,
-        'riderId': null,
-        'status': 'pending',
-        'vehicleType': vehicle.name,
-        'pickupLocation': {
-          'address': pickupLocation.address,
-          'latitude': pickupLocation.latitude,
-          'longitude': pickupLocation.longitude,
+      await _firestore.collection('delivery_requests').doc(bookingId).set(
+        {
+          'requestId': bookingId,
+          'bookingId': bookingId,
+          'customerId': customerId,
+          'riderId': null,
+          'status': 'pending',
+          'vehicleType': vehicle.name,
+          'pickupLocation': {
+            'address': pickupLocation.address,
+            'latitude': pickupLocation.latitude,
+            'longitude': pickupLocation.longitude,
+          },
+          'dropoffLocation': {
+            'address': dropoffLocation.address,
+            'latitude': dropoffLocation.latitude,
+            'longitude': dropoffLocation.longitude,
+          },
+          'distance': distance,
+          'estimatedFare': estimatedFare,
+          'createdAt': now.millisecondsSinceEpoch,
+          'respondedAt': null,
         },
-        'dropoffLocation': {
-          'address': dropoffLocation.address,
-          'latitude': dropoffLocation.latitude,
-          'longitude': dropoffLocation.longitude,
-        },
-        'distance': distance,
-        'estimatedFare': estimatedFare,
-        'createdAt': now.millisecondsSinceEpoch,
-        'respondedAt': null,
-      });
+        SetOptions(merge: true),
+      );
 
       return booking;
     } catch (e) {
@@ -106,11 +113,17 @@ class BookingService {
     return _firestore
         .collection(_bookingsCollection)
         .where('customerId', isEqualTo: customerId)
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => BookingModel.fromMap(doc.data()))
-            .toList());
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .toList();
+      bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return bookings;
+    });
   }
 
   /// Get bookings for a specific rider
@@ -118,11 +131,17 @@ class BookingService {
     return _firestore
         .collection(_bookingsCollection)
         .where('driverId', isEqualTo: riderId)
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => BookingModel.fromMap(doc.data()))
-            .toList());
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .toList();
+      bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return bookings;
+    });
   }
 
   /// Get booking by ID
@@ -131,7 +150,10 @@ class BookingService {
       final doc =
           await _firestore.collection(_bookingsCollection).doc(bookingId).get();
       if (doc.exists) {
-        return BookingModel.fromMap(doc.data()!);
+        return BookingModel.fromMap({
+          ...doc.data()!,
+          'bookingId': doc.id,
+        });
       }
       return null;
     } catch (e) {
@@ -204,11 +226,17 @@ class BookingService {
     return _firestore
         .collection(_bookingsCollection)
         .where('status', isEqualTo: 'pending')
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => BookingModel.fromMap(doc.data()))
-            .toList());
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .toList();
+      bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return bookings;
+    });
   }
 
   /// Get booking statistics for customer
@@ -489,7 +517,7 @@ class BookingService {
       final bookingRef =
           _firestore.collection(_bookingsCollection).doc(bookingId);
       final acceptedRequestRef =
-          _firestore.collection('delivery_requests').doc();
+          _firestore.collection('delivery_requests').doc(bookingId);
 
       late Map<String, dynamic> bookingData;
 
@@ -514,14 +542,27 @@ class BookingService {
           'updatedAt': nowMs,
         });
 
-        txn.set(acceptedRequestRef, {
-          'requestId': acceptedRequestRef.id,
-          'bookingId': bookingId,
-          'riderId': riderId,
-          'status': 'accepted',
-          'acceptedAt': nowMs,
-          'createdAt': nowMs,
-        });
+        txn.set(
+          acceptedRequestRef,
+          {
+            'requestId': bookingId,
+            'bookingId': bookingId,
+            'customerId': data['customerId'],
+            'riderId': riderId,
+            'status': 'accepted',
+            'acceptedAt': nowMs,
+            'respondedAt': nowMs,
+            'updatedAt': nowMs,
+            'vehicleType': (data['vehicle'] is Map)
+                ? (data['vehicle']['name'] ?? data['vehicle']['type'])
+                : null,
+            'pickupLocation': data['pickupLocation'],
+            'dropoffLocation': data['dropoffLocation'],
+            'distance': data['distance'],
+            'estimatedFare': data['estimatedFare'],
+          },
+          SetOptions(merge: true),
+        );
 
         return true;
       });
@@ -570,16 +611,24 @@ class BookingService {
       final customerName = bookingData?['customerName'] as String?;
       final riderName = bookingData?['driverName'] as String?;
 
-      // Create delivery request record with rejected status
-      await _firestore.collection('delivery_requests').add({
-        'requestId': _firestore.collection('delivery_requests').doc().id,
-        'bookingId': bookingId,
-        'riderId': riderId,
-        'status': 'rejected',
-        'reason': reason,
-        'rejectedAt': now.millisecondsSinceEpoch,
-        'createdAt': now.millisecondsSinceEpoch,
-      });
+      await _firestore.collection('delivery_requests').doc(bookingId).set(
+        {
+          'requestId': bookingId,
+          'bookingId': bookingId,
+          'customerId': customerId,
+          'riderId': riderId,
+          'status': 'rejected',
+          'reason': reason,
+          'rejectedAt': now.millisecondsSinceEpoch,
+          'respondedAt': now.millisecondsSinceEpoch,
+          'updatedAt': now.millisecondsSinceEpoch,
+          'pickupLocation': bookingData?['pickupLocation'],
+          'dropoffLocation': bookingData?['dropoffLocation'],
+          'distance': bookingData?['distance'],
+          'estimatedFare': bookingData?['estimatedFare'],
+        },
+        SetOptions(merge: true),
+      );
 
       // Send notification to customer
       await _notificationService.createBookingStatusNotification(
@@ -657,17 +706,36 @@ class BookingService {
 
   /// Get available delivery requests for riders
   Stream<List<Map<String, dynamic>>> getAvailableDeliveryRequests() {
+    int _parseCreatedAtMs(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is Timestamp) return value.millisecondsSinceEpoch;
+      if (value is String) {
+        final parsed = DateTime.tryParse(value);
+        return parsed?.millisecondsSinceEpoch ?? 0;
+      }
+      if (value is num) return value.toInt();
+      return 0;
+    }
+
     return _firestore
         .collection(_bookingsCollection)
         .where('status', isEqualTo: 'pending')
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => {
-                  'bookingId': doc.id,
-                  ...doc.data(),
-                })
-            .toList());
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => {
+                'bookingId': doc.id,
+                ...doc.data(),
+              })
+          .toList();
+      list.sort((a, b) {
+        final aMs = _parseCreatedAtMs(a['createdAt']);
+        final bMs = _parseCreatedAtMs(b['createdAt']);
+        return bMs.compareTo(aMs);
+      });
+      return list;
+    });
   }
 
   /// Get delivery requests for a specific rider
@@ -689,12 +757,35 @@ class BookingService {
         .where('riderId', isEqualTo: riderId)
         .snapshots()
         .map((snapshot) {
-      final list = snapshot.docs.map((doc) => doc.data()).toList();
-      list.sort((a, b) {
-        final aMs = _parseCreatedAtMs(a['createdAt']);
-        final bMs = _parseCreatedAtMs(b['createdAt']);
-        return bMs.compareTo(aMs);
-      });
+      int sortKey(Map<String, dynamic> m) {
+        return _parseCreatedAtMs(m['updatedAt']) != 0
+            ? _parseCreatedAtMs(m['updatedAt'])
+            : (_parseCreatedAtMs(m['respondedAt']) != 0
+                ? _parseCreatedAtMs(m['respondedAt'])
+                : _parseCreatedAtMs(m['createdAt']));
+      }
+
+      final byBookingId = <String, Map<String, dynamic>>{};
+
+      for (final doc in snapshot.docs) {
+        final raw = doc.data();
+        final normalized = <String, dynamic>{
+          ...raw,
+          'requestId': raw['requestId'] ?? doc.id,
+          'bookingId': raw['bookingId'] ?? doc.id,
+        };
+
+        final bookingId = (normalized['bookingId'] ?? '').toString();
+        if (bookingId.isEmpty) continue;
+
+        final existing = byBookingId[bookingId];
+        if (existing == null || sortKey(normalized) > sortKey(existing)) {
+          byBookingId[bookingId] = normalized;
+        }
+      }
+
+      final list = byBookingId.values.toList();
+      list.sort((a, b) => sortKey(b).compareTo(sortKey(a)));
       return list;
     });
   }

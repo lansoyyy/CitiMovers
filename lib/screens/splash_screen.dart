@@ -5,7 +5,6 @@ import '../utils/app_colors.dart';
 import '../utils/app_constants.dart';
 import '../utils/ui_helpers.dart';
 import '../services/auth_service.dart';
-import '../services/payment_service.dart';
 import 'auth/welcome_screen.dart';
 import 'home_screen.dart';
 import 'onboarding_screen.dart';
@@ -87,12 +86,8 @@ class _SplashScreenState extends State<SplashScreen>
     final isLoggedIn = authService.isLoggedIn;
 
     if (isLoggedIn) {
-      final user = await authService.getCurrentUser();
+      await authService.getCurrentUser();
       if (!mounted) return;
-
-      if (user != null) {
-        await PaymentService().reconcilePendingTransactionsForUser(user.userId);
-      }
     }
 
     // Navigate to appropriate screen

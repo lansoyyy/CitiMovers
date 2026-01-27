@@ -2,12 +2,17 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 import '../../services/otp_service.dart';
 import '../../services/booking_service.dart';
 import '../../services/location_service.dart';
+import '../../services/storage_service.dart';
 import 'rider_location_service.dart';
 import '../models/rider_model.dart';
 
@@ -25,6 +30,44 @@ class RiderAuthService {
   final FirebaseStorage _firebaseStorage = FirebaseStorage.instance;
   final LocationService _locationService = LocationService();
   final RiderLocationService _riderLocationService = RiderLocationService();
+  final StorageService _storageService = StorageService();
+
+  Future<File> _compressImageIfNeeded(
+    File file, {
+    int quality = 75,
+    int minWidth = 1280,
+    int minHeight = 1280,
+  }) async {
+    try {
+      if (kIsWeb) return file;
+      if (!file.existsSync()) return file;
+
+      final dir = await getTemporaryDirectory();
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final outPath = path.join(dir.path, 'citimovers_rider_$ts.jpg');
+
+      final result = await FlutterImageCompress.compressAndGetFile(
+        file.absolute.path,
+        outPath,
+        quality: quality,
+        minWidth: minWidth,
+        minHeight: minHeight,
+        format: CompressFormat.jpeg,
+      );
+
+      if (result == null) return file;
+
+      final originalBytes = file.lengthSync();
+      final compressedFile = File(result.path);
+      final compressedBytes = compressedFile.lengthSync();
+      if (compressedBytes > 0 && compressedBytes < originalBytes) {
+        return compressedFile;
+      }
+      return file;
+    } catch (_) {
+      return file;
+    }
+  }
 
   // Current rider (in-memory for now, will be replaced with Firebase)
   RiderModel? _currentRider;
@@ -160,18 +203,14 @@ class RiderAuthService {
 
       try {
         final file = File(path);
-        final ext = file.path.split('.').last.toLowerCase();
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final objectName = '${documentKey}_$timestamp.$ext';
-
-        final ref = _firebaseStorage
-            .ref()
-            .child('rider_documents')
-            .child(riderId)
-            .child(objectName);
-
-        final uploadTask = await ref.putFile(file);
-        final url = await uploadTask.ref.getDownloadURL();
+        final url = await _storageService.uploadRiderDocument(
+            file, riderId, documentKey);
+        if (url == null || url.isEmpty) {
+          if (_requiredDocumentKeys.contains(documentKey)) {
+            throw Exception('Failed to upload rider document: $documentKey');
+          }
+          continue;
+        }
 
         documents[documentKey] = {
           'name': documentName,
@@ -526,7 +565,8 @@ class RiderAuthService {
       if (_currentRider == null) return null;
 
       final file = File(imagePath);
-      final ext = file.path.split('.').last.toLowerCase();
+      final compressed = await _compressImageIfNeeded(file);
+      final ext = compressed.path.split('.').last.toLowerCase();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final objectName = 'profile_photo_$timestamp.$ext';
 
@@ -536,7 +576,7 @@ class RiderAuthService {
           .child(_currentRider!.riderId)
           .child(objectName);
 
-      final uploadTask = await ref.putFile(file);
+      final uploadTask = await ref.putFile(compressed);
       final url = await uploadTask.ref.getDownloadURL();
 
       debugPrint('Profile photo uploaded: $url');

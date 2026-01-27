@@ -46,6 +46,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
       _bookingSubscription;
 
+  String? _trackingRiderId;
+
   late BookingModel _booking;
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
@@ -100,12 +102,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   // Fetch driver data from Firestore
   Future<void> _fetchDriverData() async {
-    if (widget.booking.driverId != null) {
+    final driverId = _booking.driverId;
+    if (driverId != null && driverId.isNotEmpty) {
       try {
-        final doc = await _firestore
-            .collection('riders')
-            .doc(widget.booking.driverId)
-            .get();
+        final doc = await _firestore.collection('riders').doc(driverId).get();
 
         if (doc.exists && doc.data() != null) {
           setState(() {
@@ -197,11 +197,27 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   /// Start real-time location tracking from Firebase Realtime Database
   void _startRealTimeLocationTracking() {
-    if (widget.booking.driverId == null) return;
+    final driverId = _booking.driverId;
+
+    if (driverId == null || driverId.isEmpty) {
+      _riderLocationSubscription?.cancel();
+      _riderLocationSubscription = null;
+      _trackingRiderId = null;
+      return;
+    }
+
+    if (_trackingRiderId == driverId && _riderLocationSubscription != null) {
+      return;
+    }
+
+    _riderLocationSubscription?.cancel();
+    _riderLocationSubscription = null;
+    _trackingRiderId = driverId;
 
     _riderLocationSubscription = _riderLocationService
-        .listenToRiderLocation(widget.booking.driverId!)
+        .listenToRiderLocation(driverId)
         .listen((location) {
+      if (!mounted) return;
       if (location != null) {
         setState(() {
           _driverLocation = location;
@@ -222,7 +238,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         .snapshots()
         .listen((snapshot) {
       if (!snapshot.exists || snapshot.data() == null || !mounted) return;
-      final booking = BookingModel.fromMap(snapshot.data()!);
+      final booking = BookingModel.fromMap({
+        ...snapshot.data()!,
+        'bookingId': snapshot.id,
+      });
       _applyBookingUpdate(booking);
     });
   }
@@ -240,6 +259,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _applyBookingUpdate(BookingModel booking) {
+    final previousDriverId = _booking.driverId;
     final now = DateTime.now();
 
     final loadingStartedAt = booking.loadingStartedAt;
@@ -321,6 +341,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     } else {
       _unloadingTimer?.cancel();
       _unloadingTimer = null;
+    }
+
+    final currentDriverId = booking.driverId;
+    if (currentDriverId != previousDriverId) {
+      _fetchDriverData();
+      _startRealTimeLocationTracking();
     }
   }
 

@@ -697,9 +697,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
       final bookingsQuery = await _firestore
           .collection('bookings')
           .where('driverId', isEqualTo: riderId)
-          .where('status', whereIn: ['completed', 'delivered'])
-          .orderBy('createdAt', descending: true)
-          .get();
+          .where('status', whereIn: ['completed', 'delivered']).get();
 
       double totalEarnings = 0;
       double todayEarnings = 0;
@@ -716,9 +714,15 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
       // Get start of month
       final startOfMonth = DateTime(now.year, now.month, 1);
 
-      for (var doc in bookingsQuery.docs) {
-        final booking = BookingModel.fromMap(doc.data());
+      final bookings = bookingsQuery.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .toList();
+      bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+      for (final booking in bookings) {
         final baseFare = (booking.finalFare != null && booking.finalFare! > 0)
             ? booking.finalFare!
             : booking.estimatedFare;

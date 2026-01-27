@@ -53,16 +53,29 @@ class _RiderDeliveryHistoryScreenState
       final bookingsQuery = await _firestore
           .collection('bookings')
           .where('driverId', isEqualTo: riderId)
-          .where('status', whereIn: ['completed', 'delivered'])
-          .orderBy('createdAt', descending: true)
-          .get();
+          .where('status', whereIn: ['completed', 'delivered']).get();
 
       List<DeliveryHistory> deliveries = [];
       Map<String, String> customerNames = {};
       Map<String, double> ratings = {};
 
-      for (var doc in bookingsQuery.docs) {
-        final booking = BookingModel.fromMap(doc.data());
+      final sorted = bookingsQuery.docs.map((doc) {
+        final booking = BookingModel.fromMap({
+          ...doc.data(),
+          'bookingId': doc.id,
+        });
+        return {'doc': doc, 'booking': booking};
+      }).toList();
+
+      sorted.sort((a, b) {
+        final aBooking = a['booking'] as BookingModel;
+        final bBooking = b['booking'] as BookingModel;
+        return bBooking.createdAt.compareTo(aBooking.createdAt);
+      });
+
+      for (final entry in sorted) {
+        final doc = entry['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+        final booking = entry['booking'] as BookingModel;
 
         if (booking.customerName != null && booking.customerName!.isNotEmpty) {
           customerNames[booking.customerId] = booking.customerName!;
@@ -241,16 +254,16 @@ class _RiderDeliveryHistoryScreenState
                           color: AppColors.primaryBlue,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _StatBox(
-                          icon: FontAwesomeIcons.pesoSign,
-                          value:
-                              '₱${_filteredDeliveries.fold<double>(0, (sum, item) => sum + item.fare).toStringAsFixed(0)}',
-                          label: 'Earned',
-                          color: AppColors.success,
-                        ),
-                      ),
+                      // const SizedBox(width: 16),
+                      // Expanded(
+                      //   child: _StatBox(
+                      //     icon: FontAwesomeIcons.pesoSign,
+                      //     value:
+                      //         '₱${_filteredDeliveries.fold<double>(0, (sum, item) => sum + item.fare).toStringAsFixed(0)}',
+                      //     label: 'Earned',
+                      //     color: AppColors.success,
+                      //   ),
+                      // ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: _StatBox(
@@ -632,14 +645,14 @@ class _DeliveryHistoryCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '₱${delivery.fare.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontFamily: 'Bold',
-                      color: AppColors.success,
-                    ),
-                  ),
+                  // Text(
+                  //   '₱${delivery.fare.toStringAsFixed(2)}',
+                  //   style: const TextStyle(
+                  //     fontSize: 18,
+                  //     fontFamily: 'Bold',
+                  //     color: AppColors.success,
+                  //   ),
+                  // ),
                 ],
               ),
             ],

@@ -1,5 +1,8 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
 /// Storage Service for handling file uploads
@@ -12,22 +15,70 @@ class StorageService {
 
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
+  Future<File> _compressImageIfNeeded(
+    File file, {
+    int quality = 75,
+    int minWidth = 1280,
+    int minHeight = 1280,
+  }) async {
+    try {
+      if (kIsWeb) return file;
+      if (!file.existsSync()) return file;
+
+      final ext = path.extension(file.path).toLowerCase();
+      final format = (ext == '.png') ? CompressFormat.png : CompressFormat.jpeg;
+
+      final dir = await getTemporaryDirectory();
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final outExt = (format == CompressFormat.png) ? '.png' : '.jpg';
+      final outPath = path.join(dir.path, 'citimovers_upload_$ts$outExt');
+
+      final result = await FlutterImageCompress.compressAndGetFile(
+        file.absolute.path,
+        outPath,
+        quality: quality,
+        minWidth: minWidth,
+        minHeight: minHeight,
+        format: format,
+      );
+
+      if (result == null) return file;
+
+      final originalBytes = file.lengthSync();
+      final compressedFile = File(result.path);
+      final compressedBytes = compressedFile.lengthSync();
+      if (compressedBytes > 0 && compressedBytes < originalBytes) {
+        return compressedFile;
+      }
+      return file;
+    } catch (_) {
+      return file;
+    }
+  }
+
   /// Upload profile photo
   /// Returns the download URL of the uploaded image
   Future<String?> uploadProfilePhoto(File imageFile, String userId) async {
     try {
       // Validate image file
-      if (!validateImageFile(imageFile)) {
+      if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
         print('Invalid image file');
         return null;
       }
 
-      final fileExtension = path.extension(imageFile.path);
+      final compressed = await _compressImageIfNeeded(imageFile);
+
+      if (!validateImageFile(compressed)) {
+        print('Invalid compressed image file');
+        return null;
+      }
+
+      final fileExtension = path.extension(compressed.path);
       final fileName = 'profile_$userId$fileExtension';
       final storageRef = _storage.ref().child('profile_photos').child(fileName);
 
       final uploadTask = await storageRef.putFile(
-        imageFile,
+        compressed,
         SettableMetadata(
           contentType: _getContentType(fileExtension),
         ),
@@ -75,13 +126,20 @@ class StorageService {
   ) async {
     try {
       // Validate image file
-      if (!validateImageFile(imageFile)) {
+      if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
         print('Invalid image file');
         return null;
       }
 
+      final compressed = await _compressImageIfNeeded(imageFile);
+
+      if (!validateImageFile(compressed)) {
+        print('Invalid compressed image file');
+        return null;
+      }
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = path.extension(imageFile.path);
+      final fileExtension = path.extension(compressed.path);
       final fileName = '${stage}_$timestamp$fileExtension';
       final storageRef = _storage
           .ref()
@@ -90,7 +148,7 @@ class StorageService {
           .child(fileName);
 
       final uploadTask = await storageRef.putFile(
-        imageFile,
+        compressed,
         SettableMetadata(
           contentType: _getContentType(fileExtension),
         ),
@@ -111,13 +169,20 @@ class StorageService {
   ) async {
     try {
       // Validate image file
-      if (!validateImageFile(imageFile)) {
+      if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
         print('Invalid image file');
         return null;
       }
 
+      final compressed = await _compressImageIfNeeded(imageFile);
+
+      if (!validateImageFile(compressed)) {
+        print('Invalid compressed image file');
+        return null;
+      }
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = path.extension(imageFile.path);
+      final fileExtension = path.extension(compressed.path);
       final fileName = '$timestamp$fileExtension';
       final storageRef = _storage
           .ref()
@@ -126,7 +191,7 @@ class StorageService {
           .child(fileName);
 
       final uploadTask = await storageRef.putFile(
-        imageFile,
+        compressed,
         SettableMetadata(
           contentType: _getContentType(fileExtension),
         ),
@@ -149,13 +214,20 @@ class StorageService {
   ) async {
     try {
       // Validate image file
-      if (!validateImageFile(imageFile)) {
+      if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
         print('Invalid image file');
         return null;
       }
 
+      final compressed = await _compressImageIfNeeded(imageFile);
+
+      if (!validateImageFile(compressed)) {
+        print('Invalid compressed image file');
+        return null;
+      }
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = path.extension(imageFile.path);
+      final fileExtension = path.extension(compressed.path);
       final fileName = '${documentType}_$timestamp$fileExtension';
       final storageRef = _storage
           .ref()
@@ -164,7 +236,7 @@ class StorageService {
           .child(fileName);
 
       final uploadTask = await storageRef.putFile(
-        imageFile,
+        compressed,
         SettableMetadata(
           contentType: _getContentType(fileExtension),
         ),
@@ -186,19 +258,26 @@ class StorageService {
   ) async {
     try {
       // Validate image file
-      if (!validateImageFile(imageFile)) {
+      if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
         print('Invalid image file');
         return null;
       }
 
+      final compressed = await _compressImageIfNeeded(imageFile);
+
+      if (!validateImageFile(compressed)) {
+        print('Invalid compressed image file');
+        return null;
+      }
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = path.extension(imageFile.path);
+      final fileExtension = path.extension(compressed.path);
       final fileName = '${photoType}_$timestamp$fileExtension';
       final storageRef =
           _storage.ref().child('vehicle_photos').child(riderId).child(fileName);
 
       final uploadTask = await storageRef.putFile(
-        imageFile,
+        compressed,
         SettableMetadata(
           contentType: _getContentType(fileExtension),
         ),
@@ -219,18 +298,30 @@ class StorageService {
   ) async {
     try {
       // Validate image file
-      if (!validateImageFile(imageFile, maxSizeMB: 10.0)) {
+      if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
         print('Invalid image file');
         return null;
       }
 
+      final compressed = await _compressImageIfNeeded(
+        imageFile,
+        quality: 80,
+        minWidth: 1920,
+        minHeight: 1080,
+      );
+
+      if (!validateImageFile(compressed, maxSizeMB: 10.0)) {
+        print('Invalid compressed image file');
+        return null;
+      }
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = path.extension(imageFile.path);
+      final fileExtension = path.extension(compressed.path);
       final fileName = 'banner_$timestamp$fileExtension';
       final storageRef = _storage.ref().child('promo_banners').child(fileName);
 
       final uploadTask = await storageRef.putFile(
-        imageFile,
+        compressed,
         SettableMetadata(
           contentType: _getContentType(fileExtension),
         ),
@@ -312,10 +403,11 @@ class StorageService {
   }
 
   /// Get upload progress stream
-  Stream<TaskSnapshot> getUploadProgress(String storagePath, File file) {
+  Stream<TaskSnapshot> getUploadProgress(String storagePath, File file) async* {
     final storageRef = _storage.ref(storagePath);
-    final uploadTask = storageRef.putFile(file);
-    return uploadTask.snapshotEvents;
+    final compressed = await _compressImageIfNeeded(file);
+    final uploadTask = storageRef.putFile(compressed);
+    yield* uploadTask.snapshotEvents;
   }
 
   /// List all files in a directory

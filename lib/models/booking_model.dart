@@ -247,17 +247,26 @@ class BookingModel {
   /// Get status display text
   String get statusText {
     switch (status) {
-      case 'awaiting_payment':
-        return 'Awaiting Payment';
       case 'pending':
         return 'Waiting for Driver';
       case 'accepted':
         return 'Driver Assigned';
+      case 'arrived_at_pickup':
+        return 'Arrived at Pickup';
+      case 'loading_complete':
+        return 'Loading Complete';
+      case 'in_transit':
       case 'in_progress':
-        return 'In Progress';
+        return 'In Transit';
+      case 'arrived_at_dropoff':
+        return 'Arrived at Drop-off';
+      case 'unloading_complete':
+        return 'Unloading Complete';
       case 'completed':
+      case 'delivered':
         return 'Completed';
       case 'cancelled':
+      case 'cancelled_by_rider':
         return 'Cancelled';
       default:
         return status;
@@ -266,17 +275,19 @@ class BookingModel {
 
   /// Check if booking can be cancelled
   bool get canBeCancelled {
-    return status == 'awaiting_payment' ||
-        status == 'pending' ||
-        status == 'accepted';
+    return status == 'pending' || status == 'accepted';
   }
 
   /// Check if booking is active
   bool get isActive {
-    return status == 'awaiting_payment' ||
-        status == 'pending' ||
+    return status == 'pending' ||
         status == 'accepted' ||
-        status == 'in_progress';
+        status == 'arrived_at_pickup' ||
+        status == 'loading_complete' ||
+        status == 'in_transit' ||
+        status == 'in_progress' ||
+        status == 'arrived_at_dropoff' ||
+        status == 'unloading_complete';
   }
 
   @override

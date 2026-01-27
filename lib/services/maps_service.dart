@@ -13,7 +13,10 @@ class MapsService {
   MapsService._internal();
 
   // TODO: Add your Google Maps API Key
-  static const String _apiKey = 'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o';
+  static const String _apiKey = String.fromEnvironment(
+    'GOOGLE_MAPS_API_KEY',
+    defaultValue: 'YOUR_GOOGLE_MAPS_API_KEY',
+  );
 
   // Base URLs for Google Maps APIs
   static const String _placesApiBase =

@@ -42,7 +42,6 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
 
   bool _isOnline = true;
   int _todayDeliveries = 0;
-  double _todayEarnings = 0.0;
   List<DeliveryRequest> _deliveryRequests = [];
   StreamSubscription<QuerySnapshot>? _bookingsSubscription;
   StreamSubscription<QuerySnapshot>? _requestsSubscription;
@@ -102,19 +101,6 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
           if (mounted) {
             setState(() {
               _todayDeliveries = snapshot.docs.length;
-              _todayEarnings = snapshot.docs.fold<double>(
-                0.0,
-                (sum, doc) {
-                  final data = doc.data();
-                  final base = _parseDouble(data['finalFare']) > 0
-                      ? _parseDouble(data['finalFare'])
-                      : _parseDouble(data['estimatedFare'],
-                          fallback: _parseDouble(data['fare']));
-                  final loading = _parseDouble(data['loadingDemurrageFee']);
-                  final unloading = _parseDouble(data['unloadingDemurrageFee']);
-                  return sum + base + loading + unloading;
-                },
-              );
             });
           }
         });
@@ -126,13 +112,16 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
         .collection('bookings')
         .where('status', isEqualTo: 'pending')
         .where('driverId', isNull: true)
-        .orderBy('createdAt', descending: true)
-        .limit(10)
+        .limit(50)
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
         setState(() {
-          _deliveryRequests = snapshot.docs
+          final docs = snapshot.docs.toList();
+          docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
+              .compareTo(_parseDateTime(a.data()['createdAt'])));
+          _deliveryRequests = docs
+              .take(10)
               .map((doc) => _bookingToDeliveryRequest(doc.id, doc.data()))
               .toList();
         });
@@ -505,15 +494,15 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                             color: AppColors.primaryBlue,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _StatCard(
-                            icon: FontAwesomeIcons.pesoSign,
-                            title: 'Earnings',
-                            value: 'P${_todayEarnings.toStringAsFixed(0)}',
-                            color: AppColors.success,
-                          ),
-                        ),
+                        // const SizedBox(width: 16),
+                        // Expanded(
+                        //   child: _StatCard(
+                        //     icon: FontAwesomeIcons.pesoSign,
+                        //     title: 'Earnings',
+                        //     value: 'P${_todayEarnings.toStringAsFixed(0)}',
+                        //     color: AppColors.success,
+                        //   ),
+                        // ),
                       ],
                     ),
                   ],
@@ -1039,14 +1028,14 @@ class DeliveryRequestCard extends StatelessWidget {
                     value: request.estimatedTime,
                   ),
                 ),
-                Expanded(
-                  child: _DetailItem(
-                    icon: Icons.monetization_on,
-                    label: 'Fare',
-                    value: request.fare,
-                    valueColor: AppColors.primaryRed,
-                  ),
-                ),
+                // Expanded(
+                //   child: _DetailItem(
+                //     icon: Icons.monetization_on,
+                //     label: 'Fare',
+                //     value: request.fare,
+                //     valueColor: AppColors.primaryRed,
+                //   ),
+                // ),
               ],
             ),
           ],
@@ -1061,13 +1050,11 @@ class _DetailItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final Color? valueColor;
 
   const _DetailItem({
     required this.icon,
     required this.label,
     required this.value,
-    this.valueColor,
   });
 
   @override
@@ -1094,7 +1081,7 @@ class _DetailItem extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontFamily: 'Bold',
-            color: valueColor ?? AppColors.textPrimary,
+            color: AppColors.textPrimary,
           ),
         ),
       ],
@@ -1263,7 +1250,7 @@ class DeliveryRequestBottomSheet extends StatelessWidget {
                     [
                       _buildDetailRow('Distance', request.distance),
                       _buildDetailRow('Estimated Time', request.estimatedTime),
-                      _buildDetailRow('Fare', request.fare),
+                      // _buildDetailRow('Fare', request.fare),
                       _buildDetailRow('Request Time', request.requestTime),
                     ],
                   ),

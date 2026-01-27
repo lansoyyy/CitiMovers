@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:citimovers/rider/models/delivery_request_model.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
-import 'package:citimovers/rider/services/rider_location_service.dart';
 import 'package:citimovers/services/booking_service.dart';
 import 'package:citimovers/services/storage_service.dart';
 import 'package:citimovers/services/location_service.dart';
@@ -52,7 +51,6 @@ class _RiderDeliveryProgressScreenState
   final BookingService _bookingService = BookingService();
   final StorageService _storageService = StorageService();
   final LocationService _locationService = LocationService();
-  final RiderLocationService _riderLocationService = RiderLocationService();
   final MapsService _mapsService = MapsService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -128,13 +126,8 @@ class _RiderDeliveryProgressScreenState
       if (location != null) {
         // Update location in both Firestore (via RiderAuthService) and Realtime Database (via RiderLocationService)
         await _riderAuthService.updateLocation(
-          location!.latitude,
-          location!.longitude,
-        );
-        await _riderLocationService.updateRiderLocation(
-          riderId: _riderAuthService.currentRider?.riderId ?? '',
-          latitude: location!.latitude,
-          longitude: location!.longitude,
+          location.latitude,
+          location.longitude,
         );
       }
     });
@@ -145,10 +138,6 @@ class _RiderDeliveryProgressScreenState
     final fareString = widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '');
     return double.tryParse(fareString) ?? 0.0;
   }
-
-  double get _totalDemurrageFee =>
-      _loadingDemurrageFee + _unloadingDemurrageFee;
-  double get _totalEarnings => _baseFare + _totalDemurrageFee;
 
   final ImagePicker _picker = ImagePicker();
 
@@ -209,8 +198,8 @@ class _RiderDeliveryProgressScreenState
       if (pickupCoords != null) {
         setState(() {
           _pickupCoordinates = LatLng(
-            pickupCoords!.latitude,
-            pickupCoords!.longitude,
+            pickupCoords.latitude,
+            pickupCoords.longitude,
           );
         });
       }
@@ -222,8 +211,8 @@ class _RiderDeliveryProgressScreenState
       if (dropoffCoords != null) {
         setState(() {
           _dropoffCoordinates = LatLng(
-            dropoffCoords!.latitude,
-            dropoffCoords!.longitude,
+            dropoffCoords.latitude,
+            dropoffCoords.longitude,
           );
         });
       }
@@ -1341,17 +1330,12 @@ class _RiderDeliveryProgressScreenState
           const Text('All details have been submitted.',
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 40),
-          _buildSummaryRow('Base Fare', 'P${_baseFare.toStringAsFixed(2)}'),
-          _buildSummaryRow('Loading Demurrage',
-              'P${_loadingDemurrageFee.toStringAsFixed(2)}'),
-          _buildSummaryRow('Unloading Demurrage',
-              'P${_unloadingDemurrageFee.toStringAsFixed(2)}'),
+          _buildSummaryRow('Base Fare', 'Hidden'),
+          _buildSummaryRow('Loading Demurrage', 'Hidden'),
+          _buildSummaryRow('Unloading Demurrage', 'Hidden'),
           const Divider(height: 32),
-          _buildSummaryRow(
-              'Total Demurrage', 'P${_totalDemurrageFee.toStringAsFixed(2)}'),
-          _buildSummaryRow(
-              'Total Earnings', 'P${_totalEarnings.toStringAsFixed(2)}',
-              isTotal: true),
+          _buildSummaryRow('Total Demurrage', 'Hidden'),
+          _buildSummaryRow('Total Earnings', 'Hidden', isTotal: true),
           const SizedBox(height: 40),
           SizedBox(
             width: double.infinity,
@@ -1405,12 +1389,12 @@ class _RiderDeliveryProgressScreenState
                   fontFamily: 'Bold',
                   color: AppColors.textPrimary)),
           const SizedBox(height: 8),
-          Text('Current Fee: P${fee.toStringAsFixed(2)}',
-              style: const TextStyle(
-                  fontSize: 14, color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
-          const Text('Fees apply every 4 hours (25% of fare)',
-              style: TextStyle(fontSize: 10, color: AppColors.textHint)),
+          // Text('Current Fee: P${fee.toStringAsFixed(2)}',
+          //     style: const TextStyle(
+          //         fontSize: 14, color: AppColors.textSecondary)),
+          // const SizedBox(height: 4),
+          // const Text('Fees apply every 4 hours (25% of fare)',
+          //     style: TextStyle(fontSize: 10, color: AppColors.textHint)),
         ],
       ),
     );
