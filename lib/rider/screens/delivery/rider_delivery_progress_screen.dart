@@ -576,8 +576,7 @@ class _RiderDeliveryProgressScreenState
           ? await _getRiderDoc(riderId)
           : <String, dynamic>{};
 
-      final customerEmail =
-          (customerData?['email'] as String?) ?? 'customer@example.com';
+      final customerEmail = (customerData?['email'] as String?) ?? '';
       final customerName =
           (customerData?['name'] as String?) ?? widget.request.customerName;
 
@@ -624,11 +623,9 @@ class _RiderDeliveryProgressScreenState
       }
 
       final pickupArrival = parseIso(bookingData?['loadingStartedAt']);
-      final loadingStart = pickupArrival;
       final loadingFinish = parseIso(bookingData?['loadingCompletedAt']);
 
       final destArrival = parseIso(bookingData?['unloadingStartedAt']);
-      final unloadingStart = destArrival;
       final unloadingFinish = parseIso(bookingData?['unloadingCompletedAt']);
 
       final receiverName = (bookingData?['receiverName'] as String?) ??
@@ -648,6 +645,13 @@ class _RiderDeliveryProgressScreenState
         return null;
       }
 
+      DateTime? extractUploadedAt(dynamic v) {
+        if (v is Map) {
+          return parseIso(v['uploadedAt']);
+        }
+        return null;
+      }
+
       final startLoadingUrl = extractUrl(deliveryPhotos['start_loading']) ??
           extractUrl(deliveryPhotos['start_loading_photo']);
       final finishLoadingUrl = extractUrl(deliveryPhotos['finish_loading']) ??
@@ -663,6 +667,21 @@ class _RiderDeliveryProgressScreenState
           extractUrl(deliveryPhotos['receiver_signature']) ??
               extractUrl(deliveryPhotos['signature']);
 
+      final startLoadingAt =
+          extractUploadedAt(deliveryPhotos['start_loading']) ??
+              extractUploadedAt(deliveryPhotos['start_loading_photo']);
+      final finishLoadingAt =
+          extractUploadedAt(deliveryPhotos['finish_loading']) ??
+              extractUploadedAt(deliveryPhotos['finished_loading']) ??
+              extractUploadedAt(deliveryPhotos['finish_loading_photo']);
+      final startUnloadingAt =
+          extractUploadedAt(deliveryPhotos['start_unloading']) ??
+              extractUploadedAt(deliveryPhotos['start_unloading_photo']);
+      final finishUnloadingAt =
+          extractUploadedAt(deliveryPhotos['finish_unloading']) ??
+              extractUploadedAt(deliveryPhotos['finished_unloading']) ??
+              extractUploadedAt(deliveryPhotos['finish_unloading_photo']);
+
       final rdd = scheduledAt ?? createdAt ?? now;
       final rddStr = DateFormat('yyyyMMdd').format(rdd);
       final subject =
@@ -671,6 +690,7 @@ class _RiderDeliveryProgressScreenState
       final templateParams = <String, dynamic>{
         'sender': IntegrationsConfig.reportSenderEmail,
         'receiver_name': customerName,
+        'type': vehicleType,
         'plate': plate,
         'driver': driverName ?? '',
         'phone': driverPhone,
@@ -679,11 +699,13 @@ class _RiderDeliveryProgressScreenState
         'fo_number': '',
         'trip_number': widget.request.id,
         'pickup_arrival': _formatMilitaryTime(pickupArrival),
-        'pickup_start_loading': _formatMilitaryTime(loadingStart),
-        'pickup_finished_loading': _formatMilitaryTime(loadingFinish),
+        'pickup_start_loading': _formatMilitaryTime(startLoadingAt),
+        'pickup_finished_loading':
+            _formatMilitaryTime(finishLoadingAt ?? loadingFinish),
         'destination_arrival': _formatMilitaryTime(destArrival),
-        'destination_start_unloading': _formatMilitaryTime(unloadingStart),
-        'destination_finished_unloading': _formatMilitaryTime(unloadingFinish),
+        'destination_start_unloading': _formatMilitaryTime(startUnloadingAt),
+        'destination_finished_unloading':
+            _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
         'receiver': receiverName,
         'start_loading_photo_url': startLoadingUrl ?? '',
         'finish_loading_photo_url': finishLoadingUrl ?? '',
@@ -691,14 +713,29 @@ class _RiderDeliveryProgressScreenState
         'finish_unloading_photo_url': finishUnloadingUrl ?? '',
         'receiver_id_photo_url': receiverIdUrl ?? '',
         'receiver_signature_url': receiverSignatureUrl ?? '',
+
+        // Aliases (in case the EmailJS template uses different names)
+        'loading_photo_url': (finishLoadingUrl ?? startLoadingUrl) ?? '',
+        'unloading_photo_url': (finishUnloadingUrl ?? startUnloadingUrl) ?? '',
       };
 
       // Customer + internal recipients. Internal recipients are sent as individual emails.
       final allRecipients = <String>{
-        customerEmail,
-        ...IntegrationsConfig.sampleClientReportRecipients,
         ...IntegrationsConfig.internalReportRecipients,
       };
+
+      for (final to in IntegrationsConfig.sampleClientReportRecipients) {
+        final trimmed = to.trim();
+        if (trimmed.isEmpty) continue;
+        if (!trimmed.contains('@')) continue;
+        allRecipients.add(trimmed);
+      }
+
+      final trimmedCustomerEmail = customerEmail.trim();
+      if (trimmedCustomerEmail.isNotEmpty &&
+          trimmedCustomerEmail.contains('@')) {
+        allRecipients.add(trimmedCustomerEmail);
+      }
 
       for (final to in allRecipients) {
         await EmailJsService.instance.sendTemplateEmail(

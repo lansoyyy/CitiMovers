@@ -1,8 +1,8 @@
 class IntegrationsConfig {
-  static const String emailJsServiceId = 'YOUR_EMAILJS_SERVICE_ID';
-  static const String emailJsTemplateId = 'YOUR_EMAILJS_TEMPLATE_ID';
-  static const String emailJsPublicKey = 'YOUR_EMAILJS_PUBLIC_KEY';
-  static const String emailJsAccessToken = 'YOUR_EMAILJS_ACCESS_TOKEN';
+  static const String emailJsServiceId = 'service_etivm0m';
+  static const String emailJsTemplateId = 'template_1iyw0ub';
+  static const String emailJsPublicKey = 'eJcxJq9HWCWKMp-5M';
+  static const String emailJsAccessToken = '3w8ighMcLUC7poVnW9-7o';
 
   static const String reportSenderEmail = 'admin@citimovers.net';
   static const String reportSenderName = 'CitiMovers';
