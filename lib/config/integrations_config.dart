@@ -8,13 +8,16 @@ class IntegrationsConfig {
   static const String reportSenderName = 'CitiMovers';
 
   static const List<String> internalReportRecipients = <String>[
-    'admin@citimovers.net',
-    'clientmanager@citimovers.net',
-    'operator@citimovers.net',
-    'pod@citimovers.net',
-    'billing@citimovers.net',
-    'finance@citimovers.net',
-    'president@citimovers.net',
+    // 'admin@citimovers.net',
+    // 'clientmanager@citimovers.net',
+    // 'operator@citimovers.net',
+    // 'pod@citimovers.net',
+    // 'billing@citimovers.net',
+    // 'finance@citimovers.net',
+    // 'president@citimovers.net',
+    'excel_gesite@yahoo.com',
+    'potohubsystem@gmail.com',
+    'Tyoinxmarie@gmail.com'
   ];
 
   static const List<String> sampleClientReportRecipients = <String>[
