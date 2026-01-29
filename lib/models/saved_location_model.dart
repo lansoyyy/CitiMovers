@@ -23,21 +23,46 @@ class SavedLocation {
     required this.updatedAt,
   });
 
-  factory SavedLocation.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  // Standardized naming: fromMap (alias for fromFirestore)
+  factory SavedLocation.fromMap(Map<String, dynamic> map) {
     return SavedLocation(
-      id: doc.id,
-      userId: data['userId'] ?? '',
-      name: data['name'] ?? '',
-      address: data['address'] ?? '',
-      latitude: (data['latitude'] ?? 0.0).toDouble(),
-      longitude: (data['longitude'] ?? 0.0).toDouble(),
-      type: data['type'],
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      id: map['id'] as String,
+      userId: map['userId'] ?? '',
+      name: map['name'] ?? '',
+      address: map['address'] ?? '',
+      latitude: (map['latitude'] as num).toDouble(),
+      longitude: (map['longitude'] as num).toDouble(),
+      type: map['type'] as String?,
+      createdAt: map['createdAt'] is Timestamp
+          ? (map['createdAt'] as Timestamp).toDate()
+          : DateTime.parse(map['createdAt'] as String),
+      updatedAt: map['updatedAt'] is Timestamp
+          ? (map['updatedAt'] as Timestamp).toDate()
+          : DateTime.parse(map['updatedAt'] as String),
     );
   }
 
+  // Standardized naming: toMap (alias for toFirestore)
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'userId': userId,
+      'name': name,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
+      'type': type,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  // Backward compatibility: fromFirestore
+  factory SavedLocation.fromFirestore(DocumentSnapshot doc) {
+    return SavedLocation.fromMap(doc.data() as Map<String, dynamic>);
+  }
+
+  // Backward compatibility: toFirestore
   Map<String, dynamic> toFirestore() {
     return {
       'userId': userId,

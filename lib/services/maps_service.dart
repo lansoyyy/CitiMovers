@@ -1,22 +1,32 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/location_model.dart';
+import '../utils/retry_utility.dart';
 
 /// Maps Service for CitiMovers
 /// Handles Google Maps API interactions
-/// Ready for integration with Google Maps and Places API
+///
+/// NOTE: Google Maps API key must be configured in build configuration
+/// Add to android/app/build.gradle or ios/Runner/Info.plist:
+/// Android: manifestPlaceholders = [googleMapsApiKey: "YOUR_GOOGLE_MAPS_API_KEY"]
+/// iOS: Add to Info.plist with key "GoogleMapsApiKey"
 class MapsService {
   // Singleton pattern
   static final MapsService _instance = MapsService._internal();
   factory MapsService() => _instance;
   MapsService._internal();
 
-  // TODO: Add your Google Maps API Key
+  // Google Maps API Key - configured via build environment
   static const String _apiKey = String.fromEnvironment(
     'GOOGLE_MAPS_API_KEY',
     defaultValue: 'YOUR_GOOGLE_MAPS_API_KEY',
   );
+
+  /// Check if Google Maps API is properly configured
+  static bool get isConfigured =>
+      _apiKey != 'YOUR_GOOGLE_MAPS_API_KEY' && _apiKey.isNotEmpty;
 
   // Base URLs for Google Maps APIs
   static const String _placesApiBase =
@@ -28,7 +38,8 @@ class MapsService {
 
   /// Search places using Google Places Autocomplete API
   Future<List<PlaceSuggestion>> searchPlaces(String query) async {
-    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+    if (!isConfigured) {
+      debugPrint('Google Maps API key not configured. Using mock data.');
       // Return mock data if API key is not set
       await Future.delayed(const Duration(milliseconds: 800));
       return [
@@ -54,13 +65,15 @@ class MapsService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse('$_placesApiBase/autocomplete/json'
-            '?input=${Uri.encodeComponent(query)}'
-            '&key=$_apiKey'
-            '&components=country:ph' // Philippines only
-            '&sessiontoken=${_generateSessionToken()}'),
-      );
+      final response = await RetryUtility.retryMapsOperation(() async {
+        return await http.get(
+          Uri.parse('$_placesApiBase/autocomplete/json'
+              '?input=${Uri.encodeComponent(query)}'
+              '&key=$_apiKey'
+              '&components=country:ph' // Philippines only
+              '&sessiontoken=${_generateSessionToken()}'),
+        );
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -75,18 +88,34 @@ class MapsService {
                   prediction['structured_formatting']['secondary_text'] ?? '',
             );
           }).toList();
+        } else if (data['status'] == 'ZERO_RESULTS') {
+          debugPrint('No places found for query: $query');
+          return [];
+        } else if (data['status'] == 'OVER_QUERY_LIMIT') {
+          debugPrint('Google Maps API query limit exceeded');
+          return [];
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('Google Maps API request denied - check API key');
+          return [];
+        } else if (data['status'] == 'INVALID_REQUEST') {
+          debugPrint(
+              'Google Maps API invalid request: ${data['error_message']}');
+          return [];
         }
+      } else {
+        debugPrint('Google Maps API error: ${response.statusCode}');
       }
       return [];
     } catch (e) {
-      print('Error searching places: $e');
+      debugPrint('Error searching places: $e');
       return [];
     }
   }
 
   /// Get place details from place ID
   Future<LocationModel?> getPlaceDetails(String placeId) async {
-    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+    if (!isConfigured) {
+      debugPrint('Google Maps API key not configured. Using mock data.');
       // Return mock data if API key is not set
       await Future.delayed(const Duration(milliseconds: 500));
       return LocationModel(
@@ -100,12 +129,14 @@ class MapsService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse('$_placesApiBase/details/json'
-            '?place_id=$placeId'
-            '&key=$_apiKey'
-            '&fields=name,formatted_address,geometry,address_component'),
-      );
+      final response = await RetryUtility.retryMapsOperation(() async {
+        return await http.get(
+          Uri.parse('$_placesApiBase/details/json'
+              '?place_id=$placeId'
+              '&key=$_apiKey'
+              '&fields=name,formatted_address,geometry,address_component'),
+        );
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -135,11 +166,23 @@ class MapsService {
             province: province,
             country: country,
           );
+        } else if (data['status'] == 'NOT_FOUND') {
+          debugPrint('Place not found: $placeId');
+          return null;
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('Google Maps API request denied - check API key');
+          return null;
+        } else if (data['status'] == 'INVALID_REQUEST') {
+          debugPrint(
+              'Google Maps API invalid request: ${data['error_message']}');
+          return null;
         }
+      } else {
+        debugPrint('Google Maps API error: ${response.statusCode}');
       }
       return null;
     } catch (e) {
-      print('Error getting place details: $e');
+      debugPrint('Error getting place details: $e');
       return null;
     }
   }
@@ -149,7 +192,9 @@ class MapsService {
     LocationModel origin,
     LocationModel destination,
   ) async {
-    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+    if (!isConfigured) {
+      debugPrint(
+          'Google Maps API key not configured. Using Haversine formula for distance.');
       // Mock implementation if API key is not set
       await Future.delayed(const Duration(milliseconds: 800));
       final distance = _calculateDistance(
@@ -167,13 +212,15 @@ class MapsService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse('$_directionsApiBase/json'
-            '?origin=${origin.latitude},${origin.longitude}'
-            '&destination=${destination.latitude},${destination.longitude}'
-            '&key=$_apiKey'
-            '&alternatives=false'),
-      );
+      final response = await RetryUtility.retryMapsOperation(() async {
+        return await http.get(
+          Uri.parse('$_directionsApiBase/json'
+              '?origin=${origin.latitude},${origin.longitude}'
+              '&destination=${destination.latitude},${destination.longitude}'
+              '&key=$_apiKey'
+              '&alternatives=false'),
+        );
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -191,11 +238,26 @@ class MapsService {
             durationMinutes: duration.round(),
             polylinePoints: polylinePoints,
           );
+        } else if (data['status'] == 'ZERO_RESULTS') {
+          debugPrint('No route found between locations');
+          return null;
+        } else if (data['status'] == 'NOT_FOUND') {
+          debugPrint('One or more locations not found');
+          return null;
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('Google Maps API request denied - check API key');
+          return null;
+        } else if (data['status'] == 'INVALID_REQUEST') {
+          debugPrint(
+              'Google Maps API invalid request: ${data['error_message']}');
+          return null;
         }
+      } else {
+        debugPrint('Google Maps API error: ${response.statusCode}');
       }
       return null;
     } catch (e) {
-      print('Error calculating route: $e');
+      debugPrint('Error calculating route: $e');
       return null;
     }
   }
@@ -317,7 +379,8 @@ class MapsService {
   /// Get address from coordinates (reverse geocoding)
   Future<LocationModel?> getAddressFromCoordinates(
       double lat, double lng) async {
-    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+    if (!isConfigured) {
+      debugPrint('Google Maps API key not configured. Using mock data.');
       // Mock implementation if API key is not set
       await Future.delayed(const Duration(milliseconds: 500));
       return LocationModel(
@@ -331,11 +394,13 @@ class MapsService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse('$_geocodingApiBase/json'
-            '?latlng=$lat,$lng'
-            '&key=$_apiKey'),
-      );
+      final response = await RetryUtility.retryMapsOperation(() async {
+        return await http.get(
+          Uri.parse('$_geocodingApiBase/json'
+              '?latlng=$lat,$lng'
+              '&key=$_apiKey'),
+        );
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -364,18 +429,31 @@ class MapsService {
             province: province,
             country: country,
           );
+        } else if (data['status'] == 'ZERO_RESULTS') {
+          debugPrint('No address found for coordinates: $lat, $lng');
+          return null;
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('Google Maps API request denied - check API key');
+          return null;
+        } else if (data['status'] == 'INVALID_REQUEST') {
+          debugPrint(
+              'Google Maps API invalid request: ${data['error_message']}');
+          return null;
         }
+      } else {
+        debugPrint('Google Maps API error: ${response.statusCode}');
       }
       return null;
     } catch (e) {
-      print('Error getting address from coordinates: $e');
+      debugPrint('Error getting address from coordinates: $e');
       return null;
     }
   }
 
   /// Get coordinates from address (forward geocoding)
   Future<LocationModel?> getCoordinatesFromAddress(String address) async {
-    if (_apiKey == 'YOUR_GOOGLE_MAPS_API_KEY') {
+    if (!isConfigured) {
+      debugPrint('Google Maps API key not configured. Using mock data.');
       // Mock implementation if API key is not set
       await Future.delayed(const Duration(milliseconds: 500));
       return LocationModel(
@@ -389,11 +467,13 @@ class MapsService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse('$_geocodingApiBase/json'
-            '?address=${Uri.encodeComponent(address)}'
-            '&key=$_apiKey'),
-      );
+      final response = await RetryUtility.retryMapsOperation(() async {
+        return await http.get(
+          Uri.parse('$_geocodingApiBase/json'
+              '?address=${Uri.encodeComponent(address)}'
+              '&key=$_apiKey'),
+        );
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -423,11 +503,23 @@ class MapsService {
             province: province,
             country: country,
           );
+        } else if (data['status'] == 'ZERO_RESULTS') {
+          debugPrint('No coordinates found for address: $address');
+          return null;
+        } else if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('Google Maps API request denied - check API key');
+          return null;
+        } else if (data['status'] == 'INVALID_REQUEST') {
+          debugPrint(
+              'Google Maps API invalid request: ${data['error_message']}');
+          return null;
         }
+      } else {
+        debugPrint('Google Maps API error: ${response.statusCode}');
       }
       return null;
     } catch (e) {
-      print('Error getting coordinates from address: $e');
+      debugPrint('Error getting coordinates from address: $e');
       return null;
     }
   }

@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,7 +27,7 @@ class LocationService {
       // Check if location service is enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('Location services are disabled.');
+        debugPrint('LocationService: Location services are disabled.');
         return null;
       }
 
@@ -37,7 +38,7 @@ class LocationService {
         if (requestPermission) {
           permission = await Geolocator.requestPermission();
           if (permission == LocationPermission.denied) {
-            print('Location permissions are denied');
+            debugPrint('LocationService: Location permissions are denied');
             return null;
           }
         } else {
@@ -46,7 +47,8 @@ class LocationService {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        print('Location permissions are permanently denied');
+        debugPrint(
+            'LocationService: Location permissions are permanently denied');
         return null;
       }
 
@@ -70,7 +72,7 @@ class LocationService {
         country: '', // Will be populated by geocoding
       );
     } catch (e) {
-      print('Error getting current location: $e');
+      debugPrint('LocationService: Error getting current location: $e');
       return null;
     }
   }
@@ -80,7 +82,7 @@ class LocationService {
     try {
       return await Geolocator.isLocationServiceEnabled();
     } catch (e) {
-      print('Error checking location service: $e');
+      debugPrint('LocationService: Error checking location service: $e');
       return false;
     }
   }
@@ -92,7 +94,7 @@ class LocationService {
       return permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse;
     } catch (e) {
-      print('Error requesting location permission: $e');
+      debugPrint('LocationService: Error requesting location permission: $e');
       return false;
     }
   }
@@ -105,7 +107,7 @@ class LocationService {
     try {
       return await _getAddressFromCoordinates(latitude, longitude);
     } catch (e) {
-      print('Error getting address from coordinates: $e');
+      debugPrint('LocationService: Error getting address from coordinates: $e');
       return null;
     }
   }
@@ -140,7 +142,7 @@ class LocationService {
 
       return 'Unknown Location';
     } catch (e) {
-      print('Error in reverse geocoding: $e');
+      debugPrint('LocationService: Error in reverse geocoding: $e');
       return 'Unknown Location';
     }
   }
@@ -162,7 +164,7 @@ class LocationService {
 
       return null;
     } catch (e) {
-      print('Error getting coordinates from address: $e');
+      debugPrint('LocationService: Error getting coordinates from address: $e');
       return null;
     }
   }
@@ -174,7 +176,7 @@ class LocationService {
       final userId = authService.currentUser?.userId;
 
       if (userId == null) {
-        print('User not authenticated');
+        debugPrint('LocationService: User not authenticated');
         return false;
       }
 
@@ -197,7 +199,7 @@ class LocationService {
 
       return true;
     } catch (e) {
-      print('Error saving favorite location: $e');
+      debugPrint('LocationService: Error saving favorite location: $e');
       return false;
     }
   }
@@ -235,7 +237,7 @@ class LocationService {
         );
       }).toList();
     } catch (e) {
-      print('Error getting saved locations: $e');
+      debugPrint('LocationService: Error getting saved locations: $e');
       return [];
     }
   }
@@ -278,7 +280,7 @@ class LocationService {
       await _firestore.collection('saved_locations').doc(locationId).delete();
       return true;
     } catch (e) {
-      print('Error deleting saved location: $e');
+      debugPrint('LocationService: Error deleting saved location: $e');
       return false;
     }
   }
@@ -295,7 +297,7 @@ class LocationService {
       });
       return true;
     } catch (e) {
-      print('Error updating saved location: $e');
+      debugPrint('LocationService: Error updating saved location: $e');
       return false;
     }
   }
@@ -339,7 +341,7 @@ class LocationService {
       );
       return distanceInMeters / 1000; // Convert to kilometers
     } catch (e) {
-      print('Error calculating distance: $e');
+      debugPrint('LocationService: Error calculating distance: $e');
       // Fallback to Haversine formula
       return _haversineDistance(lat1, lon1, lat2, lon2);
     }
@@ -381,7 +383,7 @@ class LocationService {
       // Check if location service is enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('Location services are disabled.');
+        debugPrint('LocationService: Location services are disabled.');
         return null;
       }
 
@@ -391,13 +393,14 @@ class LocationService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          print('Location permissions are denied');
+          debugPrint('LocationService: Location permissions are denied');
           return null;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        print('Location permissions are permanently denied');
+        debugPrint(
+            'LocationService: Location permissions are permanently denied');
         return null;
       }
 
@@ -406,7 +409,7 @@ class LocationService {
         forceAndroidLocationManager: forceAndroidLocationManager,
       );
     } catch (e) {
-      print('Error getting current position: $e');
+      debugPrint('LocationService: Error getting current position: $e');
       return null;
     }
   }
@@ -416,7 +419,7 @@ class LocationService {
     try {
       return await Geolocator.getLastKnownPosition();
     } catch (e) {
-      print('Error getting last known position: $e');
+      debugPrint('LocationService: Error getting last known position: $e');
       return null;
     }
   }
@@ -456,7 +459,7 @@ class LocationService {
     try {
       return await Geolocator.openLocationSettings();
     } catch (e) {
-      print('Error opening location settings: $e');
+      debugPrint('LocationService: Error opening location settings: $e');
       return false;
     }
   }
@@ -466,7 +469,7 @@ class LocationService {
     try {
       return await Geolocator.openAppSettings();
     } catch (e) {
-      print('Error opening app settings: $e');
+      debugPrint('LocationService: Error opening app settings: $e');
       return false;
     }
   }

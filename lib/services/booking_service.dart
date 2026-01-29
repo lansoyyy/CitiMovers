@@ -18,6 +18,7 @@ class BookingService {
   static const String _bookingsCollection = 'bookings';
 
   /// Create a new booking
+  /// Uses Firestore transaction to ensure atomic creation of booking and delivery request
   Future<BookingModel?> createBooking({
     required String customerId,
     String? customerName,
@@ -65,18 +66,32 @@ class BookingService {
         cancellationReason: null,
       );
 
-      await _firestore.collection(_bookingsCollection).doc(bookingId).set({
-        ...booking.toMap(),
-        if (customerName != null && customerName.trim().isNotEmpty)
-          'customerName': customerName.trim(),
-        if (customerPhone != null && customerPhone.trim().isNotEmpty)
-          'customerPhone': customerPhone.trim(),
-        if (estimatedDurationMinutes != null)
-          'estimatedDuration': estimatedDurationMinutes,
-      });
+      // Use Firestore transaction to ensure atomic creation of booking and delivery request
+      final bookingRef =
+          _firestore.collection(_bookingsCollection).doc(bookingId);
+      final deliveryRequestRef =
+          _firestore.collection('delivery_requests').doc(bookingId);
 
-      await _firestore.collection('delivery_requests').doc(bookingId).set(
-        {
+      await _firestore.runTransaction((transaction) async {
+        // Check if booking already exists
+        final bookingSnapshot = await transaction.get(bookingRef);
+        if (bookingSnapshot.exists) {
+          throw Exception('Booking already exists: $bookingId');
+        }
+
+        // Create booking document
+        transaction.set(bookingRef, {
+          ...booking.toMap(),
+          if (customerName != null && customerName.trim().isNotEmpty)
+            'customerName': customerName.trim(),
+          if (customerPhone != null && customerPhone.trim().isNotEmpty)
+            'customerPhone': customerPhone.trim(),
+          if (estimatedDurationMinutes != null)
+            'estimatedDuration': estimatedDurationMinutes,
+        });
+
+        // Create delivery request document
+        transaction.set(deliveryRequestRef, {
           'requestId': bookingId,
           'bookingId': bookingId,
           'customerId': customerId,
@@ -97,10 +112,10 @@ class BookingService {
           'estimatedFare': estimatedFare,
           'createdAt': now.millisecondsSinceEpoch,
           'respondedAt': null,
-        },
-        SetOptions(merge: true),
-      );
+        });
+      });
 
+      debugPrint('Booking created successfully with transaction: $bookingId');
       return booking;
     } catch (e) {
       debugPrint('Error creating booking: $e');

@@ -1,13 +1,12 @@
 import 'dart:math' as math;
-import 'package:firebase_database/firebase_database.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Rider Location Service for CitiMovers
-/// Handles real-time rider location updates using Firebase Realtime Database
-/// Similar to DriverLocationService in para app
+/// Handles rider location updates using Firestore
+/// Consolidated to use only Firestore for consistency
 class RiderLocationService {
-  final FirebaseDatabase _database = FirebaseDatabase.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Calculate distance between two points using Haversine formula
@@ -36,116 +35,99 @@ class RiderLocationService {
     return degrees * (3.14159265359 / 180);
   }
 
-  /// Update rider location in Realtime Database
+  /// Update rider location in Firestore
   Future<void> updateRiderLocation({
     required String riderId,
     required double latitude,
     required double longitude,
   }) async {
     try {
-      await _database.ref('rider_locations/$riderId').set({
-        'latitude': latitude,
-        'longitude': longitude,
-        'updatedAt': DateTime.now().toIso8601String(),
+      await _firestore.collection('riders').doc(riderId).update({
+        'currentLocation': {
+          'latitude': latitude,
+          'longitude': longitude,
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        },
+        'lastActive': DateTime.now().millisecondsSinceEpoch,
       });
-      print('Rider $riderId location updated: $latitude, $longitude');
+      debugPrint(
+          'RiderLocationService: Rider $riderId location updated: $latitude, $longitude');
     } catch (e) {
-      print('Error updating rider location: $e');
+      debugPrint('RiderLocationService: Error updating rider location: $e');
     }
   }
 
-  /// Get rider's current location from Realtime Database
+  /// Get rider's current location from Firestore
   Future<LatLng?> getRiderLocation(String riderId) async {
     try {
-      DataSnapshot snapshot =
-          await _database.ref('rider_locations/$riderId').get();
+      final doc = await _firestore.collection('riders').doc(riderId).get();
 
-      if (snapshot.value != null && snapshot.value is Map) {
-        Map<dynamic, dynamic> riderData =
-            snapshot.value as Map<dynamic, dynamic>;
+      if (!doc.exists) {
+        return null;
+      }
 
-        double? lat = riderData['latitude']?.toDouble();
-        double? lng = riderData['longitude']?.toDouble();
+      final data = doc.data()!;
+      final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
+
+      if (currentLocation != null) {
+        final lat = currentLocation!['latitude'] as num?;
+        final lng = currentLocation!['longitude'] as num?;
 
         if (lat != null && lng != null) {
-          return LatLng(lat, lng);
+          return LatLng(lat.toDouble(), lng.toDouble());
         }
       }
 
       return null;
     } catch (e) {
-      print('Error getting rider location: $e');
+      debugPrint('RiderLocationService: Error getting rider location: $e');
       return null;
     }
   }
 
-  /// Get all online riders from Realtime Database
+  /// Get all online riders from Firestore
   Future<List<Map<String, dynamic>>> getOnlineRiders({
     String? vehicleType,
   }) async {
     try {
-      DataSnapshot snapshot = await _database.ref('rider_locations').get();
-
-      if (snapshot.value == null) {
-        return [];
-      }
-
-      Map<dynamic, dynamic> ridersData =
-          snapshot.value as Map<dynamic, dynamic>;
-      List<Map<String, dynamic>> onlineRiders = [];
-
-      // First check Firestore for online status and optionally vehicle type
       QuerySnapshot riderDocs = await _firestore
           .collection('riders')
           .where('isOnline', isEqualTo: true)
+          .where('isOnTrip', isEqualTo: false)
           .get();
 
-      Set<String> onlineRiderIds = riderDocs.docs.map((doc) => doc.id).toSet();
+      List<Map<String, dynamic>> onlineRiders = [];
 
-      // Filter riders from Realtime Database who are online in Firestore
-      ridersData.forEach((key, value) {
-        if (value is Map && onlineRiderIds.contains(key)) {
-          Map<String, dynamic> riderData = Map<String, dynamic>.from(value);
-          riderData['riderId'] = key;
+      for (var doc in riderDocs.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final currentLocation =
+            data['currentLocation'] as Map<String, dynamic>?;
 
-          // Check if rider has valid coordinates
-          if (riderData.containsKey('latitude') &&
-              riderData.containsKey('longitude')) {
-            // If vehicle type is specified, check if rider matches
-            if (vehicleType != null) {
-              // Get rider data from Firestore to check vehicle type
-              QueryDocumentSnapshot? riderDoc;
-              try {
-                riderDoc = riderDocs.docs.firstWhere(
-                  (doc) => doc.id == key,
-                );
-              } catch (e) {
-                riderDoc = null;
-              }
+        // Only include riders with valid location coordinates
+        if (currentLocation != null &&
+            currentLocation!.containsKey('latitude') &&
+            currentLocation!.containsKey('longitude')) {
+          Map<String, dynamic> riderData = Map<String, dynamic>.from(data);
+          riderData['riderId'] = doc.id;
 
-              if (riderDoc != null) {
-                Map<String, dynamic> riderFirestoreData =
-                    riderDoc.data() as Map<String, dynamic>;
-                String riderVehicleType =
-                    riderFirestoreData['vehicleType'] ?? '';
-
-                // Only include riders with matching vehicle type
-                if (riderVehicleType == vehicleType) {
-                  riderData['vehicleType'] = riderVehicleType;
-                  onlineRiders.add(riderData);
-                }
-              }
-            } else {
-              // If no vehicle type filter, include all online riders
+          // If vehicle type is specified, check if rider matches
+          if (vehicleType != null) {
+            String riderVehicleType = data['vehicleType'] ?? '';
+            // Only include riders with matching vehicle type
+            if (riderVehicleType == vehicleType) {
+              riderData['vehicleType'] = riderVehicleType;
               onlineRiders.add(riderData);
             }
+          } else {
+            // If no vehicle type filter, include all online riders
+            onlineRiders.add(riderData);
           }
         }
-      });
+      }
 
       return onlineRiders;
     } catch (e) {
-      print('Error fetching online riders: $e');
+      debugPrint('RiderLocationService: Error fetching online riders: $e');
       return [];
     }
   }
@@ -161,7 +143,7 @@ class RiderLocationService {
       );
 
       if (onlineRiders.isEmpty) {
-        print('No online riders found');
+        debugPrint('RiderLocationService: No online riders found');
         return null;
       }
 
@@ -176,27 +158,28 @@ class RiderLocationService {
           LatLng riderLocation = LatLng(riderLat, riderLng);
           double distance = _calculateDistance(pickupLocation, riderLocation);
 
-          print(
-              'Rider ${rider['riderId']} is ${distance.toStringAsFixed(2)} km away');
+          debugPrint(
+              'RiderLocationService: Rider ${rider['riderId']} is ${distance.toStringAsFixed(2)} km away');
 
           if (distance < minDistance) {
             minDistance = distance;
             nearestRider = rider;
           }
         } catch (e) {
-          print('Error processing rider ${rider['riderId']}: $e');
+          debugPrint(
+              'RiderLocationService: Error processing rider ${rider['riderId']}: $e');
           continue;
         }
       }
 
       if (nearestRider != null) {
-        print(
-            'Nearest rider found: ${nearestRider['riderId']} at ${minDistance.toStringAsFixed(2)} km');
+        debugPrint(
+            'RiderLocationService: Nearest rider found: ${nearestRider['riderId']} at ${minDistance.toStringAsFixed(2)} km');
       }
 
       return nearestRider;
     } catch (e) {
-      print('Error finding nearest rider: $e');
+      debugPrint('RiderLocationService: Error finding nearest rider: $e');
       return null;
     }
   }
@@ -233,7 +216,8 @@ class RiderLocationService {
             ridersWithDistance.add(rider);
           }
         } catch (e) {
-          print('Error processing rider ${rider['riderId']}: $e');
+          debugPrint(
+              'RiderLocationService: Error processing rider ${rider['riderId']}: $e');
           continue;
         }
       }
@@ -245,7 +229,7 @@ class RiderLocationService {
       // Return only the requested number of riders
       return ridersWithDistance.take(maxRiders).toList();
     } catch (e) {
-      print('Error getting nearest riders: $e');
+      debugPrint('RiderLocationService: Error getting nearest riders: $e');
       return [];
     }
   }
@@ -263,23 +247,34 @@ class RiderLocationService {
 
       return false;
     } catch (e) {
-      print('Error checking rider online status: $e');
+      debugPrint(
+          'RiderLocationService: Error checking rider online status: $e');
       return false;
     }
   }
 
   /// Listen to rider location updates in real-time
   Stream<LatLng?> listenToRiderLocation(String riderId) {
-    return _database.ref('rider_locations/$riderId').onValue.map((event) {
-      if (event.snapshot.value != null && event.snapshot.value is Map) {
-        Map<dynamic, dynamic> riderData =
-            event.snapshot.value as Map<dynamic, dynamic>;
+    return _firestore
+        .collection('riders')
+        .doc(riderId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) {
+        return null;
+      }
 
-        double? lat = riderData['latitude']?.toDouble();
-        double? lng = riderData['longitude']?.toDouble();
+      final data = snapshot.data() as Map<String, dynamic>?;
+      final currentLocation = data?['currentLocation'] as Map<String, dynamic>?;
+
+      if (currentLocation != null &&
+          currentLocation!.containsKey('latitude') &&
+          currentLocation!.containsKey('longitude')) {
+        final lat = currentLocation!['latitude'] as num?;
+        final lng = currentLocation!['longitude'] as num?;
 
         if (lat != null && lng != null) {
-          return LatLng(lat, lng);
+          return LatLng(lat.toDouble(), lng.toDouble());
         }
       }
       return null;

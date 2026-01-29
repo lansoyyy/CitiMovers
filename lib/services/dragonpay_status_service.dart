@@ -1,9 +1,15 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/integrations_config.dart';
+
+/// NOTE: Dragonpay payment gateway is not yet active.
+/// This service is disabled for cash-only payments.
+/// When Dragonpay account is set up, move status checking to backend/Cloud Functions
+/// to avoid exposing merchant credentials in client code.
 
 class DragonpayStatusResult {
   final String? refNo;
@@ -56,7 +62,17 @@ class DragonpayStatusService {
   ///
   /// NOTE: This requires merchant password and is not safe to ship in production.
   /// In production, this should be done via a server/Cloud Function.
+  ///
+  /// TEMPORARILY DISABLED: CitiMovers is using cash-only payments until
+  /// Dragonpay account is set up. Status checking will be re-enabled
+  /// when moved to a backend service.
   Future<DragonpayStatusResult?> getStatus({required String txnId}) async {
+    // Disabled for cash-only payments
+    // TODO: Re-enable when Dragonpay is integrated via backend/Cloud Functions
+    debugPrint('Dragonpay status checking disabled - cash-only mode');
+    return null;
+
+    /* Original implementation (commented out for security):
     try {
       final uri =
           Uri.parse(IntegrationsConfig.dragonpayMerchantRequestUrl).replace(
@@ -85,6 +101,7 @@ class DragonpayStatusService {
     } catch (_) {
       return null;
     }
+    */
   }
 
   /// Validates Dragonpay return/postback digest (when available).

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
 import '../models/user_model.dart';
+import 'emailjs_service.dart';
 import 'otp_service.dart';
 import 'storage_service.dart';
 
@@ -158,34 +159,80 @@ class AuthService {
   }
 
   /// Send email verification code
-  /// This creates a temporary Firebase Auth user with email/password
-  /// and sends a verification email. The user can then verify by clicking
-  /// the link in the email or by entering a verification code.
+  /// Generates a 6-digit OTP and stores it in Firestore with expiration.
+  /// Sends the code via EmailJS service.
   Future<bool> sendEmailVerificationCode(String email) async {
     try {
-      // Generate a temporary password for the Firebase Auth user
-      final tempPassword = _generateTempPassword();
+      final firestore = FirebaseFirestore.instance;
+      final random = DateTime.now().millisecondsSinceEpoch;
+      final otp = (100000 + (random % 900000)).toString();
 
-      // Create a Firebase Auth user with email/password
-      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email,
-        password: tempPassword,
+      // Check rate limiting
+      final rateLimitDoc = await firestore
+          .collection('email_verification_rate_limits')
+          .doc(email)
+          .get();
+
+      if (rateLimitDoc.exists) {
+        final data = rateLimitDoc.data() as Map<String, dynamic>;
+        final lastRequestTime = (data['lastRequestTime'] as Timestamp).toDate();
+        final requestCount = data['requestCount'] as int;
+        final timeSinceLastRequest = DateTime.now().difference(lastRequestTime);
+
+        // Allow max 3 requests per 15 minutes
+        if (requestCount >= 3 && timeSinceLastRequest.inMinutes < 15) {
+          debugPrint('Email verification rate limit exceeded for $email');
+          return false;
+        }
+
+        // Reset counter if 15 minutes have passed
+        if (timeSinceLastRequest.inMinutes >= 15) {
+          await firestore
+              .collection('email_verification_rate_limits')
+              .doc(email)
+              .delete();
+        }
+      }
+
+      // Store OTP in Firestore with expiration (5 minutes)
+      final otpDocRef = firestore.collection('email_verification_otps').doc();
+      final expiresAt = DateTime.now().add(const Duration(minutes: 5));
+
+      await otpDocRef.set({
+        'email': email,
+        'otp': otp,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(expiresAt),
+        'attempts': 0,
+        'verified': false,
+      });
+
+      // Update rate limit counter
+      final rateLimitRef =
+          firestore.collection('email_verification_rate_limits').doc(email);
+      await rateLimitRef.set({
+        'lastRequestTime': FieldValue.serverTimestamp(),
+        'requestCount': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+
+      // Send OTP via EmailJS
+      final emailJsService = EmailJsService.instance;
+      final sent = await emailJsService.sendTemplateEmail(
+        toEmail: email,
+        subject: 'CitiMovers Email Verification Code',
+        templateParams: {
+          'otp_code': otp,
+          'expiry_minutes': '5',
+        },
       );
 
-      // Send verification email
-      await credential.user?.sendEmailVerification();
-
-      debugPrint('Email verification sent to: $email');
-      return true;
-    } on FirebaseAuthException catch (e) {
-      // If email already exists, we can still send verification
-      if (e.code == 'email-already-in-use') {
-        // Email already registered, verification can be sent separately
-        debugPrint('Email already registered: $email');
+      if (sent) {
+        debugPrint('Email verification OTP sent to: $email');
         return true;
+      } else {
+        debugPrint('Failed to send email verification to: $email');
+        return false;
       }
-      debugPrint('Error sending email verification: ${e.message}');
-      return false;
     } catch (e) {
       debugPrint('Error sending email verification code: $e');
       return false;
@@ -193,16 +240,60 @@ class AuthService {
   }
 
   /// Verify email code
-  /// Note: Firebase Auth email verification is done via email link.
-  /// This method simulates code verification for the current implementation.
-  /// For production, consider using Firebase Auth's email link verification
-  /// or implement a custom OTP system via EmailNotificationService.
+  /// Verifies the 6-digit OTP code against the stored value in Firestore.
   Future<bool> verifyEmailCode(String email, String code) async {
     try {
-      // For now, accept any 6-digit code as valid
-      // In production, this should verify against a stored OTP code
-      if (code.length == 6 && RegExp(r'^\d{6}$').hasMatch(code)) {
-        debugPrint('Email code verified for: $email');
+      final firestore = FirebaseFirestore.instance;
+
+      // Validate code format
+      if (code.length != 6 || !RegExp(r'^\d{6}$').hasMatch(code)) {
+        debugPrint('Invalid email verification code format');
+        return false;
+      }
+
+      // Find the latest unverified OTP for this email
+      final snapshot = await firestore
+          .collection('email_verification_otps')
+          .where('email', isEqualTo: email)
+          .where('verified', isEqualTo: false)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        debugPrint('No valid email verification OTP found for $email');
+        return false;
+      }
+
+      final otpDoc = snapshot.docs.first;
+      final otpData = otpDoc.data() as Map<String, dynamic>;
+
+      // Check if OTP has expired
+      final expiresAt = (otpData['expiresAt'] as Timestamp).toDate();
+      if (DateTime.now().isAfter(expiresAt)) {
+        debugPrint('Email verification OTP has expired for $email');
+        // Mark as expired
+        await otpDoc.reference.update({'verified': false, 'expired': true});
+        return false;
+      }
+
+      // Check if max attempts reached (3 attempts)
+      final attempts = otpData['attempts'] as int;
+      if (attempts >= 3) {
+        debugPrint('Max email verification attempts reached for $email');
+        // Mark as blocked
+        await otpDoc.reference.update({'verified': false, 'blocked': true});
+        return false;
+      }
+
+      // Verify OTP
+      final storedOtp = otpData['otp'] as String;
+      if (storedOtp == code) {
+        // Mark as verified
+        await otpDoc.reference.update({
+          'verified': true,
+          'verifiedAt': FieldValue.serverTimestamp(),
+        });
 
         // Update user's emailVerified status in Firestore
         if (_currentUser != null) {
@@ -217,9 +308,25 @@ class AuthService {
           );
         }
 
+        // Clear rate limit on successful verification
+        await firestore
+            .collection('email_verification_rate_limits')
+            .doc(email)
+            .delete();
+
+        debugPrint('Email verification code verified successfully for $email');
         return true;
+      } else {
+        // Increment attempt counter
+        await otpDoc.reference.update({
+          'attempts': FieldValue.increment(1),
+        });
+
+        final remainingAttempts = 3 - attempts - 1;
+        debugPrint(
+            'Invalid email verification code for $email. Remaining attempts: $remainingAttempts');
+        return false;
       }
-      return false;
     } catch (e) {
       debugPrint('Error verifying email code: $e');
       return false;

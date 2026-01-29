@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../config/integrations_config.dart';
 import '../models/payment_transaction_model.dart';
@@ -100,7 +101,9 @@ class PaymentService {
 
       if (snap.docs.isEmpty) return null;
       return PaymentTransactionModel.fromMap(snap.docs.first.data());
-    } catch (_) {
+    } catch (e) {
+      debugPrint(
+          'PaymentService: Error getting active transaction for booking: $e');
       return null;
     }
   }
@@ -153,7 +156,8 @@ class PaymentService {
       );
 
       return regenerated;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('PaymentService: Error getting stored payment URL: $e');
       return null;
     }
   }
@@ -264,6 +268,8 @@ class PaymentService {
         paymentUrl: paymentUrl,
       );
     } catch (e) {
+      debugPrint(
+          'PaymentService: Error initiating Dragonpay booking payment: $e');
       return null;
     }
   }
@@ -382,7 +388,9 @@ class PaymentService {
       final updatedData = updated.data();
       if (updatedData == null) return null;
       return PaymentTransactionModel.fromMap(updatedData);
-    } catch (_) {
+    } catch (e) {
+      debugPrint(
+          'PaymentService: Error refreshing Dragonpay transaction status: $e');
       return null;
     }
   }
@@ -401,7 +409,8 @@ class PaymentService {
         if (transactionId.isEmpty) continue;
         await refreshDragonpayTransactionStatus(transactionId: transactionId);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('PaymentService: Error reconciling pending transactions: $e');
       return;
     }
   }
@@ -452,6 +461,7 @@ class PaymentService {
 
       return true;
     } catch (e) {
+      debugPrint('PaymentService: Error adding payment method: $e');
       return false;
     }
   }
@@ -492,6 +502,7 @@ class PaymentService {
       await docRef.update(updateData);
       return true;
     } catch (e) {
+      debugPrint('PaymentService: Error updating payment method: $e');
       return false;
     }
   }
@@ -520,6 +531,7 @@ class PaymentService {
 
       return true;
     } catch (e) {
+      debugPrint('PaymentService: Error setting default payment method: $e');
       return false;
     }
   }
@@ -553,6 +565,7 @@ class PaymentService {
       await docRef.delete();
       return true;
     } catch (e) {
+      debugPrint('PaymentService: Error deleting payment method: $e');
       return false;
     }
   }
@@ -573,6 +586,7 @@ class PaymentService {
 
       return PaymentMethod.fromMap(snapshot.docs.first.data());
     } catch (e) {
+      debugPrint('PaymentService: Error getting default payment method: $e');
       return null;
     }
   }

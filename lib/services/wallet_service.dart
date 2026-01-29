@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class WalletTransaction {
   final String id;
@@ -123,6 +124,7 @@ class WalletService {
 
       return true;
     } catch (e) {
+      debugPrint('WalletService: Error topping up wallet: $e');
       return false;
     }
   }
@@ -184,6 +186,7 @@ class WalletService {
 
       return true;
     } catch (e) {
+      debugPrint('WalletService: Error deducting from wallet: $e');
       return false;
     }
   }
@@ -240,6 +243,7 @@ class WalletService {
 
       return true;
     } catch (e) {
+      debugPrint('WalletService: Error adding earnings: $e');
       return false;
     }
   }
@@ -257,6 +261,7 @@ class WalletService {
       final userData = userSnapshot.data()!;
       return (userData['walletBalance'] as num?)?.toDouble() ?? 0.0;
     } catch (e) {
+      debugPrint('WalletService: Error getting wallet balance: $e');
       return 0.0;
     }
   }
@@ -274,6 +279,7 @@ class WalletService {
       final riderData = riderSnapshot.data()!;
       return (riderData['totalEarnings'] as num?)?.toDouble() ?? 0.0;
     } catch (e) {
+      debugPrint('WalletService: Error getting rider earnings: $e');
       return 0.0;
     }
   }

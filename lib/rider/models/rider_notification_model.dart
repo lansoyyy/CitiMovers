@@ -73,8 +73,8 @@ class RiderNotificationModel {
     );
   }
 
-  // Convert to JSON
-  Map<String, dynamic> toJson() {
+  // Convert to Map (standardized naming)
+  Map<String, dynamic> toMap() {
     return {
       'id': id,
       'title': title,
@@ -94,29 +94,36 @@ class RiderNotificationModel {
     };
   }
 
-  // Create from JSON
-  factory RiderNotificationModel.fromJson(Map<String, dynamic> json) {
+  // Create from Map (standardized naming)
+  factory RiderNotificationModel.fromMap(Map<String, dynamic> map) {
     return RiderNotificationModel(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      message: json['message'] as String,
-      time: json['time'] as String,
+      id: map['id'] as String,
+      title: map['title'] as String,
+      message: map['message'] as String,
+      time: map['time'] as String,
       type: RiderNotificationType.values.firstWhere(
-        (e) => e.toString() == json['type'],
+        (e) => e.toString() == map['type'],
         orElse: () => RiderNotificationType.systemAlert,
       ),
-      icon: IconData(json['icon'] as int, fontFamily: 'MaterialIcons'),
-      color: Color(json['color'] as int),
-      isUnread: json['isUnread'] as bool,
-      bookingId: json['bookingId'] as String?,
-      customerId: json['customerId'] as String?,
-      customerName: json['customerName'] as String?,
-      pickupAddress: json['pickupAddress'] as String?,
-      deliveryAddress: json['deliveryAddress'] as String?,
-      amount: (json['amount'] as num?)?.toDouble(),
-      metadata: json['metadata'] as Map<String, dynamic>?,
+      icon: IconData(map['icon'] as int, fontFamily: 'MaterialIcons'),
+      color: Color(map['color'] as int),
+      isUnread: map['isUnread'] as bool,
+      bookingId: map['bookingId'] as String?,
+      customerId: map['customerId'] as String?,
+      customerName: map['customerName'] as String?,
+      pickupAddress: map['pickupAddress'] as String?,
+      deliveryAddress: map['deliveryAddress'] as String?,
+      amount: (map['amount'] as num?)?.toDouble(),
+      metadata: map['metadata'] as Map<String, dynamic>?,
     );
   }
+
+  // Backward compatibility: toJson (alias for toMap)
+  Map<String, dynamic> toJson() => toMap();
+
+  // Backward compatibility: fromJson (alias for fromMap)
+  factory RiderNotificationModel.fromJson(Map<String, dynamic> json) =>
+      RiderNotificationModel.fromMap(json);
 
   @override
   String toString() {

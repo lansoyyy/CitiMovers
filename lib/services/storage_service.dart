@@ -4,6 +4,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import '../utils/retry_utility.dart';
 
 /// Storage Service for handling file uploads
 /// Integrated with Firebase Storage
@@ -62,14 +63,14 @@ class StorageService {
     try {
       // Validate image file
       if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
-        print('Invalid image file');
+        debugPrint('StorageService: Invalid image file');
         return null;
       }
 
       final compressed = await _compressImageIfNeeded(imageFile);
 
       if (!validateImageFile(compressed)) {
-        print('Invalid compressed image file');
+        debugPrint('StorageService: Invalid compressed image file');
         return null;
       }
 
@@ -77,17 +78,19 @@ class StorageService {
       final fileName = 'profile_$userId$fileExtension';
       final storageRef = _storage.ref().child('profile_photos').child(fileName);
 
-      final uploadTask = await storageRef.putFile(
-        compressed,
-        SettableMetadata(
-          contentType: _getContentType(fileExtension),
-        ),
-      );
+      final uploadTask = await RetryUtility.retryUploadOperation(() async {
+        return await storageRef.putFile(
+          compressed,
+          SettableMetadata(
+            contentType: _getContentType(fileExtension),
+          ),
+        );
+      });
 
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      print('Error uploading profile photo: $e');
+      debugPrint('StorageService: Error uploading profile photo: $e');
       return null;
     }
   }
@@ -113,7 +116,7 @@ class StorageService {
 
       return true;
     } catch (e) {
-      print('Error deleting profile photo: $e');
+      debugPrint('StorageService: Error deleting profile photo: $e');
       return false;
     }
   }
@@ -127,14 +130,14 @@ class StorageService {
     try {
       // Validate image file
       if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
-        print('Invalid image file');
+        debugPrint('StorageService: Invalid image file');
         return null;
       }
 
       final compressed = await _compressImageIfNeeded(imageFile);
 
       if (!validateImageFile(compressed)) {
-        print('Invalid compressed image file');
+        debugPrint('StorageService: Invalid compressed image file');
         return null;
       }
 
@@ -147,17 +150,19 @@ class StorageService {
           .child(bookingId)
           .child(fileName);
 
-      final uploadTask = await storageRef.putFile(
-        compressed,
-        SettableMetadata(
-          contentType: _getContentType(fileExtension),
-        ),
-      );
+      final uploadTask = await RetryUtility.retryUploadOperation(() async {
+        return await storageRef.putFile(
+          compressed,
+          SettableMetadata(
+            contentType: _getContentType(fileExtension),
+          ),
+        );
+      });
 
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      print('Error uploading delivery photo: $e');
+      debugPrint('StorageService: Error uploading delivery photo: $e');
       return null;
     }
   }
@@ -170,14 +175,14 @@ class StorageService {
     try {
       // Validate image file
       if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
-        print('Invalid image file');
+        debugPrint('StorageService: Invalid image file');
         return null;
       }
 
       final compressed = await _compressImageIfNeeded(imageFile);
 
       if (!validateImageFile(compressed)) {
-        print('Invalid compressed image file');
+        debugPrint('StorageService: Invalid compressed image file');
         return null;
       }
 
@@ -190,17 +195,19 @@ class StorageService {
           .child(complaintId)
           .child(fileName);
 
-      final uploadTask = await storageRef.putFile(
-        compressed,
-        SettableMetadata(
-          contentType: _getContentType(fileExtension),
-        ),
-      );
+      final uploadTask = await RetryUtility.retryUploadOperation(() async {
+        return await storageRef.putFile(
+          compressed,
+          SettableMetadata(
+            contentType: _getContentType(fileExtension),
+          ),
+        );
+      });
 
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      print('Error uploading complaint photo: $e');
+      debugPrint('StorageService: Error uploading complaint photo: $e');
       return null;
     }
   }
@@ -215,14 +222,14 @@ class StorageService {
     try {
       // Validate image file
       if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
-        print('Invalid image file');
+        debugPrint('StorageService: Invalid image file');
         return null;
       }
 
       final compressed = await _compressImageIfNeeded(imageFile);
 
       if (!validateImageFile(compressed)) {
-        print('Invalid compressed image file');
+        debugPrint('StorageService: Invalid compressed image file');
         return null;
       }
 
@@ -235,17 +242,19 @@ class StorageService {
           .child(riderId)
           .child(fileName);
 
-      final uploadTask = await storageRef.putFile(
-        compressed,
-        SettableMetadata(
-          contentType: _getContentType(fileExtension),
-        ),
-      );
+      final uploadTask = await RetryUtility.retryUploadOperation(() async {
+        return await storageRef.putFile(
+          compressed,
+          SettableMetadata(
+            contentType: _getContentType(fileExtension),
+          ),
+        );
+      });
 
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      print('Error uploading rider document: $e');
+      debugPrint('StorageService: Error uploading rider document: $e');
       return null;
     }
   }
@@ -259,14 +268,14 @@ class StorageService {
     try {
       // Validate image file
       if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
-        print('Invalid image file');
+        debugPrint('StorageService: Invalid image file');
         return null;
       }
 
       final compressed = await _compressImageIfNeeded(imageFile);
 
       if (!validateImageFile(compressed)) {
-        print('Invalid compressed image file');
+        debugPrint('StorageService: Invalid compressed image file');
         return null;
       }
 
@@ -276,17 +285,19 @@ class StorageService {
       final storageRef =
           _storage.ref().child('vehicle_photos').child(riderId).child(fileName);
 
-      final uploadTask = await storageRef.putFile(
-        compressed,
-        SettableMetadata(
-          contentType: _getContentType(fileExtension),
-        ),
-      );
+      final uploadTask = await RetryUtility.retryUploadOperation(() async {
+        return await storageRef.putFile(
+          compressed,
+          SettableMetadata(
+            contentType: _getContentType(fileExtension),
+          ),
+        );
+      });
 
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      print('Error uploading vehicle photo: $e');
+      debugPrint('StorageService: Error uploading vehicle photo: $e');
       return null;
     }
   }
@@ -299,7 +310,7 @@ class StorageService {
     try {
       // Validate image file
       if (!validateImageFile(imageFile, maxSizeMB: 50.0)) {
-        print('Invalid image file');
+        debugPrint('StorageService: Invalid image file');
         return null;
       }
 
@@ -311,7 +322,7 @@ class StorageService {
       );
 
       if (!validateImageFile(compressed, maxSizeMB: 10.0)) {
-        print('Invalid compressed image file');
+        debugPrint('StorageService: Invalid compressed image file');
         return null;
       }
 
@@ -320,17 +331,19 @@ class StorageService {
       final fileName = 'banner_$timestamp$fileExtension';
       final storageRef = _storage.ref().child('promo_banners').child(fileName);
 
-      final uploadTask = await storageRef.putFile(
-        compressed,
-        SettableMetadata(
-          contentType: _getContentType(fileExtension),
-        ),
-      );
+      final uploadTask = await RetryUtility.retryUploadOperation(() async {
+        return await storageRef.putFile(
+          compressed,
+          SettableMetadata(
+            contentType: _getContentType(fileExtension),
+          ),
+        );
+      });
 
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      print('Error uploading promo banner image: $e');
+      debugPrint('StorageService: Error uploading promo banner image: $e');
       return null;
     }
   }
@@ -342,7 +355,7 @@ class StorageService {
       await storageRef.delete();
       return true;
     } catch (e) {
-      print('Error deleting file: $e');
+      debugPrint('StorageService: Error deleting file: $e');
       return false;
     }
   }
@@ -351,9 +364,11 @@ class StorageService {
   Future<String?> getDownloadUrl(String storagePath) async {
     try {
       final storageRef = _storage.ref(storagePath);
-      return await storageRef.getDownloadURL();
+      return await RetryUtility.retryNetworkOperation(
+        () => storageRef.getDownloadURL(),
+      );
     } catch (e) {
-      print('Error getting download URL: $e');
+      debugPrint('StorageService: Error getting download URL: $e');
       return null;
     }
   }
@@ -369,7 +384,8 @@ class StorageService {
     // Check file size
     final sizeMB = getFileSizeInMB(file);
     if (sizeMB > maxSizeMB) {
-      print('File size exceeds maximum allowed size of $maxSizeMB MB');
+      debugPrint(
+          'StorageService: File size exceeds maximum allowed size of $maxSizeMB MB');
       return false;
     }
 
@@ -377,7 +393,7 @@ class StorageService {
     final extension = file.path.split('.').last.toLowerCase();
     final validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
     if (!validExtensions.contains(extension)) {
-      print('Invalid file extension: $extension');
+      debugPrint('StorageService: Invalid file extension: $extension');
       return false;
     }
 
@@ -416,7 +432,7 @@ class StorageService {
       final storageRef = _storage.ref(path);
       return await storageRef.listAll();
     } catch (e) {
-      print('Error listing files: $e');
+      debugPrint('StorageService: Error listing files: $e');
       rethrow;
     }
   }
@@ -438,7 +454,7 @@ class StorageService {
 
       return true;
     } catch (e) {
-      print('Error deleting directory: $e');
+      debugPrint('StorageService: Error deleting directory: $e');
       return false;
     }
   }
@@ -448,17 +464,21 @@ class StorageService {
     try {
       final storageRef =
           _storage.ref().child('delivery_photos').child(bookingId);
-      final result = await storageRef.listAll();
+      final result = await RetryUtility.retryNetworkOperation(
+        () => storageRef.listAll(),
+      );
 
       final photoUrls = <String>[];
       for (final item in result.items) {
-        final url = await item.getDownloadURL();
+        final url = await RetryUtility.retryNetworkOperation(
+          () => item.getDownloadURL(),
+        );
         photoUrls.add(url);
       }
 
       return photoUrls;
     } catch (e) {
-      print('Error getting delivery photos: $e');
+      debugPrint('StorageService: Error getting delivery photos: $e');
       return [];
     }
   }
@@ -469,7 +489,9 @@ class StorageService {
     try {
       final storageRef =
           _storage.ref().child('delivery_photos').child(bookingId);
-      final result = await storageRef.listAll();
+      final result = await RetryUtility.retryNetworkOperation(
+        () => storageRef.listAll(),
+      );
 
       final photosByStage = <String, List<String>>{
         'start_loading': [],
@@ -480,7 +502,9 @@ class StorageService {
       };
 
       for (final item in result.items) {
-        final url = await item.getDownloadURL();
+        final url = await RetryUtility.retryNetworkOperation(
+          () => item.getDownloadURL(),
+        );
         final name = item.name.toLowerCase();
 
         if (name.contains('start_loading')) {
@@ -498,7 +522,7 @@ class StorageService {
 
       return photosByStage;
     } catch (e) {
-      print('Error getting delivery photos by stage: $e');
+      debugPrint('StorageService: Error getting delivery photos by stage: $e');
       return {};
     }
   }

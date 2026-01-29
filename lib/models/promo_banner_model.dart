@@ -27,27 +27,58 @@ class PromoBanner {
     required this.updatedAt,
   });
 
-  factory PromoBanner.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  // Standardized naming: fromMap
+  factory PromoBanner.fromMap(Map<String, dynamic> map) {
     return PromoBanner(
-      id: doc.id,
-      title: data['title'] ?? '',
-      description: data['description'] ?? '',
-      imageUrl: data['imageUrl'] ?? '',
-      actionUrl: data['actionUrl'],
-      isActive: data['isActive'] ?? true,
-      startDate: data['startDate'] != null
-          ? (data['startDate'] as Timestamp).toDate()
+      id: map['id'] as String,
+      title: map['title'] ?? '',
+      description: map['description'] ?? '',
+      imageUrl: map['imageUrl'] ?? '',
+      actionUrl: map['actionUrl'] as String?,
+      isActive: map['isActive'] as bool? ?? true,
+      startDate: map['startDate'] != null
+          ? (map['startDate'] is Timestamp
+              ? (map['startDate'] as Timestamp).toDate()
+              : DateTime.parse(map['startDate'] as String))
           : null,
-      endDate: data['endDate'] != null
-          ? (data['endDate'] as Timestamp).toDate()
+      endDate: map['endDate'] != null
+          ? (map['endDate'] is Timestamp
+              ? (map['endDate'] as Timestamp).toDate()
+              : DateTime.parse(map['endDate'] as String))
           : null,
-      displayOrder: data['displayOrder'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      displayOrder: map['displayOrder'] as int? ?? 0,
+      createdAt: map['createdAt'] is Timestamp
+          ? (map['createdAt'] as Timestamp).toDate()
+          : DateTime.parse(map['createdAt'] as String),
+      updatedAt: map['updatedAt'] is Timestamp
+          ? (map['updatedAt'] as Timestamp).toDate()
+          : DateTime.parse(map['updatedAt'] as String),
     );
   }
 
+  // Standardized naming: toMap
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'imageUrl': imageUrl,
+      'actionUrl': actionUrl,
+      'isActive': isActive,
+      'startDate': startDate?.toIso8601String(),
+      'endDate': endDate?.toIso8601String(),
+      'displayOrder': displayOrder,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  // Backward compatibility: fromFirestore
+  factory PromoBanner.fromFirestore(DocumentSnapshot doc) {
+    return PromoBanner.fromMap(doc.data() as Map<String, dynamic>);
+  }
+
+  // Backward compatibility: toFirestore
   Map<String, dynamic> toFirestore() {
     return {
       'title': title,

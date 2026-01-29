@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/driver_model.dart';
 
 /// Driver Service for managing driver-related operations
@@ -24,7 +25,7 @@ class DriverService {
       }
       return null;
     } catch (e) {
-      print('Error fetching driver: $e');
+      debugPrint('DriverService: Error fetching driver: $e');
       return null;
     }
   }
@@ -76,7 +77,7 @@ class DriverService {
       });
       return true;
     } catch (e) {
-      print('Error updating driver availability: $e');
+      debugPrint('DriverService: Error updating driver availability: $e');
       return false;
     }
   }
@@ -95,7 +96,7 @@ class DriverService {
       });
       return true;
     } catch (e) {
-      print('Error updating driver location: $e');
+      debugPrint('DriverService: Error updating driver location: $e');
       return false;
     }
   }
@@ -122,7 +123,7 @@ class DriverService {
       });
       return true;
     } catch (e) {
-      print('Error updating driver rating: $e');
+      debugPrint('DriverService: Error updating driver rating: $e');
       return false;
     }
   }

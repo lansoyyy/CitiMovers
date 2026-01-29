@@ -85,8 +85,8 @@ class RiderModel {
     );
   }
 
-  // Convert to JSON
-  Map<String, dynamic> toJson() {
+  // Convert to Map for Firestore (standardized naming)
+  Map<String, dynamic> toMap() {
     return {
       'riderId': riderId,
       'name': name,
@@ -109,8 +109,13 @@ class RiderModel {
     };
   }
 
-  // Create from JSON
+  // Create from Map (standardized naming - alias for backward compatibility)
   factory RiderModel.fromJson(Map<String, dynamic> json) {
+    return RiderModel.fromMap(json);
+  }
+
+  // Create from Map (standardized naming)
+  factory RiderModel.fromMap(Map<String, dynamic> json) {
     DateTime parseDateTime(dynamic value) {
       if (value is DateTime) return value;
       if (value is Timestamp) return value.toDate();

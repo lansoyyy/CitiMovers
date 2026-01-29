@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/saved_location_model.dart';
 
 class SavedLocationService {
@@ -29,11 +30,17 @@ class SavedLocationService {
 
   // Get saved location by ID
   Future<SavedLocation?> getSavedLocationById(String locationId) async {
-    final doc = await _collection.doc(locationId).get();
-    if (doc.exists) {
-      return SavedLocation.fromFirestore(doc);
+    try {
+      final doc = await _collection.doc(locationId).get();
+      if (doc.exists) {
+        return SavedLocation.fromFirestore(doc);
+      }
+      return null;
+    } catch (e) {
+      debugPrint(
+          'SavedLocationService: Error getting saved location by ID: $e');
+      return null;
     }
-    return null;
   }
 
   // Add new saved location
@@ -42,7 +49,7 @@ class SavedLocationService {
       final docRef = await _collection.add(location.toFirestore());
       return docRef.id;
     } catch (e) {
-      print('Error adding saved location: $e');
+      debugPrint('SavedLocationService: Error adding saved location: $e');
       return null;
     }
   }
@@ -53,7 +60,7 @@ class SavedLocationService {
       await _collection.doc(location.id).update(location.toFirestore());
       return true;
     } catch (e) {
-      print('Error updating saved location: $e');
+      debugPrint('SavedLocationService: Error updating saved location: $e');
       return false;
     }
   }
@@ -64,7 +71,7 @@ class SavedLocationService {
       await _collection.doc(locationId).delete();
       return true;
     } catch (e) {
-      print('Error deleting saved location: $e');
+      debugPrint('SavedLocationService: Error deleting saved location: $e');
       return false;
     }
   }
