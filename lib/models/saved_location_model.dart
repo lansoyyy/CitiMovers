@@ -5,6 +5,8 @@ class SavedLocation {
   final String userId;
   final String name;
   final String address;
+  final String? city;
+  final String? postalCode;
   final double latitude;
   final double longitude;
   final String? type; // 'home', 'office', 'other'
@@ -16,6 +18,8 @@ class SavedLocation {
     required this.userId,
     required this.name,
     required this.address,
+    this.city,
+    this.postalCode,
     required this.latitude,
     required this.longitude,
     this.type,
@@ -30,6 +34,8 @@ class SavedLocation {
       userId: map['userId'] ?? '',
       name: map['name'] ?? '',
       address: map['address'] ?? '',
+      city: map['city'] as String?,
+      postalCode: map['postalCode'] as String?,
       latitude: (map['latitude'] as num).toDouble(),
       longitude: (map['longitude'] as num).toDouble(),
       type: map['type'] as String?,
@@ -49,6 +55,8 @@ class SavedLocation {
       'userId': userId,
       'name': name,
       'address': address,
+      'city': city,
+      'postalCode': postalCode,
       'latitude': latitude,
       'longitude': longitude,
       'type': type,
@@ -59,7 +67,9 @@ class SavedLocation {
 
   // Backward compatibility: fromFirestore
   factory SavedLocation.fromFirestore(DocumentSnapshot doc) {
-    return SavedLocation.fromMap(doc.data() as Map<String, dynamic>);
+    final data = doc.data() as Map<String, dynamic>;
+    data['id'] = doc.id; // Add document ID to the map
+    return SavedLocation.fromMap(data);
   }
 
   // Backward compatibility: toFirestore
@@ -68,6 +78,8 @@ class SavedLocation {
       'userId': userId,
       'name': name,
       'address': address,
+      'city': city,
+      'postalCode': postalCode,
       'latitude': latitude,
       'longitude': longitude,
       'type': type,
@@ -81,6 +93,8 @@ class SavedLocation {
     String? userId,
     String? name,
     String? address,
+    String? city,
+    String? postalCode,
     double? latitude,
     double? longitude,
     String? type,
@@ -92,6 +106,8 @@ class SavedLocation {
       userId: userId ?? this.userId,
       name: name ?? this.name,
       address: address ?? this.address,
+      city: city ?? this.city,
+      postalCode: postalCode ?? this.postalCode,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       type: type ?? this.type,

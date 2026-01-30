@@ -18,6 +18,7 @@ import '../../services/saved_location_service.dart';
 import '../../services/promo_banner_service.dart';
 import '../../services/booking_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/maps_service.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
@@ -2295,7 +2296,15 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
   final _latitudeController = TextEditingController();
   final _longitudeController = TextEditingController();
 
+  final MapsService _mapsService = MapsService();
+  final LayerLink _layerLink = LayerLink();
+  final FocusNode _addressFocusNode = FocusNode();
+
   String _selectedType = 'home';
+  List<PlaceSuggestion> _placeSuggestions = [];
+  bool _isSearchingPlaces = false;
+  bool _showSuggestions = false;
+  Timer? _debounceTimer;
 
   final List<Map<String, dynamic>> _typeOptions = [
     {'icon': Icons.home, 'name': 'Home', 'value': 'home'},
@@ -2316,7 +2325,60 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
     _postalCodeController.dispose();
     _latitudeController.dispose();
     _longitudeController.dispose();
+    _addressFocusNode.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  /// Search for places using Google Places Autocomplete
+  Future<void> _searchPlaces(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _placeSuggestions = [];
+        _showSuggestions = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearchingPlaces = true);
+
+    final suggestions = await _mapsService.searchPlaces(query);
+
+    setState(() {
+      _placeSuggestions = suggestions;
+      _isSearchingPlaces = false;
+      _showSuggestions = suggestions.isNotEmpty;
+    });
+  }
+
+  /// Handle place selection and populate all fields
+  Future<void> _selectPlace(PlaceSuggestion suggestion) async {
+    setState(() {
+      _showSuggestions = false;
+      _isSearchingPlaces = true;
+    });
+
+    final locationDetails =
+        await _mapsService.getPlaceDetails(suggestion.placeId);
+
+    setState(() => _isSearchingPlaces = false);
+
+    if (locationDetails != null) {
+      _addressController.text = locationDetails.address;
+      _cityController.text = locationDetails.city ?? '';
+      _postalCodeController.text = locationDetails.postalCode ?? '';
+      _latitudeController.text = locationDetails.latitude.toString();
+      _longitudeController.text = locationDetails.longitude.toString();
+      _addressFocusNode.unfocus();
+    }
+  }
+
+  /// Debounced search handler
+  void _onAddressChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _searchPlaces(query);
+    });
   }
 
   @override
@@ -2331,601 +2393,743 @@ class __AddLocationDialogState extends State<_AddLocationDialog> {
           color: AppColors.white,
           borderRadius: BorderRadius.circular(24),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primaryBlue,
-                        AppColors.primaryBlue.withOpacity(0.8),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.add_location_alt,
-                    color: AppColors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Add New Location',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontFamily: 'Bold',
-                          color: AppColors.textPrimary,
-                          height: 1.2,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Save a location for quick access',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Regular',
-                          color: AppColors.textSecondary,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.lightGrey.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(10),
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primaryBlue,
+                          AppColors.primaryBlue.withOpacity(0.8),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
-                      Icons.close,
-                      color: AppColors.textSecondary,
-                      size: 20,
+                      Icons.add_location_alt,
+                      color: AppColors.white,
+                      size: 24,
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Form
-            Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Location Name
-                  const Text(
-                    'Location Name',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Medium',
-                      color: AppColors.textPrimary,
-                      height: 1.2,
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add New Location',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                            height: 1.2,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Save a location for quick access',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Regular',
+                            color: AppColors.textSecondary,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: InputDecoration(
-                      hintText: 'e.g., Home, Work, Gym',
-                      filled: true,
-                      fillColor: AppColors.scaffoldBackground,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: AppColors.lightGrey.withOpacity(0.5),
-                          width: 1,
-                        ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.lightGrey.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: AppColors.lightGrey.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: AppColors.primaryBlue.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+                      child: const Icon(
+                        Icons.close,
+                        color: AppColors.textSecondary,
+                        size: 20,
                       ),
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter a location name';
-                      }
-                      return null;
-                    },
                   ),
+                ],
+              ),
 
-                  const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-                  // Address
-                  const Text(
-                    'Address',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Medium',
-                      color: AppColors.textPrimary,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _addressController,
-                    decoration: InputDecoration(
-                      hintText: 'Enter complete address',
-                      filled: true,
-                      fillColor: AppColors.scaffoldBackground,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: AppColors.lightGrey.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: AppColors.lightGrey.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: AppColors.primaryRed.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+              // Form
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Location Name
+                    const Text(
+                      'Location Name',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.2,
                       ),
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter an address';
-                      }
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // City and Postal Code in a row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'City',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextFormField(
-                              controller: _cityController,
-                              decoration: InputDecoration(
-                                hintText: 'City',
-                                filled: true,
-                                fillColor: AppColors.scaffoldBackground,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color:
-                                        AppColors.primaryBlue.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            ),
-                          ],
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        hintText: 'e.g., Home, Work, Gym',
+                        filled: true,
+                        fillColor: AppColors.scaffoldBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: AppColors.lightGrey.withOpacity(0.5),
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: AppColors.lightGrey.withOpacity(0.5),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: AppColors.primaryBlue.withOpacity(0.5),
+                            width: 1,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Postal Code',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextFormField(
-                              controller: _postalCodeController,
-                              decoration: InputDecoration(
-                                hintText: 'Postal Code',
-                                filled: true,
-                                fillColor: AppColors.scaffoldBackground,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color:
-                                        AppColors.primaryBlue.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Latitude and Longitude
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Latitude',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextFormField(
-                              controller: _latitudeController,
-                              keyboardType: TextInputType.numberWithOptions(
-                                  decimal: true),
-                              decoration: InputDecoration(
-                                hintText: '14.5995',
-                                filled: true,
-                                fillColor: AppColors.scaffoldBackground,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color:
-                                        AppColors.primaryBlue.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Longitude',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextFormField(
-                              controller: _longitudeController,
-                              keyboardType: TextInputType.numberWithOptions(
-                                  decimal: true),
-                              decoration: InputDecoration(
-                                hintText: '120.9842',
-                                filled: true,
-                                fillColor: AppColors.scaffoldBackground,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: AppColors.lightGrey.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color:
-                                        AppColors.primaryBlue.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Location Type Selection
-                  const Text(
-                    'Location Type',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Medium',
-                      color: AppColors.textPrimary,
-                      height: 1.2,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter a location name';
+                        }
+                        return null;
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _typeOptions.map((option) {
-                      final isSelected = _selectedType == option['value'];
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedType = option['value'];
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primaryBlue
-                                : AppColors.white,
+
+                    const SizedBox(height: 20),
+
+                    // Address with Autocomplete
+                    const Text(
+                      'Address',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    CompositedTransformTarget(
+                      link: _layerLink,
+                      child: TextFormField(
+                        controller: _addressController,
+                        focusNode: _addressFocusNode,
+                        decoration: InputDecoration(
+                          hintText: 'Search for address...',
+                          filled: true,
+                          fillColor: AppColors.scaffoldBackground,
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppColors.primaryBlue
-                                  : AppColors.lightGrey.withOpacity(0.5),
+                            borderSide: BorderSide(
+                              color: AppColors.lightGrey.withOpacity(0.5),
                               width: 1,
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: AppColors.lightGrey.withOpacity(0.5),
+                              width: 1,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: AppColors.primaryRed.withOpacity(0.5),
+                              width: 1,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          suffixIcon: _isSearchingPlaces
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        AppColors.primaryRed,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        onChanged: _onAddressChanged,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter an address';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+
+                    // Place Suggestions Overlay
+                    if (_showSuggestions)
+                      CompositedTransformFollower(
+                        link: _layerLink,
+                        showWhenUnlinked: false,
+                        offset: const Offset(0, 60),
+                        child: Material(
+                          elevation: 8,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            constraints: BoxConstraints(
+                              maxHeight: 250,
+                              minWidth: MediaQuery.of(context).size.width - 80,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _placeSuggestions.length,
+                              itemBuilder: (context, index) {
+                                final suggestion = _placeSuggestions[index];
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _selectPlace(suggestion),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: AppColors.lightGrey
+                                                .withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.location_on_outlined,
+                                            size: 18,
+                                            color: AppColors.primaryRed,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  suggestion.mainText,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontFamily: 'Medium',
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                    height: 1.2,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                                if (suggestion
+                                                    .secondaryText.isNotEmpty)
+                                                  Text(
+                                                    suggestion.secondaryText,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      fontFamily: 'Regular',
+                                                      color: AppColors
+                                                          .textSecondary,
+                                                      height: 1.2,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 20),
+
+                    // City and Postal Code in a row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                option['icon'],
-                                size: 16,
-                                color: isSelected
-                                    ? AppColors.white
-                                    : AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                option['name'],
+                              const Text(
+                                'City',
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 14,
                                   fontFamily: 'Medium',
+                                  color: AppColors.textPrimary,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _cityController,
+                                decoration: InputDecoration(
+                                  hintText: 'City',
+                                  filled: true,
+                                  fillColor: AppColors.scaffoldBackground,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.primaryBlue
+                                          .withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Postal Code',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                  color: AppColors.textPrimary,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _postalCodeController,
+                                decoration: InputDecoration(
+                                  hintText: 'Postal Code',
+                                  filled: true,
+                                  fillColor: AppColors.scaffoldBackground,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.primaryBlue
+                                          .withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Latitude and Longitude
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Latitude',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                  color: AppColors.textPrimary,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _latitudeController,
+                                keyboardType: TextInputType.numberWithOptions(
+                                    decimal: true),
+                                decoration: InputDecoration(
+                                  hintText: '14.5995',
+                                  filled: true,
+                                  fillColor: AppColors.scaffoldBackground,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.primaryBlue
+                                          .withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Longitude',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                  color: AppColors.textPrimary,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _longitudeController,
+                                keyboardType: TextInputType.numberWithOptions(
+                                    decimal: true),
+                                decoration: InputDecoration(
+                                  hintText: '120.9842',
+                                  filled: true,
+                                  fillColor: AppColors.scaffoldBackground,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color:
+                                          AppColors.lightGrey.withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.primaryBlue
+                                          .withOpacity(0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Location Type Selection
+                    const Text(
+                      'Location Type',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _typeOptions.map((option) {
+                        final isSelected = _selectedType == option['value'];
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedType = option['value'];
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primaryBlue
+                                  : AppColors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.primaryBlue
+                                    : AppColors.lightGrey.withOpacity(0.5),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  option['icon'],
+                                  size: 16,
                                   color: isSelected
                                       ? AppColors.white
                                       : AppColors.textSecondary,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // Buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            'Cancel',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Medium',
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Container(
-                          height: 48,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primaryBlue,
-                                AppColors.primaryBlue.withOpacity(0.8),
+                                const SizedBox(width: 6),
+                                Text(
+                                  option['name'],
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'Medium',
+                                    color: isSelected
+                                        ? AppColors.white
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
                               ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
                             ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primaryBlue.withOpacity(0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
                           ),
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              if (_formKey.currentState!.validate()) {
-                                final userId =
-                                    AuthService().currentUser?.userId;
-                                if (userId == null) {
-                                  UIHelpers.showErrorToast(
-                                      'Please login first');
-                                  return;
-                                }
+                        );
+                      }).toList(),
+                    ),
 
-                                // Parse coordinates
-                                final latitude = double.tryParse(
-                                        _latitudeController.text.trim()) ??
-                                    14.5995;
-                                final longitude = double.tryParse(
-                                        _longitudeController.text.trim()) ??
-                                    120.9842;
+                    const SizedBox(height: 32),
 
-                                // Create new saved location
-                                final newLocation = app_models.SavedLocation(
-                                  id: '',
-                                  userId: userId,
-                                  name: _nameController.text.trim(),
-                                  address: _addressController.text.trim(),
-                                  latitude: latitude,
-                                  longitude: longitude,
-                                  type: _selectedType,
-                                  createdAt: DateTime.now(),
-                                  updatedAt: DateTime.now(),
-                                );
-
-                                // Save to Firestore
-                                final locationId = await SavedLocationService
-                                    .instance
-                                    .addSavedLocation(newLocation);
-
-                                if (locationId != null) {
-                                  Navigator.pop(context);
-                                  UIHelpers.showSuccessToast(
-                                      'Location "${newLocation.name}" added successfully');
-                                } else {
-                                  UIHelpers.showErrorToast(
-                                      'Failed to add location');
-                                }
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              foregroundColor: AppColors.white,
-                              elevation: 0,
-                              shadowColor: Colors.transparent,
+                    // Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
                             child: const Text(
-                              'Save',
+                              'Cancel',
                               style: TextStyle(
                                 fontSize: 16,
-                                fontFamily: 'Bold',
-                                color: AppColors.white,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primaryBlue,
+                                  AppColors.primaryBlue.withOpacity(0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryBlue.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                if (_formKey.currentState!.validate()) {
+                                  final userId =
+                                      AuthService().currentUser?.userId;
+                                  if (userId == null) {
+                                    UIHelpers.showErrorToast(
+                                        'Please login first');
+                                    return;
+                                  }
+
+                                  // Parse coordinates
+                                  final latitude = double.tryParse(
+                                          _latitudeController.text.trim()) ??
+                                      14.5995;
+                                  final longitude = double.tryParse(
+                                          _longitudeController.text.trim()) ??
+                                      120.9842;
+
+                                  // Create new saved location
+                                  final newLocation = app_models.SavedLocation(
+                                    id: '',
+                                    userId: userId,
+                                    name: _nameController.text.trim(),
+                                    address: _addressController.text.trim(),
+                                    city: _cityController.text.trim().isEmpty
+                                        ? null
+                                        : _cityController.text.trim(),
+                                    postalCode: _postalCodeController.text
+                                            .trim()
+                                            .isEmpty
+                                        ? null
+                                        : _postalCodeController.text.trim(),
+                                    latitude: latitude,
+                                    longitude: longitude,
+                                    type: _selectedType,
+                                    createdAt: DateTime.now(),
+                                    updatedAt: DateTime.now(),
+                                  );
+
+                                  // Save to Firestore
+                                  final locationId = await SavedLocationService
+                                      .instance
+                                      .addSavedLocation(newLocation);
+
+                                  if (locationId != null) {
+                                    Navigator.pop(context);
+                                    UIHelpers.showSuccessToast(
+                                        'Location "${newLocation.name}" added successfully');
+                                  } else {
+                                    UIHelpers.showErrorToast(
+                                        'Failed to add location');
+                                  }
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                foregroundColor: AppColors.white,
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Save',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontFamily: 'Bold',
+                                  color: AppColors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -1270,87 +1270,87 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
                 ],
 
                 // Secondary Actions Row
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          UIHelpers.showInfoToast(
-                              'Contact driver feature coming soon');
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(
-                            color: AppColors.primaryRed.withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.phone,
-                              size: 18,
-                              color: AppColors.primaryRed,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Contact',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.primaryRed,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          UIHelpers.showInfoToast(
-                              'Support feature coming soon');
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(
-                            color: AppColors.textHint.withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.support_agent,
-                              size: 18,
-                              color: AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Support',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                // Row(
+                //   children: [
+                //     Expanded(
+                //       child: OutlinedButton(
+                //         onPressed: () {
+                //           Navigator.pop(context);
+                //           UIHelpers.showInfoToast(
+                //               'Contact driver feature coming soon');
+                //         },
+                //         style: OutlinedButton.styleFrom(
+                //           padding: const EdgeInsets.symmetric(vertical: 16),
+                //           shape: RoundedRectangleBorder(
+                //             borderRadius: BorderRadius.circular(12),
+                //           ),
+                //           side: BorderSide(
+                //             color: AppColors.primaryRed.withOpacity(0.3),
+                //             width: 1,
+                //           ),
+                //         ),
+                //         child: Row(
+                //           mainAxisAlignment: MainAxisAlignment.center,
+                //           children: [
+                //             Icon(
+                //               Icons.phone,
+                //               size: 18,
+                //               color: AppColors.primaryRed,
+                //             ),
+                //             const SizedBox(width: 8),
+                //             Text(
+                //               'Contact',
+                //               style: TextStyle(
+                //                 fontSize: 14,
+                //                 fontFamily: 'Medium',
+                //                 color: AppColors.primaryRed,
+                //               ),
+                //             ),
+                //           ],
+                //         ),
+                //       ),
+                //     ),
+                //     const SizedBox(width: 12),
+                //     Expanded(
+                //       child: OutlinedButton(
+                //         onPressed: () {
+                //           Navigator.pop(context);
+                //           UIHelpers.showInfoToast(
+                //               'Support feature coming soon');
+                //         },
+                //         style: OutlinedButton.styleFrom(
+                //           padding: const EdgeInsets.symmetric(vertical: 16),
+                //           shape: RoundedRectangleBorder(
+                //             borderRadius: BorderRadius.circular(12),
+                //           ),
+                //           side: BorderSide(
+                //             color: AppColors.textHint.withOpacity(0.3),
+                //             width: 1,
+                //           ),
+                //         ),
+                //         child: Row(
+                //           mainAxisAlignment: MainAxisAlignment.center,
+                //           children: [
+                //             Icon(
+                //               Icons.support_agent,
+                //               size: 18,
+                //               color: AppColors.textSecondary,
+                //             ),
+                //             const SizedBox(width: 8),
+                //             Text(
+                //               'Support',
+                //               style: TextStyle(
+                //                 fontSize: 14,
+                //                 fontFamily: 'Medium',
+                //                 color: AppColors.textSecondary,
+                //               ),
+                //             ),
+                //           ],
+                //         ),
+                //       ),
+                //     ),
+                //   ],
+                // ),
               ],
             ),
           ),

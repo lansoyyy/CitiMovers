@@ -19,14 +19,11 @@ class MapsService {
   MapsService._internal();
 
   // Google Maps API Key - configured via build environment
-  static const String _apiKey = String.fromEnvironment(
-    'GOOGLE_MAPS_API_KEY',
-    defaultValue: 'YOUR_GOOGLE_MAPS_API_KEY',
-  );
+  // The actual API key is hardcoded here for now
+  static const String _apiKey = 'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o';
 
   /// Check if Google Maps API is properly configured
-  static bool get isConfigured =>
-      _apiKey != 'YOUR_GOOGLE_MAPS_API_KEY' && _apiKey.isNotEmpty;
+  static bool get isConfigured => _apiKey.isNotEmpty;
 
   // Base URLs for Google Maps APIs
   static const String _placesApiBase =
@@ -145,7 +142,7 @@ class MapsService {
           final location = result['geometry']['location'];
           final addressComponents = result['address_components'] as List;
 
-          String? city, province, country;
+          String? city, province, country, postalCode;
 
           for (var component in addressComponents) {
             final types = component['types'] as List;
@@ -155,6 +152,8 @@ class MapsService {
               province = component['long_name'];
             } else if (types.contains('country')) {
               country = component['long_name'];
+            } else if (types.contains('postal_code')) {
+              postalCode = component['long_name'];
             }
           }
 
@@ -165,6 +164,7 @@ class MapsService {
             city: city,
             province: province,
             country: country,
+            postalCode: postalCode,
           );
         } else if (data['status'] == 'NOT_FOUND') {
           debugPrint('Place not found: $placeId');
@@ -408,7 +408,7 @@ class MapsService {
           final result = data['results'][0];
           final addressComponents = result['address_components'] as List;
 
-          String? city, province, country;
+          String? city, province, country, postalCode;
 
           for (var component in addressComponents) {
             final types = component['types'] as List;
@@ -418,6 +418,8 @@ class MapsService {
               province = component['long_name'];
             } else if (types.contains('country')) {
               country = component['long_name'];
+            } else if (types.contains('postal_code')) {
+              postalCode = component['long_name'];
             }
           }
 
@@ -428,6 +430,7 @@ class MapsService {
             city: city,
             province: province,
             country: country,
+            postalCode: postalCode,
           );
         } else if (data['status'] == 'ZERO_RESULTS') {
           debugPrint('No address found for coordinates: $lat, $lng');
@@ -482,7 +485,7 @@ class MapsService {
           final location = result['geometry']['location'];
           final addressComponents = result['address_components'] as List;
 
-          String? city, province, country;
+          String? city, province, country, postalCode;
 
           for (var component in addressComponents) {
             final types = component['types'] as List;
@@ -492,6 +495,8 @@ class MapsService {
               province = component['long_name'];
             } else if (types.contains('country')) {
               country = component['long_name'];
+            } else if (types.contains('postal_code')) {
+              postalCode = component['long_name'];
             }
           }
 
@@ -502,6 +507,7 @@ class MapsService {
             city: city,
             province: province,
             country: country,
+            postalCode: postalCode,
           );
         } else if (data['status'] == 'ZERO_RESULTS') {
           debugPrint('No coordinates found for address: $address');
