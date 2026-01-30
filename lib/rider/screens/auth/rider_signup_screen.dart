@@ -465,7 +465,7 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
                     LengthLimitingTextInputFormatter(11),
                   ],
                   decoration: InputDecoration(
-                    hintText: '09XX XXX XXXX',
+                    hintText: '9XX XXX XXXX',
                     prefixIcon: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(

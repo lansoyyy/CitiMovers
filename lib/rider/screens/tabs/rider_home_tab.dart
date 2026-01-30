@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:citimovers/rider/screens/rider_notifications_screen.dart';
+import 'package:citimovers/utils/app_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
@@ -577,8 +579,16 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                             title: 'Support',
                             subtitle: '24/7 help',
                             color: AppColors.warning,
-                            onTap: () {
-                              UIHelpers.showInfoToast('Coming soon');
+                            onTap: () async {
+                              final uri =
+                                  Uri.parse('tel:${AppConstants.supportPhone}');
+
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri);
+                              } else {
+                                UIHelpers.showErrorToast(
+                                    'Could not launch phone dialer');
+                              }
                             },
                           ),
                         ),
