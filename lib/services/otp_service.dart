@@ -10,10 +10,14 @@ class OtpService {
   static const int _otpExpiryMinutes = 5; // OTP expires after 5 minutes
   static const int _maxAttempts = 3; // Maximum failed attempts before blocking
 
-  /// Generate a random 6-digit OTP
+  /// Generate a 6-digit OTP (fixed to 123456 for testing/dev mode)
   static String _generateOtp() {
-    final random = Random();
-    return (100000 + random.nextInt(900000)).toString();
+    // Fixed OTP for development/testing - no SMS required
+    return '123456';
+
+    // Uncomment this for production to use random OTPs:
+    // final random = Random();
+    // return (100000 + random.nextInt(900000)).toString();
   }
 
   /// Normalize phone number to +63 format
@@ -31,6 +35,7 @@ class OtpService {
   }
 
   /// Send OTP to phone number and store in Firestore with expiration
+  /// NOTE: txtbox SMS integration disabled - OTP is now generated locally for testing
   static Future<bool> sendOtp(String phoneNumber) async {
     try {
       final otp = _generateOtp();
@@ -65,49 +70,50 @@ class OtpService {
         }
       }
 
-      // Send OTP via SMS
-      const String url = 'https://ws-v2.txtbox.com/messaging/v1/sms/push';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'X-TXTBOX-Auth': ApiKeys.txtBoxApiKey,
-        },
-        body: {
-          'message':
-              '$otp is your OTP from CitiMovers. Valid for 5 minutes. Do not share it.',
-          'number': normalizedPhoneNumber,
-        },
-      );
+      // Send OTP via SMS - DISABLED FOR TESTING
+      // const String url = 'https://ws-v2.txtbox.com/messaging/v1/sms/push';
+      // final response = await http.post(
+      //   Uri.parse(url),
+      //   headers: {
+      //     'X-TXTBOX-Auth': ApiKeys.txtBoxApiKey,
+      //   },
+      //   body: {
+      //     'message':
+      //           '$otp is your OTP from CitiMovers. Valid for 5 minutes. Do not share it.',
+      //     'number': normalizedPhoneNumber,
+      //   },
+      // );
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        // Store OTP in Firestore with expiration
-        final otpDocRef = firestore.collection('otps').doc();
-        final expiresAt =
-            DateTime.now().add(Duration(minutes: _otpExpiryMinutes));
+      // if (response.statusCode >= 200 && response.statusCode < 300) {
+      // Store OTP in Firestore with expiration
+      final otpDocRef = firestore.collection('otps').doc();
+      final expiresAt =
+          DateTime.now().add(Duration(minutes: _otpExpiryMinutes));
 
-        await otpDocRef.set({
-          'phoneNumber': normalizedPhoneNumber,
-          'otp': otp,
-          'createdAt': FieldValue.serverTimestamp(),
-          'expiresAt': Timestamp.fromDate(expiresAt),
-          'attempts': 0,
-          'verified': false,
-        });
+      await otpDocRef.set({
+        'phoneNumber': normalizedPhoneNumber,
+        'otp': otp,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(expiresAt),
+        'attempts': 0,
+        'verified': false,
+      });
 
-        // Update rate limit counter
-        final rateLimitRef =
-            firestore.collection('otp_rate_limits').doc(normalizedPhoneNumber);
-        await rateLimitRef.set({
-          'lastRequestTime': FieldValue.serverTimestamp(),
-          'requestCount': FieldValue.increment(1),
-        }, SetOptions(merge: true));
+      // Update rate limit counter
+      final rateLimitRef =
+          firestore.collection('otp_rate_limits').doc(normalizedPhoneNumber);
+      await rateLimitRef.set({
+        'lastRequestTime': FieldValue.serverTimestamp(),
+        'requestCount': FieldValue.increment(1),
+      }, SetOptions(merge: true));
 
-        debugPrint('OTP sent to $normalizedPhoneNumber, expires at $expiresAt');
-        return true;
-      }
+      debugPrint(
+          'OTP generated for $normalizedPhoneNumber (not sent via SMS): $otp, expires at $expiresAt');
+      return true;
+      // }
 
-      debugPrint('Failed to send OTP: ${response.statusCode}');
-      return false;
+      // debugPrint('Failed to send OTP: ${response.statusCode}');
+      // return false;
     } catch (e) {
       debugPrint('Error sending OTP: $e');
       return false;

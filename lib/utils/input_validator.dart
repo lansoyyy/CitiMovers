@@ -41,7 +41,7 @@ class InputValidator {
     // Check for Philippine phone number format
     final phoneRegex = RegExp(r'^(\+63|0)?9\d{9}$');
     if (!phoneRegex.hasMatch(cleanedPhone)) {
-      return 'Please enter a valid Philippine phone number (09XXXXXXXXX)';
+      return 'Please enter a valid Philippine phone number (9XXXXXXXXX)';
     }
 
     return null;
