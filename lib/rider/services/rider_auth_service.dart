@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:path/path.dart' as path;
@@ -11,7 +10,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../services/otp_service.dart';
 import '../../services/booking_service.dart';
-import '../../services/location_service.dart';
 import '../../services/storage_service.dart';
 import 'rider_location_service.dart';
 import '../models/rider_model.dart';
@@ -28,7 +26,6 @@ class RiderAuthService {
   final GetStorage _storage = GetStorage();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _firebaseStorage = FirebaseStorage.instance;
-  final LocationService _locationService = LocationService();
   final RiderLocationService _riderLocationService = RiderLocationService();
   final StorageService _storageService = StorageService();
 
@@ -372,7 +369,7 @@ class RiderAuthService {
       await riderDocRef.set(
         {
           ...?existingData,
-          ...rider.toJson(),
+          ...rider.toMap(),
           'riderId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
           'createdAt': createdAtIso,
@@ -446,7 +443,7 @@ class RiderAuthService {
         SetOptions(merge: true),
       );
 
-      final rider = RiderModel.fromJson(data);
+      final rider = RiderModel.fromMap(data);
 
       _currentRider = rider;
       await _saveRiderToStorage(rider);
@@ -538,14 +535,14 @@ class RiderAuthService {
         await _firestore
             .collection('riders')
             .doc(normalizedPhone)
-            .set(updatedRider.toJson(), SetOptions(merge: true));
+            .set(updatedRider.toMap(), SetOptions(merge: true));
 
         await _saveRiderToStorage(updatedRider);
       } else {
         await _firestore
             .collection('riders')
             .doc(updatedRider.riderId)
-            .set(updatedRider.toJson(), SetOptions(merge: true));
+            .set(updatedRider.toMap(), SetOptions(merge: true));
       }
 
       _currentRider = updatedRider;
