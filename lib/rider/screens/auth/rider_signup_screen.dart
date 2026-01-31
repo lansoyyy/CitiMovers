@@ -23,6 +23,10 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   final _plateNumberController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehicleColorController = TextEditingController();
+  final _helper1NameController = TextEditingController();
+  final _helper1PhoneController = TextEditingController();
+  final _helper2NameController = TextEditingController();
+  final _helper2PhoneController = TextEditingController();
   final _authService = RiderAuthService();
   bool _isLoading = false;
   bool _agreedToTerms = false;
@@ -31,15 +35,47 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   final Map<String, String?> _documentImagePaths = {
     "Driver's License": null,
-    'Vehicle Registration (OR/CR)': null,
-    'NBI Clearance': null,
+    'Vehicle Registration (OR)': null,
+    'Vehicle Registration (CR)': null,
+    'Drug Test': null,
+    'National Police Clearance': null,
+    'Fit to Work': null,
+    'Resume': null,
+    'Valid ID': null,
+    'Unit Photo (Front - Plate Visible)': null,
     'Insurance': null,
+    'Helper 1 - Drug Test': null,
+    'Helper 1 - National Police Clearance': null,
+    'Helper 1 - Fit to Work': null,
+    'Helper 1 - Resume': null,
+    'Helper 1 - Valid ID': null,
+    'Helper 2 - Drug Test': null,
+    'Helper 2 - National Police Clearance': null,
+    'Helper 2 - Fit to Work': null,
+    'Helper 2 - Resume': null,
+    'Helper 2 - Valid ID': null,
   };
 
   final Set<String> _requiredDocuments = {
     "Driver's License",
-    'Vehicle Registration (OR/CR)',
-    'NBI Clearance',
+    'Vehicle Registration (OR)',
+    'Vehicle Registration (CR)',
+    'Drug Test',
+    'National Police Clearance',
+    'Fit to Work',
+    'Resume',
+    'Valid ID',
+    'Unit Photo (Front - Plate Visible)',
+    'Helper 1 - Drug Test',
+    'Helper 1 - National Police Clearance',
+    'Helper 1 - Fit to Work',
+    'Helper 1 - Resume',
+    'Helper 1 - Valid ID',
+    'Helper 2 - Drug Test',
+    'Helper 2 - National Police Clearance',
+    'Helper 2 - Fit to Work',
+    'Helper 2 - Resume',
+    'Helper 2 - Valid ID',
   };
 
   // Get vehicle types from VehicleModel
@@ -53,6 +89,10 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
     _plateNumberController.dispose();
     _vehicleModelController.dispose();
     _vehicleColorController.dispose();
+    _helper1NameController.dispose();
+    _helper1PhoneController.dispose();
+    _helper2NameController.dispose();
+    _helper2PhoneController.dispose();
     super.dispose();
   }
 
@@ -271,6 +311,12 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_helper1NameController.text.trim().isEmpty ||
+        _helper2NameController.text.trim().isEmpty) {
+      UIHelpers.showErrorToast('Please enter both helper names');
+      return;
+    }
+
     if (!_hasAllRequiredDocuments()) {
       UIHelpers.showErrorToast('Please upload all required documents');
       return;
@@ -320,6 +366,14 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
             vehicleColor: _vehicleColorController.text.isEmpty
                 ? null
                 : _vehicleColorController.text,
+            helper1Name: _helper1NameController.text.trim(),
+            helper1Phone: _helper1PhoneController.text.trim().isEmpty
+                ? null
+                : _formatPhoneNumber(_helper1PhoneController.text.trim()),
+            helper2Name: _helper2NameController.text.trim(),
+            helper2Phone: _helper2PhoneController.text.trim().isEmpty
+                ? null
+                : _formatPhoneNumber(_helper2PhoneController.text.trim()),
             documentImagePaths: Map<String, String?>.from(_documentImagePaths),
           ),
         ),
@@ -624,6 +678,146 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
                 const SizedBox(height: 24),
 
                 const Text(
+                  'Helpers',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: AppColors.primaryBlue,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Each driver must have 2 helpers. Helper accounts are attached to the driver and do not login separately.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Regular',
+                            color: AppColors.textPrimary,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Helper 1 Name',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _helper1NameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    hintText: 'Helper 1 Full Name',
+                    prefixIcon: Icon(Icons.person_outline),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter helper 1 name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Helper 1 Mobile Number (Optional)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _helper1PhoneController,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(11),
+                  ],
+                  decoration: const InputDecoration(
+                    hintText: '9XX XXX XXXX',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Helper 2 Name',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _helper2NameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    hintText: 'Helper 2 Full Name',
+                    prefixIcon: Icon(Icons.person_outline),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter helper 2 name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Helper 2 Mobile Number (Optional)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _helper2PhoneController,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(11),
+                  ],
+                  decoration: const InputDecoration(
+                    hintText: '9XX XXX XXXX',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                ),
+
+                const Text(
                   'Required Documents',
                   style: TextStyle(
                     fontSize: 16,
@@ -664,9 +858,47 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
                 ),
                 const SizedBox(height: 12),
                 _buildDocumentTile("Driver's License"),
-                _buildDocumentTile('Vehicle Registration (OR/CR)'),
-                _buildDocumentTile('NBI Clearance'),
+                _buildDocumentTile('Vehicle Registration (OR)'),
+                _buildDocumentTile('Vehicle Registration (CR)'),
+                _buildDocumentTile('Drug Test'),
+                _buildDocumentTile('National Police Clearance'),
+                _buildDocumentTile('Fit to Work'),
+                _buildDocumentTile('Resume'),
+                _buildDocumentTile('Valid ID'),
+                _buildDocumentTile('Unit Photo (Front - Plate Visible)'),
                 _buildDocumentTile('Insurance'),
+
+                const SizedBox(height: 16),
+                const Text(
+                  'Helper 1 Requirements',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildDocumentTile('Helper 1 - Drug Test'),
+                _buildDocumentTile('Helper 1 - National Police Clearance'),
+                _buildDocumentTile('Helper 1 - Fit to Work'),
+                _buildDocumentTile('Helper 1 - Resume'),
+                _buildDocumentTile('Helper 1 - Valid ID'),
+
+                const SizedBox(height: 16),
+                const Text(
+                  'Helper 2 Requirements',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildDocumentTile('Helper 2 - Drug Test'),
+                _buildDocumentTile('Helper 2 - National Police Clearance'),
+                _buildDocumentTile('Helper 2 - Fit to Work'),
+                _buildDocumentTile('Helper 2 - Resume'),
+                _buildDocumentTile('Helper 2 - Valid ID'),
 
                 const SizedBox(height: 10),
 

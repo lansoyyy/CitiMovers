@@ -8,6 +8,8 @@ import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/wallet_service.dart';
+import '../../utils/app_constants.dart';
 import '../auth/otp_verification_screen.dart';
 import '../terms_conditions_screen.dart';
 
@@ -36,7 +38,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
 
   String _bookingType = 'now'; // 'now' or 'scheduled'
   DateTime? _scheduledDateTime;
-  String _selectedPaymentMethod = 'Cash'; // Default payment method
+  String _selectedPaymentMethod = 'Wallet'; // Default payment method
   bool _isLoading = false;
   int? _travelDurationMinutes; // Store travel duration
   bool _termsAccepted = false; // Terms & Conditions checkbox state
@@ -106,8 +108,20 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     if (!termsAccepted) return;
 
     // Then show confirmation dialog
-    final confirmed = await _showBookingConfirmationDialog();
+    final confirmed = await _showBookingConfirmationDialog(user.userId);
     if (!confirmed) return;
+
+    final walletBalance = await WalletService().getWalletBalance(user.userId);
+    if (walletBalance < AppConstants.minimumCustomerWalletBalanceToBook) {
+      UIHelpers.showErrorToast(
+          'Minimum wallet balance required is P${AppConstants.minimumCustomerWalletBalanceToBook.toStringAsFixed(0)}');
+      return;
+    }
+
+    if (walletBalance < _estimatedFare) {
+      UIHelpers.showErrorToast('Insufficient wallet balance for this booking');
+      return;
+    }
 
     // Proceed with booking creation
     setState(() => _isLoading = true);
@@ -124,7 +138,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       distance: widget.distance,
       estimatedFare: _estimatedFare,
       estimatedDurationMinutes: _travelDurationMinutes,
-      paymentMethod: 'Cash',
+      paymentMethod: 'Wallet',
       notes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
@@ -427,71 +441,110 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     );
   }
 
-  Future<bool> _showBookingConfirmationDialog() async {
+  Future<bool> _showBookingConfirmationDialog(String userId) async {
     return await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text(
-              'Confirm Booking',
-              style: TextStyle(
-                fontSize: 18,
-                fontFamily: 'Bold',
-                color: AppColors.textPrimary,
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Please review your booking details:',
+          builder: (context) => FutureBuilder<double>(
+            future: WalletService().getWalletBalance(userId),
+            builder: (context, snapshot) {
+              final walletBalance = snapshot.data ?? 0.0;
+              final meetsMinimum = walletBalance >=
+                  AppConstants.minimumCustomerWalletBalanceToBook;
+              final enoughForFare = walletBalance >= _estimatedFare;
+              final canProceed =
+                  snapshot.hasData && meetsMinimum && enoughForFare;
+
+              return AlertDialog(
+                title: const Text(
+                  'Confirm Booking',
                   style: TextStyle(
-                    fontSize: 14,
-                    fontFamily: 'Regular',
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildConfirmRow('Vehicle:', widget.vehicle.name),
-                _buildConfirmRow('Payment:', _selectedPaymentMethod),
-                _buildConfirmRow(
-                    'Fare:', 'P${_estimatedFare.toStringAsFixed(0)}'),
-                if (_bookingType == 'scheduled' && _scheduledDateTime != null)
-                  _buildConfirmRow('Schedule:',
-                      '${_scheduledDateTime!.day}/${_scheduledDateTime!.month}/${_scheduledDateTime!.year} at ${_scheduledDateTime!.hour}:${_scheduledDateTime!.minute.toString().padLeft(2, '0')}'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontFamily: 'Medium',
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  foregroundColor: AppColors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Confirm',
-                  style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 18,
                     fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
                   ),
                 ),
-              ),
-            ],
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Please review your booking details:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Regular',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildConfirmRow('Vehicle:', widget.vehicle.name),
+                    _buildConfirmRow('Payment:', _selectedPaymentMethod),
+                    _buildConfirmRow(
+                        'Fare:', 'P${_estimatedFare.toStringAsFixed(0)}'),
+                    _buildConfirmRow(
+                      'Wallet:',
+                      snapshot.connectionState == ConnectionState.waiting
+                          ? 'Loading...'
+                          : 'P${walletBalance.toStringAsFixed(2)}',
+                    ),
+                    if (_bookingType == 'scheduled' &&
+                        _scheduledDateTime != null)
+                      _buildConfirmRow('Schedule:',
+                          '${_scheduledDateTime!.day}/${_scheduledDateTime!.month}/${_scheduledDateTime!.year} at ${_scheduledDateTime!.hour}:${_scheduledDateTime!.minute.toString().padLeft(2, '0')}'),
+                    const SizedBox(height: 12),
+                    if (snapshot.hasData && !meetsMinimum)
+                      Text(
+                        'Minimum wallet balance required is P${AppConstants.minimumCustomerWalletBalanceToBook.toStringAsFixed(0)}.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Medium',
+                          color: AppColors.primaryRed,
+                        ),
+                      )
+                    else if (snapshot.hasData && !enoughForFare)
+                      const Text(
+                        'Insufficient wallet balance for this booking.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Medium',
+                          color: AppColors.primaryRed,
+                        ),
+                      ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed:
+                        canProceed ? () => Navigator.pop(context, true) : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryRed,
+                      foregroundColor: AppColors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Proceed with Booking',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Bold',
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ) ??
         false;
@@ -876,12 +929,11 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                     child: Column(
                       children: [
                         _PaymentOption(
-                          icon: FontAwesomeIcons.moneyBill,
-                          title: 'Cash',
-                          subtitle: 'Pay upon delivery',
-                          isSelected: _selectedPaymentMethod == 'Cash',
-                          onTap: () =>
-                              setState(() => _selectedPaymentMethod = 'Cash'),
+                          icon: FontAwesomeIcons.wallet,
+                          title: 'Wallet',
+                          subtitle: 'Captured immediately upon booking',
+                          isSelected: _selectedPaymentMethod == 'Wallet',
+                          onTap: () {},
                         ),
                       ],
                     ),

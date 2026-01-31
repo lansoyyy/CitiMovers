@@ -170,19 +170,56 @@ class RiderAuthService {
   static const Map<String, String> _documentNameToKey = {
     "Driver's License": 'drivers_license',
     'Vehicle Registration (OR/CR)': 'vehicle_registration',
+    'Vehicle Registration (OR)': 'vehicle_registration_or',
+    'Vehicle Registration (CR)': 'vehicle_registration_cr',
     'NBI Clearance': 'nbi_clearance',
+    'Drug Test': 'drug_test',
+    'National Police Clearance': 'national_police_clearance',
+    'Fit to Work': 'fit_to_work',
+    'Resume': 'resume',
+    'Valid ID': 'valid_id',
+    'Unit Photo (Front - Plate Visible)': 'unit_photo_front_plate_visible',
+    'Helper 1 - Drug Test': 'helper_1_drug_test',
+    'Helper 1 - National Police Clearance':
+        'helper_1_national_police_clearance',
+    'Helper 1 - Fit to Work': 'helper_1_fit_to_work',
+    'Helper 1 - Resume': 'helper_1_resume',
+    'Helper 1 - Valid ID': 'helper_1_valid_id',
+    'Helper 2 - Drug Test': 'helper_2_drug_test',
+    'Helper 2 - National Police Clearance':
+        'helper_2_national_police_clearance',
+    'Helper 2 - Fit to Work': 'helper_2_fit_to_work',
+    'Helper 2 - Resume': 'helper_2_resume',
+    'Helper 2 - Valid ID': 'helper_2_valid_id',
     'Insurance': 'insurance',
   };
 
   static const Set<String> _requiredDocumentKeys = {
     'drivers_license',
-    'vehicle_registration',
-    'nbi_clearance',
+    'vehicle_registration_or',
+    'vehicle_registration_cr',
+    'drug_test',
+    'national_police_clearance',
+    'fit_to_work',
+    'resume',
+    'valid_id',
+    'unit_photo_front_plate_visible',
+    'helper_1_drug_test',
+    'helper_1_national_police_clearance',
+    'helper_1_fit_to_work',
+    'helper_1_resume',
+    'helper_1_valid_id',
+    'helper_2_drug_test',
+    'helper_2_national_police_clearance',
+    'helper_2_fit_to_work',
+    'helper_2_resume',
+    'helper_2_valid_id',
   };
 
   Future<Map<String, dynamic>> _uploadRiderDocuments({
     required String riderId,
     required Map<String, String?> documentImagePaths,
+    bool strict = false,
   }) async {
     final now = DateTime.now();
     final documents = <String, dynamic>{};
@@ -203,7 +240,7 @@ class RiderAuthService {
         final url = await _storageService.uploadRiderDocument(
             file, riderId, documentKey);
         if (url == null || url.isEmpty) {
-          if (_requiredDocumentKeys.contains(documentKey)) {
+          if (strict || _requiredDocumentKeys.contains(documentKey)) {
             throw Exception('Failed to upload rider document: $documentKey');
           }
           continue;
@@ -216,7 +253,7 @@ class RiderAuthService {
           'uploadedAt': now.toIso8601String(),
         };
       } catch (e) {
-        if (_requiredDocumentKeys.contains(documentKey)) {
+        if (strict || _requiredDocumentKeys.contains(documentKey)) {
           rethrow;
         }
       }
@@ -236,6 +273,7 @@ class RiderAuthService {
       final uploaded = await _uploadRiderDocuments(
         riderId: rider.riderId,
         documentImagePaths: documentImagePaths,
+        strict: true,
       );
 
       if (uploaded.isEmpty) return true;
@@ -306,6 +344,10 @@ class RiderAuthService {
     String? vehiclePlateNumber,
     String? vehicleModel,
     String? vehicleColor,
+    String? helper1Name,
+    String? helper1Phone,
+    String? helper2Name,
+    String? helper2Phone,
     Map<String, String?>? documentImagePaths,
   }) async {
     try {
@@ -372,6 +414,28 @@ class RiderAuthService {
           ...rider.toMap(),
           'riderId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
+          if (helper1Name != null && helper1Name.trim().isNotEmpty)
+            'helper1Name': helper1Name.trim(),
+          if (helper1Phone != null && helper1Phone.trim().isNotEmpty)
+            'helper1Phone': helper1Phone.trim(),
+          if (helper2Name != null && helper2Name.trim().isNotEmpty)
+            'helper2Name': helper2Name.trim(),
+          if (helper2Phone != null && helper2Phone.trim().isNotEmpty)
+            'helper2Phone': helper2Phone.trim(),
+          if (helper1Name != null && helper1Name.trim().isNotEmpty)
+            'helpers': [
+              {
+                'name': helper1Name.trim(),
+                if (helper1Phone != null && helper1Phone.trim().isNotEmpty)
+                  'phoneNumber': helper1Phone.trim(),
+              },
+              if (helper2Name != null && helper2Name.trim().isNotEmpty)
+                {
+                  'name': helper2Name.trim(),
+                  if (helper2Phone != null && helper2Phone.trim().isNotEmpty)
+                    'phoneNumber': helper2Phone.trim(),
+                },
+            ],
           'createdAt': createdAtIso,
           'updatedAt': now.toIso8601String(),
         },

@@ -4,6 +4,7 @@ import '../models/booking_model.dart';
 import 'notification_service.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
+import '../utils/app_constants.dart';
 
 /// Booking Service for CitiMovers
 /// Handles booking creation, updates, and management with Firebase Firestore
@@ -38,7 +39,7 @@ class BookingService {
       final now = DateTime.now();
       final bookingId = _firestore.collection(_bookingsCollection).doc().id;
 
-      const enforcedPaymentMethod = 'Cash';
+      const enforcedPaymentMethod = 'Wallet';
       const initialStatus = 'pending';
 
       if (paymentMethod != enforcedPaymentMethod) {
@@ -71,6 +72,8 @@ class BookingService {
           _firestore.collection(_bookingsCollection).doc(bookingId);
       final deliveryRequestRef =
           _firestore.collection('delivery_requests').doc(bookingId);
+      final userRef = _firestore.collection('users').doc(customerId);
+      final walletTxnRef = _firestore.collection('wallet_transactions').doc();
 
       await _firestore.runTransaction((transaction) async {
         // Check if booking already exists
@@ -78,6 +81,27 @@ class BookingService {
         if (bookingSnapshot.exists) {
           throw Exception('Booking already exists: $bookingId');
         }
+
+        // Validate & capture wallet balance
+        final userSnap = await transaction.get(userRef);
+        if (!userSnap.exists) {
+          throw Exception('Customer not found: $customerId');
+        }
+
+        final userData = userSnap.data();
+        final currentBalance =
+            (userData?['walletBalance'] as num?)?.toDouble() ?? 0.0;
+
+        if (currentBalance < AppConstants.minimumCustomerWalletBalanceToBook) {
+          throw Exception(
+              'Insufficient wallet balance. Minimum required is ${AppConstants.minimumCustomerWalletBalanceToBook}');
+        }
+
+        if (currentBalance < estimatedFare) {
+          throw Exception('Insufficient wallet balance for this booking');
+        }
+
+        final newBalance = currentBalance - estimatedFare;
 
         // Create booking document
         transaction.set(bookingRef, {
@@ -88,6 +112,30 @@ class BookingService {
             'customerPhone': customerPhone.trim(),
           if (estimatedDurationMinutes != null)
             'estimatedDuration': estimatedDurationMinutes,
+          'paymentCapturedAt': now.millisecondsSinceEpoch,
+          'paymentCapturedAmount': estimatedFare,
+          'paymentCapturedFromBalance': currentBalance,
+          'paymentCapturedToBalance': newBalance,
+          'paymentStatus': 'captured',
+        });
+
+        // Deduct from wallet
+        transaction.update(userRef, {
+          'walletBalance': newBalance,
+          'updatedAt': now.toIso8601String(),
+        });
+
+        // Wallet transaction record
+        transaction.set(walletTxnRef, {
+          'id': walletTxnRef.id,
+          'userId': customerId,
+          'type': 'payment',
+          'amount': -estimatedFare,
+          'previousBalance': currentBalance,
+          'newBalance': newBalance,
+          'description': 'Booking payment',
+          'referenceId': bookingId,
+          'createdAt': Timestamp.fromDate(now),
         });
 
         // Create delivery request document

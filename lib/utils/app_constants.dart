@@ -73,6 +73,8 @@ class AppConstants {
   static const int maxImageSizeKB = 2048; // 2MB
   static const int imageQuality = 85;
 
+  static const double minimumCustomerWalletBalanceToBook = 12000.0;
+
   // Support Contact
   static const String supportPhone = '09090104355';
   static const String supportEmail = 'support@citimovers.com';

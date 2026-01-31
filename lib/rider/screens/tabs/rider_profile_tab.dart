@@ -27,8 +27,28 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
   static const Map<String, String> _documentKeyToLabel = {
     'drivers_license': "Driver's License",
     'vehicle_registration': 'Vehicle Registration (OR/CR)',
-    'nbi_clearance': 'NBI Clearance',
+    'nbi_clearance': 'National Police Clearance',
+    'vehicle_registration_or': 'Vehicle Registration (OR)',
+    'vehicle_registration_cr': 'Vehicle Registration (CR)',
+    'drug_test': 'Drug Test',
+    'national_police_clearance': 'National Police Clearance',
+    'fit_to_work': 'Fit to Work',
+    'resume': 'Resume',
+    'valid_id': 'Valid ID',
+    'unit_photo_front_plate_visible': 'Unit Photo (Front - Plate Visible)',
     'insurance': 'Insurance',
+    'helper_1_drug_test': 'Helper 1 - Drug Test',
+    'helper_1_national_police_clearance':
+        'Helper 1 - National Police Clearance',
+    'helper_1_fit_to_work': 'Helper 1 - Fit to Work',
+    'helper_1_resume': 'Helper 1 - Resume',
+    'helper_1_valid_id': 'Helper 1 - Valid ID',
+    'helper_2_drug_test': 'Helper 2 - Drug Test',
+    'helper_2_national_police_clearance':
+        'Helper 2 - National Police Clearance',
+    'helper_2_fit_to_work': 'Helper 2 - Fit to Work',
+    'helper_2_resume': 'Helper 2 - Resume',
+    'helper_2_valid_id': 'Helper 2 - Valid ID',
   };
 
   String _formatDateTime(DateTime? value) {

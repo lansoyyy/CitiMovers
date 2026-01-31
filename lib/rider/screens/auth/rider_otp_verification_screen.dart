@@ -14,6 +14,10 @@ class RiderOTPVerificationScreen extends StatefulWidget {
   final String? vehiclePlateNumber;
   final String? vehicleModel;
   final String? vehicleColor;
+  final String? helper1Name;
+  final String? helper1Phone;
+  final String? helper2Name;
+  final String? helper2Phone;
   final Map<String, String?>? documentImagePaths;
 
   const RiderOTPVerificationScreen({
@@ -25,6 +29,10 @@ class RiderOTPVerificationScreen extends StatefulWidget {
     this.vehiclePlateNumber,
     this.vehicleModel,
     this.vehicleColor,
+    this.helper1Name,
+    this.helper1Phone,
+    this.helper2Name,
+    this.helper2Phone,
     this.documentImagePaths,
   });
 
@@ -135,13 +143,36 @@ class _RiderOTPVerificationScreenState
           vehiclePlateNumber: widget.vehiclePlateNumber,
           vehicleModel: widget.vehicleModel,
           vehicleColor: widget.vehicleColor,
+          helper1Name: widget.helper1Name,
+          helper1Phone: widget.helper1Phone,
+          helper2Name: widget.helper2Name,
+          helper2Phone: widget.helper2Phone,
           documentImagePaths: widget.documentImagePaths,
         );
 
         if (!mounted) return;
 
         if (rider != null) {
-          UIHelpers.showSuccessToast('Registration successful!');
+          await showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) {
+              return AlertDialog(
+                title: const Text('Application Submitted'),
+                content: const Text(
+                  "Your data is safe with us. We will get back to you shortly once we have reviewed your requirements.\n\nOnly customers will have access to your information once they book a trip to know who the actual driver and helpers onboard are to deliver the items.\n\nCustomers can only view your data while you're still on delivery.",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+
+          if (!mounted) return;
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(

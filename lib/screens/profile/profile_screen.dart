@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../services/auth_service.dart';
 import '../../services/wallet_service.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/ui_helpers.dart';
 import 'edit_profile_screen.dart';
 import 'notifications_settings_screen.dart';
 import 'language_settings_screen.dart';
@@ -17,6 +18,147 @@ class ProfileScreen extends StatelessWidget {
   String _formatDateTime(DateTime? value) {
     if (value == null) return '';
     return DateFormat('yyyy-MM-dd HH:mm').format(value.toLocal());
+  }
+
+  void _showLoadWalletDialog(BuildContext context) {
+    final amountController = TextEditingController();
+    bool isProcessing = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> proceed() async {
+              final user = AuthService().currentUser;
+              if (user == null) {
+                UIHelpers.showErrorToast('Please login first');
+                return;
+              }
+
+              final raw = amountController.text.trim();
+              final amount = double.tryParse(raw);
+              if (amount == null || amount <= 0) {
+                UIHelpers.showErrorToast('Please enter a valid amount');
+                return;
+              }
+
+              setModalState(() => isProcessing = true);
+              final success = await WalletService().topUpWallet(
+                userId: user.userId,
+                amount: amount,
+                description: 'Wallet top-up',
+              );
+              setModalState(() => isProcessing = false);
+
+              if (!context.mounted) return;
+
+              if (success) {
+                Navigator.pop(context);
+                UIHelpers.showSuccessToast(
+                    'Top-up of P${amount.toStringAsFixed(2)} successful');
+              } else {
+                UIHelpers.showErrorToast('Top-up failed. Please try again.');
+              }
+            }
+
+            return Container(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              decoration: const BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Load Wallet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: isProcessing
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Enter amount',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Medium',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: amountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. 12000',
+                      prefixText: 'P ',
+                      filled: true,
+                      fillColor: AppColors.scaffoldBackground,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: isProcessing ? null : proceed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryRed,
+                        foregroundColor: AppColors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: isProcessing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    AppColors.white),
+                              ),
+                            )
+                          : const Text(
+                              'Proceed',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontFamily: 'Bold',
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _handleLogout(BuildContext context) async {
@@ -298,6 +440,13 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            _ProfileMenuItem(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Load Wallet',
+              subtitle: 'Add funds to your wallet',
+              onTap: () => _showLoadWalletDialog(context),
+            ),
+            const SizedBox(height: 8),
             _ProfileMenuItem(
               icon: Icons.person_outline,
               title: 'Edit Profile',

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/location_model.dart';
@@ -35,6 +37,9 @@ class _MapViewScreenState extends State<MapViewScreen> {
   final LocationService _locationService = LocationService();
   GoogleMapController? _mapController;
 
+  BitmapDescriptor? _pickupMarkerIcon;
+  BitmapDescriptor? _dropoffMarkerIcon;
+
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
   LatLng? _selectedLocation;
@@ -46,6 +51,58 @@ class _MapViewScreenState extends State<MapViewScreen> {
   // Internal state for draggable markers
   LocationModel? _currentPickupLocation;
   LocationModel? _currentDropoffLocation;
+
+  Future<BitmapDescriptor> _createMarkerIcon(
+    IconData icon,
+    Color color, {
+    double size = 96,
+  }) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final painter = TextPainter(textDirection: TextDirection.ltr);
+
+    painter.text = TextSpan(
+      text: String.fromCharCode(icon.codePoint),
+      style: TextStyle(
+        fontSize: size,
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        color: color,
+      ),
+    );
+
+    painter.layout();
+
+    final width = (painter.width + 16).ceil();
+    final height = (painter.height + 16).ceil();
+    painter.paint(canvas, const Offset(8, 8));
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(width, height);
+    final pngBytes = await img.toByteData(format: ui.ImageByteFormat.png);
+
+    return BitmapDescriptor.fromBytes(pngBytes!.buffer.asUint8List());
+  }
+
+  Future<BitmapDescriptor> _getPickupMarkerIcon() async {
+    if (_pickupMarkerIcon != null) return _pickupMarkerIcon!;
+    _pickupMarkerIcon = await _createMarkerIcon(
+      Icons.location_on,
+      AppColors.primaryRed,
+      size: 96,
+    );
+    return _pickupMarkerIcon!;
+  }
+
+  Future<BitmapDescriptor> _getDropoffMarkerIcon() async {
+    if (_dropoffMarkerIcon != null) return _dropoffMarkerIcon!;
+    _dropoffMarkerIcon = await _createMarkerIcon(
+      FontAwesomeIcons.flagCheckered,
+      Colors.black,
+      size: 78,
+    );
+    return _dropoffMarkerIcon!;
+  }
 
   @override
   void initState() {
@@ -120,44 +177,54 @@ class _MapViewScreenState extends State<MapViewScreen> {
   }
 
   void _addPickupMarker(LocationModel location) {
-    final marker = Marker(
-      markerId: const MarkerId('pickup'),
-      position: LatLng(location.latitude, location.longitude),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      infoWindow: InfoWindow(
-        title: 'Pickup Location',
-        snippet: location.address,
-      ),
-      draggable: true,
-      onDragEnd: (LatLng newPosition) {
-        _onMarkerDragEnd(newPosition, isPickup: true);
-      },
-    );
-    setState(() {
-      _markers.add(marker);
-    });
+    () async {
+      final icon = await _getPickupMarkerIcon();
+      if (!mounted) return;
+
+      final marker = Marker(
+        markerId: const MarkerId('pickup'),
+        position: LatLng(location.latitude, location.longitude),
+        icon: icon,
+        infoWindow: InfoWindow(
+          title: 'Pickup Location',
+          snippet: location.address,
+        ),
+        draggable: true,
+        onDragEnd: (LatLng newPosition) {
+          _onMarkerDragEnd(newPosition, isPickup: true);
+        },
+      );
+      setState(() {
+        _markers.add(marker);
+      });
+    }();
 
     // Move camera to pickup location
     _moveCameraToLocation(location.latitude, location.longitude);
   }
 
   void _addDropoffMarker(LocationModel location) {
-    final marker = Marker(
-      markerId: const MarkerId('dropoff'),
-      position: LatLng(location.latitude, location.longitude),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      infoWindow: InfoWindow(
-        title: 'Drop-off Location',
-        snippet: location.address,
-      ),
-      draggable: true,
-      onDragEnd: (LatLng newPosition) {
-        _onMarkerDragEnd(newPosition, isPickup: false);
-      },
-    );
-    setState(() {
-      _markers.add(marker);
-    });
+    () async {
+      final icon = await _getDropoffMarkerIcon();
+      if (!mounted) return;
+
+      final marker = Marker(
+        markerId: const MarkerId('dropoff'),
+        position: LatLng(location.latitude, location.longitude),
+        icon: icon,
+        infoWindow: InfoWindow(
+          title: 'Drop-off Location',
+          snippet: location.address,
+        ),
+        draggable: true,
+        onDragEnd: (LatLng newPosition) {
+          _onMarkerDragEnd(newPosition, isPickup: false);
+        },
+      );
+      setState(() {
+        _markers.add(marker);
+      });
+    }();
 
     // Move camera to dropoff location
     _moveCameraToLocation(location.latitude, location.longitude);
@@ -190,13 +257,16 @@ class _MapViewScreenState extends State<MapViewScreen> {
         country: address.country,
       );
 
+      final icon = isPickup
+          ? await _getPickupMarkerIcon()
+          : await _getDropoffMarkerIcon();
+      if (!mounted) return;
+
       // Update the marker with new position
       final updatedMarker = Marker(
         markerId: MarkerId(isPickup ? 'pickup' : 'dropoff'),
         position: newPosition,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-          isPickup ? BitmapDescriptor.hueRed : BitmapDescriptor.hueBlue,
-        ),
+        icon: icon,
         infoWindow: InfoWindow(
           title: isPickup ? 'Pickup Location' : 'Drop-off Location',
           snippet: address.address,
@@ -399,15 +469,16 @@ class _MapViewScreenState extends State<MapViewScreen> {
       _selectedAddress = address?.address ?? 'Address not found';
     });
 
+    final icon = widget.isSelectingPickup
+        ? await _getPickupMarkerIcon()
+        : await _getDropoffMarkerIcon();
+    if (!mounted) return;
+
     // Add temporary marker
     final tempMarker = Marker(
       markerId: const MarkerId('selected'),
       position: location,
-      icon: BitmapDescriptor.defaultMarkerWithHue(
-        widget.isSelectingPickup
-            ? BitmapDescriptor.hueRed
-            : BitmapDescriptor.hueBlue,
-      ),
+      icon: icon,
       infoWindow: InfoWindow(
         title:
             widget.isSelectingPickup ? 'Selected Pickup' : 'Selected Drop-off',
@@ -483,6 +554,7 @@ class _MapViewScreenState extends State<MapViewScreen> {
                   target: _initialPosition ?? const LatLng(14.5995, 120.9842),
                   zoom: 15.0,
                 ),
+                mapType: MapType.normal,
                 onMapCreated: (controller) {
                   _mapController = controller;
                   // Initialize map after controller is created
@@ -490,10 +562,14 @@ class _MapViewScreenState extends State<MapViewScreen> {
                     _initializeMap();
                   });
                 },
+                onTap: _onMapTap,
                 markers: _markers,
                 polylines: _polylines,
                 myLocationEnabled: true,
                 myLocationButtonEnabled: false,
+                compassEnabled: true,
+                mapToolbarEnabled: false,
+                buildingsEnabled: true,
                 zoomControlsEnabled: false,
               ),
 
