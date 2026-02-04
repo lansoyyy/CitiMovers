@@ -45,6 +45,8 @@ enum LoadingSubStep { arrived, startLoading, finishLoading }
 
 enum UnloadingSubStep { arrived, startUnloading, finishUnloading }
 
+enum ReceivingSubStep { receiverName, receiverIdPhoto, signature }
+
 class _RiderDeliveryProgressScreenState
     extends State<RiderDeliveryProgressScreen> with TickerProviderStateMixin {
   final RiderAuthService _riderAuthService = RiderAuthService();
@@ -57,6 +59,7 @@ class _RiderDeliveryProgressScreenState
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
   UnloadingSubStep? _unloadingSubStep;
+  ReceivingSubStep _receivingSubStep = ReceivingSubStep.receiverName;
 
   // Demurrage Tracking (Loading)
   Timer? _loadingTimer;
@@ -64,7 +67,6 @@ class _RiderDeliveryProgressScreenState
   double _loadingDemurrageFee = 0.0;
   File? _startLoadingPhoto;
   File? _finishLoadingPhoto;
-  bool _loadingDemurrageStarted = false;
 
   // Demurrage Tracking (Unloading)
   Timer? _unloadingTimer;
@@ -72,7 +74,6 @@ class _RiderDeliveryProgressScreenState
   double _unloadingDemurrageFee = 0.0;
   File? _startUnloadingPhoto;
   File? _finishUnloadingPhoto;
-  bool _unloadingDemurrageStarted = false;
 
   // Geofencing
   bool _isWithinGeofence = true;
@@ -85,26 +86,63 @@ class _RiderDeliveryProgressScreenState
   bool _isSignatureEmpty = true;
   final GlobalKey _signatureKey = GlobalKey();
 
-  // Animation controllers
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  bool _receiverIdPhotoConfirmed = false;
+
+  final List<File> _serviceInvoicePhotos = [];
+  final List<String> _serviceInvoicePhotoUrls = [];
+
+  final List<Map<String, dynamic>> _picklistItems = [];
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat();
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
     // Geocode addresses to get coordinates
     _geocodeAddresses();
 
     // Start location tracking
     _startLocationTracking();
+  }
+
+  Widget _buildTotalDemurrageHoursCard() {
+    final totalSeconds =
+        _loadingDuration.inSeconds + _unloadingDuration.inSeconds;
+    final hours = totalSeconds / 3600.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.timer, color: AppColors.primaryRed),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Total Demurrage Hours',
+              style: TextStyle(fontSize: 14, fontFamily: 'Bold'),
+            ),
+          ),
+          Text(
+            '${hours.toStringAsFixed(2)} hrs',
+            style: const TextStyle(
+              fontSize: 16,
+              fontFamily: 'Bold',
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -113,7 +151,6 @@ class _RiderDeliveryProgressScreenState
     _unloadingTimer?.cancel();
     _locationTrackingTimer?.cancel();
     _receiverNameController.dispose();
-    _pulseController.dispose();
     super.dispose();
   }
 
@@ -131,12 +168,6 @@ class _RiderDeliveryProgressScreenState
         );
       }
     });
-  }
-
-  double get _baseFare {
-    // Parse "P150" -> 150.0
-    final fareString = widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '');
-    return double.tryParse(fareString) ?? 0.0;
   }
 
   final ImagePicker _picker = ImagePicker();
@@ -187,6 +218,11 @@ class _RiderDeliveryProgressScreenState
   }
 
   // --- Actions ---
+
+  void _logActivity(String event) {
+    debugPrint(
+        'RiderDeliveryProgressScreen(${widget.request.id}) activity: $event');
+  }
 
   /// Geocode address to get coordinates
   Future<void> _geocodeAddresses() async {
@@ -244,10 +280,10 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _arrivedAtWarehouse() async {
+    _logActivity('arrived_at_pickup');
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
-      _loadingDemurrageStarted = true;
       _startLoadingTimer();
     });
 
@@ -256,6 +292,7 @@ class _RiderDeliveryProgressScreenState
       bookingId: widget.request.id,
       status: 'arrived_at_pickup',
       loadingStartedAt: DateTime.now(),
+      picklistItems: _picklistItems,
     );
 
     UIHelpers.showSuccessToast(
@@ -266,21 +303,9 @@ class _RiderDeliveryProgressScreenState
     _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _loadingDuration += const Duration(seconds: 1);
-        if (_loadingDemurrageStarted) {
-          _calculateLoadingFee();
-        }
+        _loadingDemurrageFee = 0.0;
       });
     });
-  }
-
-  void _calculateLoadingFee() {
-    // "Every 4 hours - 25% of the delivery fare"
-    int blocks = _loadingDuration.inHours ~/ 4;
-    if (blocks > 0) {
-      _loadingDemurrageFee = blocks * 0.25 * _baseFare;
-    } else {
-      _loadingDemurrageFee = 0.0;
-    }
   }
 
   void _startLoadingPhotoProcess() {
@@ -296,6 +321,7 @@ class _RiderDeliveryProgressScreenState
   }
 
   Future<void> _takePhoto(Function(File) onPicked, String photoType) async {
+    _logActivity('take_photo:$photoType');
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
       final file = File(image.path);
@@ -313,19 +339,29 @@ class _RiderDeliveryProgressScreenState
       if (photoUrl != null) {
         // Store the URL based on photo type
         if (photoType == 'Start Loading') {
-          _startLoadingPhotoUrl = photoUrl;
+          setState(() {
+            _startLoadingPhotoUrl = photoUrl;
+          });
           _startLoadingPhotoProcess();
         } else if (photoType == 'Finished Loading') {
-          _finishLoadingPhotoUrl = photoUrl;
+          setState(() {
+            _finishLoadingPhotoUrl = photoUrl;
+          });
           _finishLoadingPhotoProcess();
         } else if (photoType == 'Start Unloading') {
-          _startUnloadingPhotoUrl = photoUrl;
+          setState(() {
+            _startUnloadingPhotoUrl = photoUrl;
+          });
           _startUnloadingPhotoProcess();
         } else if (photoType == 'Finished Unloading') {
-          _finishUnloadingPhotoUrl = photoUrl;
+          setState(() {
+            _finishUnloadingPhotoUrl = photoUrl;
+          });
           _finishUnloadingPhotoProcess();
         } else if (photoType == 'Receiver ID') {
-          _idPhotoUrl = photoUrl;
+          setState(() {
+            _idPhotoUrl = photoUrl;
+          });
         }
 
         // Add photo URL to booking document
@@ -342,7 +378,120 @@ class _RiderDeliveryProgressScreenState
     }
   }
 
+  Future<void> _persistPicklistItems() async {
+    try {
+      await _firestore.collection('bookings').doc(widget.request.id).update({
+        'picklistItems': _picklistItems,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('Error saving picklist items: $e');
+    }
+  }
+
+  Future<void> _addPicklistItem() async {
+    _logActivity('picklist:add');
+    final itemController = TextEditingController();
+    final qtyController = TextEditingController();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Picklist Item'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: itemController,
+              decoration: const InputDecoration(
+                labelText: 'Type of Goods/Items',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: qtyController,
+              decoration: const InputDecoration(
+                labelText: 'Quantity/Cases',
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: false),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final item = itemController.text.trim();
+              final qty = qtyController.text.trim();
+              if (item.isEmpty || qty.isEmpty) {
+                return;
+              }
+              Navigator.pop(context, {
+                'item': item,
+                'quantity': qty,
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    setState(() {
+      _picklistItems.add(result);
+    });
+    await _persistPicklistItems();
+  }
+
+  Future<void> _takeServiceInvoicePhoto() async {
+    _logActivity('service_invoice:take_photo');
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    if (image == null) return;
+
+    final file = File(image.path);
+    setState(() {
+      _serviceInvoicePhotos.add(file);
+    });
+
+    final index = _serviceInvoicePhotos.length;
+    final stage = 'service_invoice_$index';
+
+    final url = await _storageService.uploadDeliveryPhoto(
+      file,
+      widget.request.id,
+      stage,
+    );
+
+    if (url == null) {
+      UIHelpers.showErrorToast('Failed to upload Service Invoice photo');
+      return;
+    }
+
+    setState(() {
+      _serviceInvoicePhotoUrls.add(url);
+    });
+
+    await _bookingService.addDeliveryPhoto(
+      bookingId: widget.request.id,
+      stage: stage,
+      photoUrl: url,
+    );
+
+    UIHelpers.showSuccessToast('Service Invoice photo captured and uploaded!');
+  }
+
   void _finishLoading() async {
+    _logActivity('finish_loading');
     if (_startLoadingPhoto == null || _finishLoadingPhoto == null) {
       UIHelpers.showInfoToast('Please take both photos to finish loading.');
       return;
@@ -355,7 +504,7 @@ class _RiderDeliveryProgressScreenState
     }
 
     _loadingTimer?.cancel();
-    _loadingDemurrageStarted = false;
+    _loadingDemurrageFee = 0.0;
 
     // Update booking status in Firestore with demurrage data
     await _bookingService.updateBookingStatusWithDetails(
@@ -363,6 +512,8 @@ class _RiderDeliveryProgressScreenState
       status: 'loading_complete',
       loadingCompletedAt: DateTime.now(),
       loadingDemurrageFee: _loadingDemurrageFee,
+      loadingDemurrageSeconds: _loadingDuration.inSeconds,
+      picklistItems: _picklistItems,
       deliveryPhotos: {
         'start_loading': _startLoadingPhotoUrl,
         'finish_loading': _finishLoadingPhotoUrl,
@@ -377,6 +528,7 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _arrivedAtClient() async {
+    _logActivity('arrived_at_dropoff');
     // Geo-fencing check
     if (!_isWithinGeofence) {
       _showGeofenceWarning();
@@ -386,7 +538,6 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _currentStep = DeliveryStep.unloading;
       _unloadingSubStep = UnloadingSubStep.arrived;
-      _unloadingDemurrageStarted = true;
       _startUnloadingTimer();
     });
 
@@ -395,6 +546,7 @@ class _RiderDeliveryProgressScreenState
       bookingId: widget.request.id,
       status: 'arrived_at_dropoff',
       unloadingStartedAt: DateTime.now(),
+      picklistItems: _picklistItems,
     );
 
     UIHelpers.showSuccessToast(
@@ -423,20 +575,9 @@ class _RiderDeliveryProgressScreenState
     _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _unloadingDuration += const Duration(seconds: 1);
-        if (_unloadingDemurrageStarted) {
-          _calculateUnloadingFee();
-        }
+        _unloadingDemurrageFee = 0.0;
       });
     });
-  }
-
-  void _calculateUnloadingFee() {
-    int blocks = _unloadingDuration.inHours ~/ 4;
-    if (blocks > 0) {
-      _unloadingDemurrageFee = blocks * 0.25 * _baseFare;
-    } else {
-      _unloadingDemurrageFee = 0.0;
-    }
   }
 
   void _startUnloadingPhotoProcess() {
@@ -452,6 +593,7 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _finishUnloading() async {
+    _logActivity('finish_unloading');
     if (_startUnloadingPhoto == null || _finishUnloadingPhoto == null) {
       UIHelpers.showInfoToast('Please take both photos to finish unloading.');
       return;
@@ -463,8 +605,7 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
-    _unloadingTimer?.cancel();
-    _unloadingDemurrageStarted = false;
+    _unloadingDemurrageFee = 0.0;
 
     // Update booking status in Firestore with demurrage data
     await _bookingService.updateBookingStatusWithDetails(
@@ -472,6 +613,7 @@ class _RiderDeliveryProgressScreenState
       status: 'unloading_complete',
       unloadingCompletedAt: DateTime.now(),
       unloadingDemurrageFee: _unloadingDemurrageFee,
+      picklistItems: _picklistItems,
       deliveryPhotos: {
         'start_unloading': _startUnloadingPhotoUrl,
         'finish_unloading': _finishUnloadingPhotoUrl,
@@ -481,12 +623,15 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _currentStep = DeliveryStep.receiving;
       _unloadingSubStep = null;
+      _receivingSubStep = ReceivingSubStep.receiverName;
+      _receiverIdPhotoConfirmed = false;
     });
     UIHelpers.showSuccessToast(
         'Unloading completed! Ready for receiver confirmation.');
   }
 
   void _completeDelivery() async {
+    _logActivity('complete_delivery');
     if (_receiverNameController.text.isEmpty) {
       UIHelpers.showInfoToast('Please enter receiver name.');
       return;
@@ -512,12 +657,22 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
+    _unloadingTimer?.cancel();
+    _unloadingDemurrageFee = 0.0;
+
+    final loadingSeconds = _loadingDuration.inSeconds;
+    final destinationSeconds = _unloadingDuration.inSeconds;
+
     // Update booking status in Firestore with completion data
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'completed',
       completedAt: DateTime.now(),
       receiverName: _receiverNameController.text,
+      loadingDemurrageSeconds: loadingSeconds,
+      destinationDemurrageSeconds: destinationSeconds,
+      totalDemurrageSeconds: loadingSeconds + destinationSeconds,
+      picklistItems: _picklistItems,
       deliveryPhotos: {
         'receiver_id': _idPhotoUrl,
         'receiver_signature': signatureUrl,
@@ -586,6 +741,8 @@ class _RiderDeliveryProgressScreenState
           _riderAuthService.currentRider?.phoneNumber ??
           widget.request.customerPhone;
 
+      final driverEmail = (riderData?['email'] as String?) ?? '';
+
       final plate = (riderData?['vehiclePlateNumber'] as String?) ?? '';
 
       final vehicleType = (riderData?['vehicleType'] as String?) ??
@@ -644,6 +801,33 @@ class _RiderDeliveryProgressScreenState
         }
         return null;
       }
+
+      final invoiceUrls = <String>[];
+      for (final entry in deliveryPhotos.entries) {
+        if (!entry.key.startsWith('service_invoice_')) continue;
+        final url = extractUrl(entry.value);
+        if (url != null && url.isNotEmpty) invoiceUrls.add(url);
+      }
+
+      if (invoiceUrls.isEmpty && _serviceInvoicePhotoUrls.isNotEmpty) {
+        invoiceUrls.addAll(_serviceInvoicePhotoUrls);
+      }
+
+      String formatPicklist(dynamic v) {
+        if (v is! List) return '';
+        final lines = <String>[];
+        for (final raw in v) {
+          if (raw is Map) {
+            final item = (raw['item'] ?? '').toString();
+            final qty = (raw['quantity'] ?? '').toString();
+            if (item.isEmpty && qty.isEmpty) continue;
+            lines.add('$item - $qty');
+          }
+        }
+        return lines.join('\n');
+      }
+
+      final picklistFromBooking = bookingData?['picklistItems'];
 
       DateTime? extractUploadedAt(dynamic v) {
         if (v is Map) {
@@ -713,6 +897,11 @@ class _RiderDeliveryProgressScreenState
         'finish_unloading_photo_url': finishUnloadingUrl ?? '',
         'receiver_id_photo_url': receiverIdUrl ?? '',
         'receiver_signature_url': receiverSignatureUrl ?? '',
+        'service_invoice_urls': invoiceUrls.join('\n'),
+        'picklist_items': formatPicklist(
+            (picklistFromBooking is List && picklistFromBooking.isNotEmpty)
+                ? picklistFromBooking
+                : _picklistItems),
 
         // Aliases (in case the EmailJS template uses different names)
         'loading_photo_url': (finishLoadingUrl ?? startLoadingUrl) ?? '',
@@ -735,6 +924,29 @@ class _RiderDeliveryProgressScreenState
       if (trimmedCustomerEmail.isNotEmpty &&
           trimmedCustomerEmail.contains('@')) {
         allRecipients.add(trimmedCustomerEmail);
+      }
+
+      final trimmedDriverEmail = driverEmail.trim();
+      if (trimmedDriverEmail.isNotEmpty && trimmedDriverEmail.contains('@')) {
+        allRecipients.add(trimmedDriverEmail);
+      }
+
+      final extraRecipientsRaw = bookingData?['reportRecipients'];
+      if (extraRecipientsRaw is List) {
+        for (final v in extraRecipientsRaw) {
+          final to = v.toString().trim();
+          if (to.isEmpty) continue;
+          if (!to.contains('@')) continue;
+          allRecipients.add(to);
+        }
+      } else if (extraRecipientsRaw is String) {
+        final parts = extraRecipientsRaw.split(',');
+        for (final p in parts) {
+          final to = p.trim();
+          if (to.isEmpty) continue;
+          if (!to.contains('@')) continue;
+          allRecipients.add(to);
+        }
       }
 
       for (final to in allRecipients) {
@@ -918,10 +1130,7 @@ class _RiderDeliveryProgressScreenState
       case DeliveryStep.unloading:
         return const SizedBox.shrink();
       case DeliveryStep.receiving:
-        label = 'Complete Delivery';
-        onTap = _completeDelivery;
-        color = AppColors.success;
-        break;
+        return const SizedBox.shrink();
       case DeliveryStep.completed:
         label = 'Back to Home';
         onTap = () => Navigator.pop(context);
@@ -1086,6 +1295,10 @@ class _RiderDeliveryProgressScreenState
       children: [
         _buildDemurrageTimerCard(
             'Loading Demurrage', _loadingDuration, _loadingDemurrageFee),
+        const SizedBox(height: 12),
+        _buildTotalDemurrageHoursCard(),
+        const SizedBox(height: 16),
+        _buildPicklistSection(),
         const SizedBox(height: 24),
         const Text('Loading Process',
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
@@ -1246,8 +1459,12 @@ class _RiderDeliveryProgressScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildDemurrageTimerCard(
-            'Unloading Demurrage', _unloadingDuration, _unloadingDemurrageFee),
+        _buildDemurrageTimerCard('Destination Demurrage', _unloadingDuration,
+            _unloadingDemurrageFee),
+        const SizedBox(height: 12),
+        _buildTotalDemurrageHoursCard(),
+        const SizedBox(height: 16),
+        _buildServiceInvoiceSection(),
         const SizedBox(height: 24),
         const Text('Unloading Process',
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
@@ -1286,72 +1503,198 @@ class _RiderDeliveryProgressScreenState
   }
 
   Widget _buildReceivingView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final totalDemurrageCard = Column(
       children: [
-        const Text('Receiver Details',
-            style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
+        _buildTotalDemurrageHoursCard(),
         const SizedBox(height: 16),
-        TextField(
-          controller: _receiverNameController,
-          decoration: InputDecoration(
-            labelText: 'Receiver Name',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            prefixIcon: const Icon(Icons.person),
-          ),
-        ),
-        const SizedBox(height: 24),
-        _buildPhotoStep('Receiver ID', _idPhoto, (file) => _idPhoto = file,
-            photoType: 'Receiver ID'),
-        const SizedBox(height: 24),
-        const Text('Digital Signature',
-            style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
-        const SizedBox(height: 8),
-        Container(
-          height: 150,
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.lightGrey),
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.white,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: RepaintBoundary(
-              key: _signatureKey,
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    _signaturePoints.add(details.localPosition);
-                    _isSignatureEmpty = false;
-                  });
-                },
-                onPanEnd: (details) => _signaturePoints.add(null),
-                child: CustomPaint(
-                  painter: SignaturePainter(points: _signaturePoints),
-                  size: Size.infinite,
+      ],
+    );
+
+    switch (_receivingSubStep) {
+      case ReceivingSubStep.receiverName:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            totalDemurrageCard,
+            const Text('Receiver Name',
+                style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _receiverNameController,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Type receiver name',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                prefixIcon: const Icon(Icons.person),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _receiverNameController.text.trim().isEmpty
+                    ? null
+                    : () {
+                        _logActivity('receiving_next:receiver_name');
+                        setState(() {
+                          _receivingSubStep = ReceivingSubStep.receiverIdPhoto;
+                        });
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Next',
+                    style: TextStyle(
+                        fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
+              ),
+            ),
+          ],
+        );
+
+      case ReceivingSubStep.receiverIdPhoto:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            totalDemurrageCard,
+            const Text('Receiver Valid ID',
+                style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
+            const SizedBox(height: 16),
+            _buildPhotoStep(
+              'Take a picture of receiver ID',
+              _idPhoto,
+              (file) => _idPhoto = file,
+              photoType: 'Receiver ID',
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Checkbox(
+                  value: _receiverIdPhotoConfirmed,
+                  onChanged: (v) {
+                    setState(() {
+                      _receiverIdPhotoConfirmed = v ?? false;
+                    });
+                  },
+                  activeColor: AppColors.success,
+                ),
+                const Expanded(
+                  child: Text(
+                    'Photo is clear and readable',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: (_idPhotoUrl == null || !_receiverIdPhotoConfirmed)
+                    ? null
+                    : () {
+                        _logActivity('receiving_next:receiver_id_photo');
+                        setState(() {
+                          _receivingSubStep = ReceivingSubStep.signature;
+                        });
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Next',
+                    style: TextStyle(
+                        fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
+              ),
+            ),
+          ],
+        );
+
+      case ReceivingSubStep.signature:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            totalDemurrageCard,
+            const Text('Digital Signature',
+                style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
+            const SizedBox(height: 12),
+            Container(
+              height: 170,
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.lightGrey),
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.white,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: RepaintBoundary(
+                  key: _signatureKey,
+                  child: GestureDetector(
+                    onPanUpdate: (details) {
+                      setState(() {
+                        _signaturePoints.add(details.localPosition);
+                        _isSignatureEmpty = false;
+                      });
+                    },
+                    onPanEnd: (details) => _signaturePoints.add(null),
+                    child: CustomPaint(
+                      painter: SignaturePainter(points: _signaturePoints),
+                      size: Size.infinite,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: () {
-              setState(() {
-                _signaturePoints.clear();
-                _isSignatureEmpty = true;
-              });
-            },
-            child: const Text('Clear Signature'),
-          ),
-        ),
-      ],
-    );
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  setState(() {
+                    _signaturePoints.clear();
+                    _isSignatureEmpty = true;
+                  });
+                },
+                child: const Text('Clear Signature'),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isSignatureEmpty ? null : _completeDelivery,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Delivery Complete',
+                    style: TextStyle(
+                        fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
+              ),
+            ),
+          ],
+        );
+    }
   }
 
   Widget _buildCompletedView() {
+    String formatHours(Duration d) {
+      final hours = d.inSeconds / 3600.0;
+      return '${hours.toStringAsFixed(2)} hrs';
+    }
+
+    final totalDemurrage = _loadingDuration + _unloadingDuration;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1368,10 +1711,13 @@ class _RiderDeliveryProgressScreenState
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 40),
           _buildSummaryRow('Base Fare', 'Hidden'),
-          _buildSummaryRow('Loading Demurrage', 'Hidden'),
-          _buildSummaryRow('Unloading Demurrage', 'Hidden'),
+          _buildSummaryRow(
+              'Loading Demurrage Hours', formatHours(_loadingDuration)),
+          _buildSummaryRow(
+              'Destination Demurrage Hours', formatHours(_unloadingDuration)),
           const Divider(height: 32),
-          _buildSummaryRow('Total Demurrage', 'Hidden'),
+          _buildSummaryRow(
+              'Total Demurrage Hours', formatHours(totalDemurrage)),
           _buildSummaryRow('Total Earnings', 'Hidden', isTotal: true),
           const SizedBox(height: 40),
           SizedBox(
@@ -1523,6 +1869,162 @@ class _RiderDeliveryProgressScreenState
                   fontSize: isTotal ? 20 : 14,
                   fontFamily: 'Bold',
                   color: isTotal ? AppColors.success : AppColors.textPrimary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPicklistSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Picklist',
+                  style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
+              const Spacer(),
+              IconButton(
+                onPressed: _addPicklistItem,
+                icon: const Icon(Icons.add_circle, color: AppColors.primaryRed),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_picklistItems.isEmpty)
+            const Text(
+              'No items added yet.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            )
+          else
+            Column(
+              children: List.generate(_picklistItems.length, (i) {
+                final item = (_picklistItems[i]['item'] ?? '').toString();
+                final qty = (_picklistItems[i]['quantity'] ?? '').toString();
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item,
+                          style: const TextStyle(
+                              fontSize: 13, fontFamily: 'Medium'),
+                        ),
+                      ),
+                      Text(
+                        qty,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () async {
+                          _logActivity('picklist:remove');
+                          setState(() {
+                            _picklistItems.removeAt(i);
+                          });
+                          await _persistPicklistItems();
+                        },
+                        icon:
+                            const Icon(Icons.close, color: AppColors.textHint),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _addPicklistItem,
+              icon: const Icon(Icons.add),
+              label: const Text('Add More Items'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServiceInvoiceSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Service Invoice',
+                  style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: _takeServiceInvoicePhoto,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Service Invoice'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_serviceInvoicePhotos.isNotEmpty)
+            SizedBox(
+              height: 72,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _serviceInvoicePhotos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(
+                      _serviceInvoicePhotos[i],
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                    ),
+                  );
+                },
+              ),
+            )
+          else
+            const Text(
+              'Take a picture of all invoice/receipt pages received.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _takeServiceInvoicePhoto,
+              icon: const Icon(Icons.add_a_photo),
+              label: const Text('Take More Picture'),
+            ),
+          ),
         ],
       ),
     );

@@ -33,6 +33,8 @@ class BookingSummaryScreen extends StatefulWidget {
 
 class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _reportRecipientsController =
+      TextEditingController();
   final BookingService _bookingService = BookingService();
   final MapsService _mapsService = MapsService();
 
@@ -142,6 +144,9 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       notes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
+      reportRecipients: _reportRecipientsController.text.trim().isEmpty
+          ? null
+          : _reportRecipientsController.text.trim(),
     );
 
     if (!mounted) return;
@@ -586,6 +591,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   @override
   void dispose() {
     _notesController.dispose();
+    _reportRecipientsController.dispose();
     super.dispose();
   }
 
@@ -814,6 +820,56 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Add any special instructions...',
+                      filled: true,
+                      fillColor: AppColors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: AppColors.textHint.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppColors.primaryRed,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Report Recipients
+                  const Text(
+                    'Report Recipients (Optional)',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Add email addresses to receive delivery completion reports (warehouse, admin, etc.). Separate multiple emails with commas.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _reportRecipientsController,
+                    maxLines: 2,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      hintText:
+                          'e.g., warehouse@company.com, admin@company.com',
                       filled: true,
                       fillColor: AppColors.white,
                       border: OutlineInputBorder(

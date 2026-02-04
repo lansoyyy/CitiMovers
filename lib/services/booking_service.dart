@@ -34,6 +34,7 @@ class BookingService {
     int? estimatedDurationMinutes,
     required String paymentMethod,
     String? notes,
+    String? reportRecipients,
   }) async {
     try {
       final now = DateTime.now();
@@ -112,6 +113,8 @@ class BookingService {
             'customerPhone': customerPhone.trim(),
           if (estimatedDurationMinutes != null)
             'estimatedDuration': estimatedDurationMinutes,
+          if (reportRecipients != null && reportRecipients.trim().isNotEmpty)
+            'reportRecipients': reportRecipients.trim(),
           'paymentCapturedAt': now.millisecondsSinceEpoch,
           'paymentCapturedAmount': estimatedFare,
           'paymentCapturedFromBalance': currentBalance,
@@ -459,6 +462,10 @@ class BookingService {
     String? receiverName,
     double? loadingDemurrageFee,
     double? unloadingDemurrageFee,
+    int? loadingDemurrageSeconds,
+    int? destinationDemurrageSeconds,
+    int? totalDemurrageSeconds,
+    List<Map<String, dynamic>>? picklistItems,
     Map<String, dynamic>? deliveryPhotos,
   }) async {
     try {
@@ -517,6 +524,22 @@ class BookingService {
         updateData['unloadingDemurrageFee'] = unloadingDemurrageFee;
       }
 
+      if (loadingDemurrageSeconds != null) {
+        updateData['loadingDemurrageSeconds'] = loadingDemurrageSeconds;
+      }
+
+      if (destinationDemurrageSeconds != null) {
+        updateData['destinationDemurrageSeconds'] = destinationDemurrageSeconds;
+      }
+
+      if (totalDemurrageSeconds != null) {
+        updateData['totalDemurrageSeconds'] = totalDemurrageSeconds;
+      }
+
+      if (picklistItems != null) {
+        updateData['picklistItems'] = picklistItems;
+      }
+
       if (deliveryPhotos != null) {
         final existingRaw = bookingData?['deliveryPhotos'];
         final existing = (existingRaw is Map)
@@ -550,7 +573,10 @@ class BookingService {
           .update(updateData);
 
       // Send notifications based on status
-      if (status == 'loading_complete' || status == 'unloading_complete') {
+      final hasDemurrageFees = (loadingDemurrageFee ?? 0.0) > 0.0 ||
+          (unloadingDemurrageFee ?? 0.0) > 0.0;
+      if (hasDemurrageFees &&
+          (status == 'loading_complete' || status == 'unloading_complete')) {
         await _notificationService.createDemurrageNotification(
           customerId: customerId!,
           bookingId: bookingId,
