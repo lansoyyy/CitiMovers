@@ -44,6 +44,8 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   bool _isConfirmed = false;
   bool _isSubmitting = false;
   String? _driverName;
+  Map<String, dynamic>? _deliveryPhotos;
+  bool _isLoadingPhotos = true;
 
   // Tip-related variables
   bool _wantsToTip = false;
@@ -99,8 +101,9 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
     _animationController.forward();
 
-    // Fetch driver name
+    // Fetch driver name and delivery photos
     _fetchDriverName();
+    _fetchDeliveryPhotos();
   }
 
   Future<void> _fetchDriverName() async {
@@ -113,6 +116,92 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         });
       }
     }
+  }
+
+  Future<void> _fetchDeliveryPhotos() async {
+    try {
+      // Get fresh booking data to ensure we have the latest delivery photos
+      final bookingData =
+          await _bookingService.getBookingById(widget.booking.bookingId!);
+      if (bookingData != null && bookingData.deliveryPhotos != null) {
+        setState(() {
+          _deliveryPhotos = bookingData.deliveryPhotos;
+          _isLoadingPhotos = false;
+        });
+      } else {
+        setState(() {
+          _deliveryPhotos = widget.booking.deliveryPhotos;
+          _isLoadingPhotos = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching delivery photos: $e');
+      setState(() {
+        _deliveryPhotos = widget.booking.deliveryPhotos;
+        _isLoadingPhotos = false;
+      });
+    }
+  }
+
+  String? _getPhotoUrl(String key) {
+    if (_deliveryPhotos == null) return null;
+    final value = _deliveryPhotos![key];
+    if (value is String) return value;
+    if (value is Map && value['url'] is String) return value['url'];
+    return null;
+  }
+
+  void _viewImageFullScreen(String? imageUrl, String title) {
+    if (imageUrl == null || imageUrl.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            title: Text(title),
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.white, size: 50),
+                      SizedBox(height: 8),
+                      Text(
+                        'Failed to load image',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -504,11 +593,13 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   Row(
                     children: [
                       Expanded(
-                        child: _buildProofImageBox('Start Loading'),
+                        child: _buildProofImageBox(
+                            'Start Loading', 'start_loading'),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: _buildProofImageBox('Finished Loading'),
+                        child: _buildProofImageBox(
+                            'Finished Loading', 'finish_loading'),
                       ),
                     ],
                   ),
@@ -525,11 +616,13 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   Row(
                     children: [
                       Expanded(
-                        child: _buildProofImageBox('Start Unloading'),
+                        child: _buildProofImageBox(
+                            'Start Unloading', 'start_unloading'),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: _buildProofImageBox('Finished Unloading'),
+                        child: _buildProofImageBox(
+                            'Finished Unloading', 'finish_unloading'),
                       ),
                     ],
                   ),
@@ -543,7 +636,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  _buildProofImageBox('Receiver ID'),
+                  _buildProofImageBox('Receiver ID', 'receiver_id'),
                   const SizedBox(height: 16),
                   const Text(
                     'Receiver Signature',
@@ -1369,98 +1462,135 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     );
   }
 
-  Widget _buildProofImageBox(String title) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.scaffoldBackground,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightGrey),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
+  Widget _buildProofImageBox(String title, String photoKey) {
+    final imageUrl = _getPhotoUrl(photoKey);
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
+    return GestureDetector(
+      onTap: hasImage ? () => _viewImageFullScreen(imageUrl, title) : null,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.scaffoldBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasImage ? AppColors.success : AppColors.lightGrey,
+            width: hasImage ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 72,
+              decoration: BoxDecoration(
+                color: hasImage ? Colors.transparent : Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+                image: hasImage
+                    ? DecorationImage(
+                        image: NetworkImage(imageUrl),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+              ),
+              child: !hasImage
+                  ? const Center(
+                      child: Icon(
+                        Icons.image_outlined,
+                        color: AppColors.textHint,
+                        size: 28,
+                      ),
+                    )
+                  : null,
             ),
-            child: const Center(
-              child: Icon(
-                Icons.image_outlined,
-                color: AppColors.textHint,
-                size: 28,
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              fontFamily: 'Medium',
-              color: AppColors.textPrimary,
+            const SizedBox(height: 2),
+            Text(
+              hasImage ? 'Tap to view' : 'No image available',
+              style: TextStyle(
+                fontSize: 10,
+                fontFamily: 'Regular',
+                color: hasImage ? AppColors.success : AppColors.textSecondary,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'No image available',
-            style: TextStyle(
-              fontSize: 10,
-              fontFamily: 'Regular',
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSignaturePlaceholderBox() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.scaffoldBackground,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightGrey),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
+    final imageUrl =
+        _getPhotoUrl('receiver_signature') ?? _getPhotoUrl('signature');
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
+    return GestureDetector(
+      onTap: hasImage
+          ? () => _viewImageFullScreen(imageUrl, 'Receiver Signature')
+          : null,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.scaffoldBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasImage ? AppColors.success : AppColors.lightGrey,
+            width: hasImage ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 80,
+              decoration: BoxDecoration(
+                color: hasImage ? Colors.transparent : Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+                image: hasImage
+                    ? DecorationImage(
+                        image: NetworkImage(imageUrl),
+                        fit: BoxFit.contain,
+                      )
+                    : null,
+              ),
+              child: !hasImage
+                  ? const Center(
+                      child: Icon(
+                        Icons.border_color,
+                        color: AppColors.textHint,
+                        size: 28,
+                      ),
+                    )
+                  : null,
             ),
-            child: const Center(
-              child: Icon(
-                Icons.border_color,
-                color: AppColors.textHint,
-                size: 28,
+            const SizedBox(height: 8),
+            const Text(
+              'Signature',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Signature',
-            style: TextStyle(
-              fontSize: 12,
-              fontFamily: 'Medium',
-              color: AppColors.textPrimary,
+            const SizedBox(height: 2),
+            Text(
+              hasImage ? 'Tap to view' : 'No signature available',
+              style: TextStyle(
+                fontSize: 10,
+                fontFamily: 'Regular',
+                color: hasImage ? AppColors.success : AppColors.textSecondary,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'No signature available',
-            style: TextStyle(
-              fontSize: 10,
-              fontFamily: 'Regular',
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

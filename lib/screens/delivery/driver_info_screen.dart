@@ -275,6 +275,20 @@ class DriverInfoScreen extends StatelessWidget {
                   label: 'Vehicle Type',
                   value: driver.vehicleType,
                 ),
+                if (driver.vehicleModel != null &&
+                    driver.vehicleModel!.isNotEmpty)
+                  _InfoItem(
+                    icon: Icons.directions_car,
+                    label: 'Vehicle Model',
+                    value: driver.vehicleModel!,
+                  ),
+                if (driver.vehicleColor != null &&
+                    driver.vehicleColor!.isNotEmpty)
+                  _InfoItem(
+                    icon: Icons.color_lens,
+                    label: 'Vehicle Color',
+                    value: driver.vehicleColor!,
+                  ),
                 _InfoItem(
                   icon: Icons.confirmation_number,
                   label: 'Plate Number',
@@ -313,6 +327,38 @@ class DriverInfoScreen extends StatelessWidget {
                   ),
               ],
             ),
+
+            const SizedBox(height: 16),
+
+            // Driver and Helpers Information
+            if (driver.helpersCount != null && driver.helpersCount! > 0)
+              _InfoSection(
+                title: 'Driver & Helpers',
+                children: [
+                  _InfoItem(
+                    icon: Icons.person,
+                    label: 'Driver',
+                    value: driver.name,
+                  ),
+                  _InfoItem(
+                    icon: Icons.people,
+                    label: 'Number of Helpers',
+                    value:
+                        '${driver.helpersCount} helper${driver.helpersCount == 1 ? '' : 's'}',
+                  ),
+                  if (driver.helpersNames != null &&
+                      driver.helpersNames!.isNotEmpty)
+                    ...driver.helpersNames!.asMap().entries.map((entry) {
+                      final index = entry.key + 1;
+                      final name = entry.value;
+                      return _InfoItem(
+                        icon: Icons.person_outline,
+                        label: 'Helper $index',
+                        value: name,
+                      );
+                    }).toList(),
+                ],
+              ),
 
             const SizedBox(height: 16),
 

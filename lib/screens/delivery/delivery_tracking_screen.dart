@@ -580,24 +580,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // Progress Header
-                  Container(
-                    color: AppColors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildStepIcon(DeliveryStep.headingToWarehouse,
-                            Icons.warehouse, 'Pickup'),
-                        _buildStepLine(DeliveryStep.loading),
-                        _buildStepIcon(DeliveryStep.delivering,
-                            Icons.local_shipping, 'Transit'),
-                        _buildStepLine(DeliveryStep.unloading),
-                        _buildStepIcon(DeliveryStep.receiving, Icons.person_pin,
-                            'Drop-off'),
-                      ],
-                    ),
-                  ),
+                  // Detailed Step-by-Step Timeline
+                  _buildDetailedTimeline(),
+
+                  const SizedBox(height: 16),
 
                   // Status Card
                   Container(
@@ -916,6 +902,426 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       case DeliveryStep.completed:
         return 'Delivered';
     }
+  }
+
+  String _getPhotoUrl(String key) {
+    final photos = _booking.deliveryPhotos;
+    if (photos == null) return '';
+    final value = photos[key];
+    if (value is String) return value;
+    if (value is Map && value['url'] is String) return value['url'];
+    return '';
+  }
+
+  void _viewImageFullScreen(String? imageUrl, String title) {
+    if (imageUrl == null || imageUrl.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            title: Text(title),
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.white, size: 50),
+                      SizedBox(height: 8),
+                      Text(
+                        'Failed to load image',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailedTimeline() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.timeline, color: AppColors.primaryRed, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Delivery Progress',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Step 1: Heading to Warehouse
+          _buildTimelineStep(
+            stepNumber: 1,
+            title: 'Heading to Warehouse',
+            subtitle: 'Driver is en route to pickup location',
+            icon: Icons.warehouse,
+            isActive: _currentStep == DeliveryStep.headingToWarehouse,
+            isCompleted:
+                _currentStep.index > DeliveryStep.headingToWarehouse.index,
+            subSteps: [],
+          ),
+
+          // Step 2: Loading Process
+          _buildTimelineStep(
+            stepNumber: 2,
+            title: 'Loading Process',
+            subtitle: 'At warehouse - loading goods',
+            icon: Icons.inventory,
+            isActive: _currentStep == DeliveryStep.loading,
+            isCompleted: _currentStep.index > DeliveryStep.loading.index,
+            subSteps: [
+              _buildSubStep(
+                  'Arrived at Warehouse', _loadingSubStep != null, null),
+              _buildSubStep(
+                  'Start Loading Photo',
+                  _startLoadingPhotoTaken,
+                  _startLoadingPhotoTaken
+                      ? _getPhotoUrl('start_loading')
+                      : null),
+              _buildSubStep(
+                  'Finish Loading Photo',
+                  _finishLoadingPhotoTaken,
+                  _finishLoadingPhotoTaken
+                      ? _getPhotoUrl('finish_loading')
+                      : null),
+            ],
+          ),
+
+          // Step 3: In Transit
+          _buildTimelineStep(
+            stepNumber: 3,
+            title: 'In Transit',
+            subtitle: 'Package is on the way',
+            icon: Icons.local_shipping,
+            isActive: _currentStep == DeliveryStep.delivering,
+            isCompleted: _currentStep.index > DeliveryStep.delivering.index,
+            subSteps: [],
+          ),
+
+          // Step 4: Unloading Process
+          _buildTimelineStep(
+            stepNumber: 4,
+            title: 'Unloading Process',
+            subtitle: 'At destination - unloading goods',
+            icon: Icons.unarchive,
+            isActive: _currentStep == DeliveryStep.unloading,
+            isCompleted: _currentStep.index > DeliveryStep.unloading.index,
+            subSteps: [
+              _buildSubStep(
+                  'Arrived at Destination', _unloadingSubStep != null, null),
+              _buildSubStep(
+                  'Start Unloading Photo',
+                  _startUnloadingPhotoTaken,
+                  _startUnloadingPhotoTaken
+                      ? _getPhotoUrl('start_unloading')
+                      : null),
+              _buildSubStep(
+                  'Finish Unloading Photo',
+                  _finishUnloadingPhotoTaken,
+                  _finishUnloadingPhotoTaken
+                      ? _getPhotoUrl('finish_unloading')
+                      : null),
+            ],
+          ),
+
+          // Step 5: Receiving
+          _buildTimelineStep(
+            stepNumber: 5,
+            title: 'Receiving',
+            subtitle: 'Handover to receiver',
+            icon: Icons.person_pin,
+            isActive: _currentStep == DeliveryStep.receiving,
+            isCompleted: _currentStep.index > DeliveryStep.receiving.index,
+            subSteps: [
+              _buildSubStep(
+                  'Receiver ID Photo',
+                  _receiverIdPhotoTaken,
+                  _receiverIdPhotoTaken
+                      ? (_getPhotoUrl('receiver_id').isNotEmpty
+                          ? _getPhotoUrl('receiver_id')
+                          : _getPhotoUrl('receiver_id_photo'))
+                      : null),
+              _buildSubStep(
+                  'Digital Signature',
+                  _receiverSignatureTaken,
+                  _receiverSignatureTaken
+                      ? (_getPhotoUrl('receiver_signature').isNotEmpty
+                          ? _getPhotoUrl('receiver_signature')
+                          : _getPhotoUrl('signature'))
+                      : null),
+            ],
+          ),
+
+          // Step 6: Completed
+          _buildTimelineStep(
+            stepNumber: 6,
+            title: 'Completed',
+            subtitle: 'Delivery finished successfully',
+            icon: Icons.check_circle,
+            isActive: _currentStep == DeliveryStep.completed,
+            isCompleted: _currentStep == DeliveryStep.completed,
+            subSteps: [],
+            isLast: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineStep({
+    required int stepNumber,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isActive,
+    required bool isCompleted,
+    required List<Widget> subSteps,
+    bool isLast = false,
+  }) {
+    Color stepColor;
+    if (isCompleted) {
+      stepColor = AppColors.success;
+    } else if (isActive) {
+      stepColor = AppColors.primaryRed;
+    } else {
+      stepColor = AppColors.grey;
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Timeline line and number
+          Column(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: isCompleted || isActive
+                      ? stepColor.withOpacity(0.1)
+                      : AppColors.lightGrey,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isCompleted || isActive ? stepColor : AppColors.grey,
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: isCompleted
+                      ? Icon(Icons.check, size: 16, color: stepColor)
+                      : Text(
+                          '$stepNumber',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Bold',
+                            color: isActive ? stepColor : AppColors.grey,
+                          ),
+                        ),
+                ),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color:
+                        isCompleted ? AppColors.success : AppColors.lightGrey,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? AppColors.primaryRed.withOpacity(0.05)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: isActive
+                        ? Border.all(
+                            color: AppColors.primaryRed.withOpacity(0.2))
+                        : null,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(icon, size: 20, color: stepColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontFamily: isActive || isCompleted
+                                        ? 'Bold'
+                                        : 'Medium',
+                                    color: isActive || isCompleted
+                                        ? AppColors.textPrimary
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
+                                Text(
+                                  subtitle,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isActive)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryRed,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'ACTIVE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontFamily: 'Bold',
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (subSteps.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        ...subSteps,
+                      ],
+                    ],
+                  ),
+                ),
+                if (!isLast) const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubStep(String label, bool completed, String? photoUrl) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 28, top: 4, bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            completed ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 14,
+            color: completed ? AppColors.success : AppColors.grey,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color:
+                    completed ? AppColors.textPrimary : AppColors.textSecondary,
+                fontFamily: completed ? 'Medium' : 'Regular',
+              ),
+            ),
+          ),
+          if (completed && photoUrl != null && photoUrl.isNotEmpty)
+            GestureDetector(
+              onTap: () => _viewImageFullScreen(photoUrl, label),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.visibility,
+                        size: 12, color: AppColors.primaryBlue),
+                    const SizedBox(width: 4),
+                    Text(
+                      'View',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primaryBlue,
+                        fontFamily: 'Medium',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildStepIcon(DeliveryStep step, IconData icon, String label) {
