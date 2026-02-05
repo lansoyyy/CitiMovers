@@ -1022,9 +1022,15 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           ),
                           const SizedBox(height: 8),
                           _FareRow(
+                            label: 'Calculation',
+                            value:
+                                '${widget.distance.toStringAsFixed(1)} x 3 / 2 x 60',
+                          ),
+                          const SizedBox(height: 8),
+                          _FareRow(
                             label: 'Calculated Fare',
                             value:
-                                'P${((widget.distance * 3 / 2.5) * 60).toStringAsFixed(0)}',
+                                'P${((widget.distance * 3 / 2) * 60).toStringAsFixed(0)}',
                           ),
                           const SizedBox(height: 8),
                           if (_estimatedFare >= 12000) ...[

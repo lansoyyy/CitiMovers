@@ -45,7 +45,7 @@ enum LoadingSubStep { arrived, startLoading, finishLoading }
 
 enum UnloadingSubStep { arrived, startUnloading, finishUnloading }
 
-enum ReceivingSubStep { receiverName, receiverIdPhoto, signature }
+enum ReceivingSubStep { receiverName, receiverIdPhoto, received, signature }
 
 class _RiderDeliveryProgressScreenState
     extends State<RiderDeliveryProgressScreen> with TickerProviderStateMixin {
@@ -1602,7 +1602,7 @@ class _RiderDeliveryProgressScreenState
                     : () {
                         _logActivity('receiving_next:receiver_id_photo');
                         setState(() {
-                          _receivingSubStep = ReceivingSubStep.signature;
+                          _receivingSubStep = ReceivingSubStep.received;
                         });
                       },
                 style: ElevatedButton.styleFrom(
@@ -1611,6 +1611,64 @@ class _RiderDeliveryProgressScreenState
                       borderRadius: BorderRadius.circular(16)),
                 ),
                 child: const Text('Next',
+                    style: TextStyle(
+                        fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
+              ),
+            ),
+          ],
+        );
+
+      case ReceivingSubStep.received:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            totalDemurrageCard,
+            const Text('Confirm Receipt',
+                style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: AppColors.success),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Receiver has confirmed receipt of all goods. Tap RECEIVED to proceed to signature capture.',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                          color: AppColors.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {
+                  _logActivity('receiving:received');
+                  // Unfocus any text fields before moving to signature
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _receivingSubStep = ReceivingSubStep.signature;
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('RECEIVED',
                     style: TextStyle(
                         fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
               ),
@@ -1635,19 +1693,27 @@ class _RiderDeliveryProgressScreenState
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: RepaintBoundary(
-                  key: _signatureKey,
-                  child: GestureDetector(
-                    onPanUpdate: (details) {
-                      setState(() {
-                        _signaturePoints.add(details.localPosition);
-                        _isSignatureEmpty = false;
-                      });
-                    },
-                    onPanEnd: (details) => _signaturePoints.add(null),
-                    child: CustomPaint(
-                      painter: SignaturePainter(points: _signaturePoints),
-                      size: Size.infinite,
+                child: ScrollConfiguration(
+                  behavior: const ScrollBehavior()
+                      .copyWith(overscroll: false, scrollbars: false),
+                  child: RepaintBoundary(
+                    key: _signatureKey,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragStart: (_) {},
+                      onVerticalDragUpdate: (_) {},
+                      onVerticalDragEnd: (_) {},
+                      onPanUpdate: (details) {
+                        setState(() {
+                          _signaturePoints.add(details.localPosition);
+                          _isSignatureEmpty = false;
+                        });
+                      },
+                      onPanEnd: (details) => _signaturePoints.add(null),
+                      child: CustomPaint(
+                        painter: SignaturePainter(points: _signaturePoints),
+                        size: Size.infinite,
+                      ),
                     ),
                   ),
                 ),

@@ -273,7 +273,9 @@ class MapsService {
 
     switch (vehicleType) {
       case '10-Wheeler Wingvan':
-        calculatedFare = (distanceKm * 3 / 2.5) * 60;
+        // Formula: Distance x 3 / 2 x 60 (Km/Liter % 2, Fuel x 60/liter)
+        // Minimum distance: 133.33km = ₱12,000
+        calculatedFare = (distanceKm * 3 / 2) * 60;
         // Apply minimum rate of ₱12,000
         if (calculatedFare < 12000) {
           calculatedFare = 12000;
