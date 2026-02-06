@@ -41,7 +41,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   final List<XFile> _selectedImages = [];
 
   double _rating = 0.0;
-  bool _isConfirmed = false;
   bool _isSubmitting = false;
   String? _driverName;
   Map<String, dynamic>? _deliveryPhotos;
@@ -330,11 +329,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   }
 
   Future<void> _submitReview() async {
-    if (!_isConfirmed) {
-      UIHelpers.showErrorToast('Please confirm delivery receipt');
-      return;
-    }
-
     if (_rating == 0) {
       UIHelpers.showErrorToast('Please provide a rating');
       return;
@@ -648,52 +642,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   ),
                   const SizedBox(height: 8),
                   _buildSignaturePlaceholderBox(),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Confirmation Checkbox
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Checkbox(
-                    value: _isConfirmed,
-                    onChanged: (value) {
-                      setState(() {
-                        _isConfirmed = value ?? false;
-                      });
-                    },
-                    activeColor: AppColors.success,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'I confirm that I have received my delivery in good condition',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -1532,6 +1480,26 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         _getPhotoUrl('receiver_signature') ?? _getPhotoUrl('signature');
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
+    // Get the timestamp from delivery photos
+    String? timestampStr;
+    if (_deliveryPhotos != null) {
+      timestampStr =
+          _deliveryPhotos!['receiver_signature_timestamp'] as String? ??
+              _deliveryPhotos!['received_at_pht'] as String?;
+    }
+
+    // Format timestamp if available
+    String formattedTimestamp = '';
+    if (timestampStr != null && timestampStr.isNotEmpty) {
+      try {
+        final dateTime = DateTime.parse(timestampStr);
+        formattedTimestamp =
+            '${dateTime.month.toString().padLeft(2, '0')}/${dateTime.day.toString().padLeft(2, '0')}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+      } catch (e) {
+        formattedTimestamp = timestampStr;
+      }
+    }
+
     return GestureDetector(
       onTap: hasImage
           ? () => _viewImageFullScreen(imageUrl, 'Receiver Signature')
@@ -1589,6 +1557,27 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                 color: hasImage ? AppColors.success : AppColors.textSecondary,
               ),
             ),
+            if (hasImage && formattedTimestamp.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.access_time,
+                    size: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Received: $formattedTimestamp',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

@@ -657,6 +657,10 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
+    // Capture Philippine Time (UTC+8) timestamp for receiver signature
+    final now = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final receivedAt = now;
+
     _unloadingTimer?.cancel();
     _unloadingDemurrageFee = 0.0;
 
@@ -676,6 +680,8 @@ class _RiderDeliveryProgressScreenState
       deliveryPhotos: {
         'receiver_id': _idPhotoUrl,
         'receiver_signature': signatureUrl,
+        'receiver_signature_timestamp': receivedAt.toIso8601String(),
+        'received_at_pht': receivedAt.toIso8601String(),
       },
     );
 
@@ -891,6 +897,10 @@ class _RiderDeliveryProgressScreenState
         'destination_finished_unloading':
             _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
         'receiver': receiverName,
+        'received_date_time': DateFormat('MMM dd, yyyy HH:mm')
+            .format(DateTime.now().toUtc().add(const Duration(hours: 8))),
+        'received_timestamp_pht': DateFormat('yyyy-MM-dd HH:mm:ss')
+            .format(DateTime.now().toUtc().add(const Duration(hours: 8))),
         'start_loading_photo_url': startLoadingUrl ?? '',
         'finish_loading_photo_url': finishLoadingUrl ?? '',
         'start_unloading_photo_url': startUnloadingUrl ?? '',
@@ -1518,12 +1528,17 @@ class _RiderDeliveryProgressScreenState
             totalDemurrageCard,
             const Text('Receiver Name',
                 style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            const Text(
+              'Type the name exactly as it appears on the ID presented',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _receiverNameController,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                labelText: 'Type receiver name',
+                labelText: 'Receiver name (as on ID)',
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixIcon: const Icon(Icons.person),
@@ -1677,15 +1692,109 @@ class _RiderDeliveryProgressScreenState
         );
 
       case ReceivingSubStep.signature:
+        // Get current Philippine Time (UTC+8)
+        final nowPHT = DateTime.now().toUtc().add(const Duration(hours: 8));
+        final formattedDateTime =
+            '${nowPHT.month.toString().padLeft(2, '0')}/${nowPHT.day.toString().padLeft(2, '0')}/${nowPHT.year} ${nowPHT.hour.toString().padLeft(2, '0')}:${nowPHT.minute.toString().padLeft(2, '0')}';
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            totalDemurrageCard,
-            const Text('Digital Signature',
-                style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
-            const SizedBox(height: 12),
+            // Date and Time Display
             Container(
-              height: 170,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.access_time,
+                      color: AppColors.primaryBlue, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Date & Time (PHT)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          formattedDateTime,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Receiver Name Display
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person, color: AppColors.success, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Receiver Name (as on ID)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          _receiverNameController.text,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            const Text('Digital Signature',
+                style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
+            const SizedBox(height: 4),
+            const Text(
+              'Ask receiver to sign below',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+
+            // Smaller Signature Box (fixed height, not expanded)
+            Container(
+              height: 120,
               decoration: BoxDecoration(
                 border: Border.all(color: AppColors.lightGrey),
                 borderRadius: BorderRadius.circular(12),
@@ -1693,55 +1802,77 @@ class _RiderDeliveryProgressScreenState
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: ScrollConfiguration(
-                  behavior: const ScrollBehavior()
-                      .copyWith(overscroll: false, scrollbars: false),
-                  child: RepaintBoundary(
-                    key: _signatureKey,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragStart: (_) {},
-                      onVerticalDragUpdate: (_) {},
-                      onVerticalDragEnd: (_) {},
-                      onPanUpdate: (details) {
-                        setState(() {
-                          _signaturePoints.add(details.localPosition);
-                          _isSignatureEmpty = false;
-                        });
-                      },
-                      onPanEnd: (details) => _signaturePoints.add(null),
-                      child: CustomPaint(
-                        painter: SignaturePainter(points: _signaturePoints),
-                        size: Size.infinite,
-                      ),
+                child: RepaintBoundary(
+                  key: _signatureKey,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: (details) {
+                      setState(() {
+                        _signaturePoints.add(details.localPosition);
+                        _isSignatureEmpty = false;
+                      });
+                    },
+                    onPanEnd: (details) => _signaturePoints.add(null),
+                    child: CustomPaint(
+                      painter: SignaturePainter(points: _signaturePoints),
+                      size: Size.infinite,
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  setState(() {
-                    _signaturePoints.clear();
-                    _isSignatureEmpty = true;
-                  });
-                },
-                child: const Text('Clear Signature'),
-              ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _signaturePoints.clear();
+                      _isSignatureEmpty = true;
+                    });
+                  },
+                  icon: const Icon(Icons.clear, size: 16),
+                  label: const Text('Clear', style: TextStyle(fontSize: 12)),
+                ),
+                if (_isSignatureEmpty)
+                  const Text(
+                    'Signature required',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  )
+                else
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle,
+                          color: AppColors.success, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Signed',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.success,
+                          fontFamily: 'Medium',
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              height: 56,
+              height: 48,
               child: ElevatedButton(
                 onPressed: _isSignatureEmpty ? null : _completeDelivery,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Text('Delivery Complete',
                     style: TextStyle(
