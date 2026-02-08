@@ -503,6 +503,12 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
+    // Require Service Invoice photo after finish loading
+    if (_serviceInvoicePhotos.isEmpty) {
+      UIHelpers.showInfoToast('Please take a photo of the Service Invoice issued by the POD department.');
+      return;
+    }
+
     _loadingTimer?.cancel();
     _loadingDemurrageFee = 0.0;
 
@@ -524,7 +530,7 @@ class _RiderDeliveryProgressScreenState
       _currentStep = DeliveryStep.delivering;
       _loadingSubStep = null;
     });
-    UIHelpers.showSuccessToast('Loading completed! Ready for delivery.');
+    UIHelpers.showSuccessToast('Loading completed! Service Invoice captured. Ready for delivery.');
   }
 
   void _arrivedAtClient() async {
@@ -1326,6 +1332,8 @@ class _RiderDeliveryProgressScreenState
           (file) => _finishLoadingPhoto = file,
           photoType: 'Finished Loading',
         ),
+        const SizedBox(height: 24),
+        _buildServiceInvoiceSection(),
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
@@ -1473,8 +1481,6 @@ class _RiderDeliveryProgressScreenState
             _unloadingDemurrageFee),
         const SizedBox(height: 12),
         _buildTotalDemurrageHoursCard(),
-        const SizedBox(height: 16),
-        _buildServiceInvoiceSection(),
         const SizedBox(height: 24),
         const Text('Unloading Process',
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
@@ -2171,23 +2177,42 @@ class _RiderDeliveryProgressScreenState
         children: [
           Row(
             children: [
-              const Text('Service Invoice',
-                  style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
-              const Spacer(),
-              ElevatedButton(
-                onPressed: _takeServiceInvoicePhoto,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
-                ),
-                child: const Text('Service Invoice'),
+              const Icon(Icons.receipt_long, color: AppColors.primaryRed, size: 24),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Service Invoice (POD)',
+                    style: TextStyle(fontSize: 16, fontFamily: 'Bold')),
               ),
             ],
           ),
           const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.3)),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Workflow:',
+                  style: TextStyle(fontSize: 13, fontFamily: 'Bold', color: AppColors.primaryBlue),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '1. Go to Documentation Dept / POD Counter\n'
+                  '2. Report loading is complete\n'
+                  '3. Submit the picklist\n'
+                  '4. POD will issue printed Service Invoice\n'
+                  '5. Take photo of the Service Invoice',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           if (_serviceInvoicePhotos.isNotEmpty)
             SizedBox(
               height: 72,
@@ -2210,16 +2235,26 @@ class _RiderDeliveryProgressScreenState
             )
           else
             const Text(
-              'Take a picture of all invoice/receipt pages received.',
+              'Take a photo of the Service Invoice issued by POD department.',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
               onPressed: _takeServiceInvoicePhoto,
-              icon: const Icon(Icons.add_a_photo),
-              label: const Text('Take More Picture'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryRed,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              icon: const Icon(Icons.add_a_photo, size: 18),
+              label: Text(
+                _serviceInvoicePhotos.isEmpty ? 'Take Service Invoice Photo' : 'Take More Photos',
+                style: const TextStyle(fontSize: 14, fontFamily: 'Medium'),
+              ),
             ),
           ),
         ],
