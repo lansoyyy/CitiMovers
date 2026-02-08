@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/app_constants.dart';
 import '../../utils/ui_helpers.dart';
+import '../delivery/delivery_tracking_screen.dart';
 import '../booking/booking_start_screen.dart';
 import '../../models/location_model.dart';
 import '../../models/booking_model.dart';
@@ -636,6 +637,16 @@ class _HomeTabState extends State<HomeTab> {
                                 from: booking.pickupLocation.address,
                                 to: booking.dropoffLocation.address,
                                 fare: 'P${booking.estimatedFare.toInt()}',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => DeliveryTrackingScreen(
+                                        booking: booking,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             )),
                       ],
@@ -1967,6 +1978,7 @@ class _RecentBookingCard extends StatelessWidget {
   final String from;
   final String to;
   final String fare;
+  final VoidCallback? onTap;
 
   const _RecentBookingCard({
     required this.vehicleType,
@@ -1976,28 +1988,31 @@ class _RecentBookingCard extends StatelessWidget {
     required this.from,
     required this.to,
     required this.fare,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(
+            color: Colors.white,
+            width: 1,
           ),
-        ],
-        border: Border.all(
-          color: Colors.white,
-          width: 1,
         ),
-      ),
-      child: Column(
+        child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2175,7 +2190,7 @@ class _RecentBookingCard extends StatelessWidget {
               ),
             ],
           ),
-        ],
+        ]),
       ),
     );
   }

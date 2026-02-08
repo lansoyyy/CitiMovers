@@ -130,6 +130,8 @@ class _RiderDeliveryHistoryScreenState
               'Unknown',
           vehicleType: booking.vehicle.type,
           rating: ratings[doc.id] ?? 0.0,
+          deliveryPhotos: booking.deliveryPhotos,
+          receiverName: booking.receiverName,
         );
         deliveries.add(delivery);
       }
@@ -367,6 +369,8 @@ class DeliveryHistory {
   final String customerName;
   final String vehicleType;
   final double rating;
+  final Map<String, dynamic>? deliveryPhotos;
+  final String? receiverName;
 
   DeliveryHistory({
     required this.bookingId,
@@ -380,6 +384,8 @@ class DeliveryHistory {
     required this.customerName,
     required this.vehicleType,
     required this.rating,
+    this.deliveryPhotos,
+    this.receiverName,
   });
 }
 
@@ -440,8 +446,220 @@ class _DeliveryHistoryCard extends StatelessWidget {
 
   const _DeliveryHistoryCard({required this.delivery});
 
+  String? _getPhotoUrl(String key) {
+    final photos = delivery.deliveryPhotos;
+    if (photos == null) return null;
+    final value = photos[key];
+    if (value is String) return value;
+    if (value is Map && value['url'] is String) return value['url'];
+    return null;
+  }
+
+  List<MapEntry<String, String?>> _getAllPhotoUrls() {
+    final photos = <MapEntry<String, String?>>[];
+    final photoKeys = [
+      ('Start Loading', 'start_loading'),
+      ('Finish Loading', 'finish_loading'),
+      ('Start Unloading', 'start_unloading'),
+      ('Finish Unloading', 'finish_unloading'),
+      ('Receiver ID', 'receiver_id'),
+      ('Signature', 'receiver_signature'),
+    ];
+    for (final (label, key) in photoKeys) {
+      final url = _getPhotoUrl(key);
+      if (url != null && url.isNotEmpty) {
+        photos.add(MapEntry(label, url));
+      }
+    }
+    return photos;
+  }
+
+  void _viewImageFullScreen(BuildContext context, String? imageUrl, String title) {
+    if (imageUrl == null || imageUrl.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            title: Text(title),
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.white, size: 50),
+                      SizedBox(height: 8),
+                      Text(
+                        'Failed to load image',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPhotoGallery(BuildContext context) {
+    final photos = _getAllPhotoUrls();
+    if (photos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No photos available for this delivery')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.lightGrey,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Delivery Photos',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: GridView.builder(
+                    controller: scrollController,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: photos.length,
+                    itemBuilder: (context, index) {
+                      final photo = photos[index];
+                      return GestureDetector(
+                        onTap: () => _viewImageFullScreen(context, photo.value, photo.key),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.lightGrey),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: Image.network(
+                                    photo.value!,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          value: loadingProgress.expectedTotalBytes != null
+                                              ? loadingProgress.cumulativeBytesLoaded /
+                                                  loadingProgress.expectedTotalBytes!
+                                              : null,
+                                          color: AppColors.primaryRed,
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: AppColors.scaffoldBackground,
+                                        child: const Icon(
+                                          Icons.broken_image,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                  color: AppColors.scaffoldBackground,
+                                  child: Text(
+                                    photo.key,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'Medium',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final photoCount = _getAllPhotoUrls().length;
+    final hasReceiverName = delivery.receiverName != null && delivery.receiverName!.isNotEmpty;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -597,31 +815,54 @@ class _DeliveryHistoryCard extends StatelessWidget {
           const Divider(),
           const SizedBox(height: 12),
 
-          // Footer
+          // Customer & Receiver Info
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Customer',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'Regular',
-                      color: AppColors.textSecondary,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Customer',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Regular',
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    delivery.customerName,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Medium',
-                      color: AppColors.textPrimary,
+                    const SizedBox(height: 4),
+                    Text(
+                      delivery.customerName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                  ),
-                ],
+                    if (hasReceiverName) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Receiver',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        delivery.receiverName!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -644,19 +885,47 @@ class _DeliveryHistoryCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  // Text(
-                  //   '₱${delivery.fare.toStringAsFixed(2)}',
-                  //   style: const TextStyle(
-                  //     fontSize: 18,
-                  //     fontFamily: 'Bold',
-                  //     color: AppColors.success,
-                  //   ),
-                  // ),
                 ],
               ),
             ],
           ),
+
+          // View Photos Button
+          if (photoCount > 0) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => _showPhotoGallery(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.photo_library,
+                      size: 18,
+                      color: AppColors.primaryBlue,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'View $photoCount Photo${photoCount > 1 ? 's' : ''}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Medium',
+                        color: AppColors.primaryBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

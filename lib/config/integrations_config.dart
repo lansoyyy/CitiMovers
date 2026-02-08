@@ -21,12 +21,8 @@ class IntegrationsConfig {
   ];
 
   static const List<String> sampleClientReportRecipients = <String>[
-    'client@example.com',
-    'client.manager@example.com',
-    'client.pod@example.com',
-    'client.billing@example.com',
-    'client.finance@example.com',
-    'client.admin@example.com',
+    // Add actual client email addresses here
+    // 'client@actualdomain.com',
   ];
 
   static const String dragonpayBaseUrl = 'https://test.dragonpay.ph/Pay.aspx';
