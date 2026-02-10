@@ -143,11 +143,92 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   }
 
   String? _getPhotoUrl(String key) {
-    if (_deliveryPhotos == null) return null;
+    if (_deliveryPhotos == null) {
+      debugPrint('_getPhotoUrl: _deliveryPhotos is null for key: $key');
+      return null;
+    }
     final value = _deliveryPhotos![key];
+    debugPrint('_getPhotoUrl: key=$key, value=$value');
     if (value is String) return value;
     if (value is Map && value['url'] is String) return value['url'];
     return null;
+  }
+
+  void _viewSignatureFullScreen(String? imageUrl, String title) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      debugPrint('_viewSignatureFullScreen: No image URL provided');
+      return;
+    }
+
+    debugPrint(
+        '_viewSignatureFullScreen: Viewing signature with URL: $imageUrl');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor:
+              Colors.white, // WHITE background for signature visibility
+          appBar: AppBar(
+            backgroundColor: AppColors.white,
+            title: Text(title),
+            iconTheme: const IconThemeData(color: AppColors.textPrimary),
+            elevation: 0,
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: AppColors.primaryRed,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  debugPrint('Error loading signature image: $error');
+                  return Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: AppColors.primaryRed, size: 50),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Failed to load signature',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'URL: ${imageUrl.substring(0, imageUrl.length > 50 ? 50 : imageUrl.length)}...',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _viewImageFullScreen(String? imageUrl, String title) {
@@ -1480,6 +1561,11 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         _getPhotoUrl('receiver_signature') ?? _getPhotoUrl('signature');
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
+    debugPrint(
+        '_buildSignaturePlaceholderBox: imageUrl=$imageUrl, hasImage=$hasImage');
+    debugPrint(
+        '_buildSignaturePlaceholderBox: _deliveryPhotos=$_deliveryPhotos');
+
     // Get the timestamp from delivery photos
     String? timestampStr;
     if (_deliveryPhotos != null) {
@@ -1502,17 +1588,26 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
     return GestureDetector(
       onTap: hasImage
-          ? () => _viewImageFullScreen(imageUrl, 'Receiver Signature')
+          ? () => _viewSignatureFullScreen(imageUrl, 'Receiver Signature')
           : null,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.scaffoldBackground,
+          color: AppColors.white, // WHITE background for visibility
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: hasImage ? AppColors.success : AppColors.lightGrey,
             width: hasImage ? 2 : 1,
           ),
+          boxShadow: hasImage
+              ? [
+                  BoxShadow(
+                    color: AppColors.success.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1520,37 +1615,63 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
             Container(
               height: 80,
               decoration: BoxDecoration(
-                color: hasImage ? Colors.transparent : Colors.grey[200],
+                color: hasImage ? AppColors.white : Colors.grey[100],
                 borderRadius: BorderRadius.circular(8),
                 image: hasImage
                     ? DecorationImage(
-                        image: NetworkImage(imageUrl),
+                        image: NetworkImage(imageUrl!),
                         fit: BoxFit.contain,
                       )
                     : null,
               ),
               child: !hasImage
-                  ? const Center(
-                      child: Icon(
-                        Icons.border_color,
-                        color: AppColors.textHint,
-                        size: 28,
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.border_color,
+                            color: AppColors.textHint,
+                            size: 28,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'No signature captured',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textHint,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : null,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Signature',
-              style: TextStyle(
-                fontSize: 12,
-                fontFamily: 'Medium',
-                color: AppColors.textPrimary,
-              ),
+            Row(
+              children: [
+                Icon(
+                  hasImage ? Icons.check_circle : Icons.pending,
+                  size: 14,
+                  color: hasImage ? AppColors.success : AppColors.textHint,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Signature',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Medium',
+                    color:
+                        hasImage ? AppColors.textPrimary : AppColors.textHint,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(
-              hasImage ? 'Tap to view' : 'No signature available',
+              hasImage
+                  ? 'Tap to view full signature'
+                  : 'Signature not available',
               style: TextStyle(
                 fontSize: 10,
                 fontFamily: 'Regular',

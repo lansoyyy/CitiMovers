@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../delivery/rider_delivery_progress_screen.dart';
@@ -8,7 +12,6 @@ import '../../../models/location_model.dart';
 import '../../../models/vehicle_model.dart';
 import '../../models/delivery_request_model.dart';
 import '../../services/rider_auth_service.dart';
-import 'package:intl/intl.dart';
 
 class RiderDeliveriesTab extends StatefulWidget {
   const RiderDeliveriesTab({super.key});
@@ -2125,10 +2128,8 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        UIHelpers.showInfoToast(
-                            'Download receipt feature coming soon');
+                      onPressed: () async {
+                        await _downloadReceipt(context, delivery);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
@@ -2537,5 +2538,93 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Generate and share receipt for completed delivery
+  Future<void> _downloadReceipt(
+      BuildContext context, DeliveryData delivery) async {
+    try {
+      UIHelpers.showInfoToast('Generating receipt...');
+
+      // Get receipt number from delivery ID
+      final receiptNumber = 'RCP-${delivery.id.substring(0, 8).toUpperCase()}';
+      final receiptDate =
+          DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now());
+
+      // Build receipt content
+      final receiptContent = '''
+═══════════════════════════════════════════
+           CITIMOVERS DELIVERY RECEIPT
+═══════════════════════════════════════════
+
+Receipt No: $receiptNumber
+Date: $receiptDate
+Delivery ID: ${delivery.id}
+
+───────────────────────────────────────────
+CUSTOMER INFORMATION
+───────────────────────────────────────────
+Name: ${delivery.customerName}
+Phone: ${delivery.customerPhone}
+
+───────────────────────────────────────────
+DELIVERY DETAILS
+───────────────────────────────────────────
+Vehicle Type: ${delivery.vehicleType}
+Package Type: ${delivery.packageType}
+Weight Capacity: ${delivery.weight}
+Insurance: ${delivery.insurance}
+
+───────────────────────────────────────────
+ROUTE INFORMATION
+───────────────────────────────────────────
+Pickup: ${delivery.pickupLocation}
+Drop-off: ${delivery.deliveryLocation}
+Distance: ${delivery.distance > 0 ? '${delivery.distance.toStringAsFixed(1)} km' : 'N/A'}
+Estimated Time: ${delivery.estimatedTime}
+
+───────────────────────────────────────────
+PAYMENT INFORMATION
+───────────────────────────────────────────
+Payment Method: ${delivery.paymentMethod}
+Status: PAID
+
+───────────────────────────────────────────
+DELIVERY INFORMATION
+───────────────────────────────────────────
+Status: ${delivery.status}
+Scheduled Date: ${delivery.date}
+Scheduled Time: ${delivery.time}
+
+═══════════════════════════════════════════
+        Thank you for choosing CitiMovers!
+         For inquiries: support@citimovers.com
+═══════════════════════════════════════════
+'''
+          .trim();
+
+      // Get temporary directory
+      final tempDir = await getTemporaryDirectory();
+      final fileName = 'receipt_${delivery.id}.txt';
+      final filePath = '${tempDir.path}/$fileName';
+
+      // Write receipt to file
+      final file = File(filePath);
+      await file.writeAsString(receiptContent);
+
+      // Share the receipt file
+      final result = await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'CitiMovers Delivery Receipt - ${delivery.id}',
+        text: 'Here is your delivery receipt from CitiMovers.',
+      );
+
+      if (result.status == ShareResultStatus.success) {
+        UIHelpers.showSuccessToast('Receipt shared successfully!');
+      }
+    } catch (e) {
+      debugPrint('Error generating receipt: $e');
+      UIHelpers.showErrorToast('Failed to generate receipt: $e');
+    }
   }
 }

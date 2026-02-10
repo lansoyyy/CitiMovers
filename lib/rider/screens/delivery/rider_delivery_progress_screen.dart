@@ -18,6 +18,7 @@ import 'package:intl/intl.dart';
 
 import 'package:citimovers/config/integrations_config.dart';
 import 'package:citimovers/services/emailjs_service.dart';
+import 'package:citimovers/services/gps_map_camera_service.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -78,6 +79,19 @@ class _RiderDeliveryProgressScreenState
   // Geofencing
   bool _isWithinGeofence = true;
   String _geofenceStatus = 'Within delivery area';
+
+  // Warehouse Arrival GPS Photo
+  File? _warehouseArrivalPhoto;
+  String? _warehouseArrivalPhotoUrl;
+  final TextEditingController _arrivalRemarksController =
+      TextEditingController();
+  final GpsMapCameraService _gpsCameraService = GpsMapCameraService();
+
+  // Destination Arrival GPS Photo
+  File? _destinationArrivalPhoto;
+  String? _destinationArrivalPhotoUrl;
+  final TextEditingController _destinationArrivalRemarksController =
+      TextEditingController();
 
   // Receiving
   final _receiverNameController = TextEditingController();
@@ -151,6 +165,8 @@ class _RiderDeliveryProgressScreenState
     _unloadingTimer?.cancel();
     _locationTrackingTimer?.cancel();
     _receiverNameController.dispose();
+    _arrivalRemarksController.dispose();
+    _destinationArrivalRemarksController.dispose();
     super.dispose();
   }
 
@@ -280,23 +296,448 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _arrivedAtWarehouse() async {
+    _logActivity('arrived_at_pickup_prompt');
+
+    // Show GPS Photo Capture Dialog
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _buildWarehouseArrivalDialog(),
+    );
+
+    if (result == null || result['confirmed'] != true) {
+      // User cancelled
+      return;
+    }
+
     _logActivity('arrived_at_pickup');
+
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
       _startLoadingTimer();
     });
 
-    // Update booking status in Firestore
+    // Update booking status in Firestore with arrival photo and remarks
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'arrived_at_pickup',
       loadingStartedAt: DateTime.now(),
       picklistItems: _picklistItems,
+      deliveryPhotos: {
+        'warehouse_arrival': _warehouseArrivalPhotoUrl,
+        'warehouse_arrival_remarks': result['remarks'] ?? '',
+      },
     );
 
     UIHelpers.showSuccessToast(
-        'Arrived at warehouse! Demurrage timer started.');
+        'Arrived at warehouse! GPS photo captured. Demurrage timer started.');
+  }
+
+  /// Build the warehouse arrival dialog with GPS photo capture and interactive map
+  Widget _buildWarehouseArrivalDialog() {
+    return StatefulBuilder(
+      builder: (context, setDialogState) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withValues(alpha: 0.1),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on,
+                          color: AppColors.primaryRed),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Arrival at Warehouse',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontFamily: 'Bold',
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            Navigator.pop(context, {'confirmed': false}),
+                        icon: const Icon(Icons.close),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Scrollable content
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Instructions
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppColors.primaryBlue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primaryBlue
+                                    .withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.info_outline,
+                                    color: AppColors.primaryBlue),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'REMARKS: Take a photo at the front gate after arrival. GPS location will be embedded in the photo.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Interactive Map Section
+                          const Text(
+                            'Current Location',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Interactive Google Map
+                          Container(
+                            height: 200,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.lightGrey),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: GoogleMap(
+                                initialCameraPosition: CameraPosition(
+                                  target: _pickupCoordinates ??
+                                      const LatLng(14.5995, 120.9842),
+                                  zoom: 16,
+                                ),
+                                markers: _pickupCoordinates != null
+                                    ? {
+                                        Marker(
+                                          markerId: const MarkerId('current'),
+                                          position: _pickupCoordinates!,
+                                          infoWindow: const InfoWindow(
+                                              title: 'Warehouse Location'),
+                                        ),
+                                      }
+                                    : {},
+                                zoomControlsEnabled: true,
+                                mapToolbarEnabled: true,
+                                myLocationEnabled: true,
+                                myLocationButtonEnabled: true,
+                                zoomGesturesEnabled: true,
+                                scrollGesturesEnabled: true,
+                                rotateGesturesEnabled: true,
+                                tiltGesturesEnabled: true,
+                                onMapCreated: (controller) {
+                                  // Map is ready
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Text(
+                              'Pinch to zoom, drag to pan',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // GPS Photo Section
+                          const Text(
+                            'GPS Photo at Front Gate',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Photo Preview - No scroll conflicts here
+                          GestureDetector(
+                            onTap: () async {
+                              await _takeGpsArrivalPhoto();
+                              setDialogState(() {});
+                            },
+                            child: Container(
+                              height: 180,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _warehouseArrivalPhoto != null
+                                      ? AppColors.success
+                                      : AppColors.lightGrey,
+                                  width: 2,
+                                ),
+                                image: _warehouseArrivalPhoto != null
+                                    ? DecorationImage(
+                                        image:
+                                            FileImage(_warehouseArrivalPhoto!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                              ),
+                              child: _warehouseArrivalPhoto == null
+                                  ? Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.camera_alt,
+                                          size: 48,
+                                          color: Colors.grey[400],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Tap to take GPS photo',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Location & timestamp will be embedded',
+                                          style: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : null,
+                            ),
+                          ),
+
+                          if (_warehouseArrivalPhoto != null) ...[
+                            const SizedBox(height: 8),
+                            Center(
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  await _takeGpsArrivalPhoto();
+                                  setDialogState(() {});
+                                },
+                                icon: const Icon(Icons.refresh, size: 18),
+                                label: const Text('Retake Photo'),
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 16),
+
+                          // Remarks Field
+                          const Text(
+                            'Remarks (Optional)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _arrivalRemarksController,
+                            maxLines: 2,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Enter any remarks about the arrival...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Footer buttons
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(28),
+                      bottomRight: Radius.circular(28),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () =>
+                              Navigator.pop(context, {'confirmed': false}),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _warehouseArrivalPhoto != null
+                              ? () {
+                                  Navigator.pop(context, {
+                                    'confirmed': true,
+                                    'remarks': _arrivalRemarksController.text,
+                                  });
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.success,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Confirm Arrival',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Take GPS photo at warehouse arrival
+  Future<void> _takeGpsArrivalPhoto() async {
+    try {
+      _logActivity('take_gps_photo:warehouse_arrival');
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Get current location
+      final locationData = await _gpsCameraService.getCurrentLocationData();
+
+      // Close loading
+      Navigator.pop(context);
+
+      // Take photo
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+        maxWidth: 1920,
+        maxHeight: 1080,
+      );
+
+      if (image == null) return;
+
+      // Show processing
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Add GPS watermark
+      final File originalFile = File(image.path);
+      final File watermarkedFile = await _gpsCameraService.addGpsWatermark(
+        originalFile,
+        locationData,
+      );
+
+      setState(() {
+        _warehouseArrivalPhoto = watermarkedFile;
+      });
+
+      // Upload to Firebase
+      final photoUrl = await _storageService.uploadDeliveryPhoto(
+        watermarkedFile,
+        widget.request.id,
+        'Warehouse Arrival GPS',
+      );
+
+      if (photoUrl != null) {
+        setState(() {
+          _warehouseArrivalPhotoUrl = photoUrl;
+        });
+
+        // Add to booking document
+        await _bookingService.addDeliveryPhoto(
+          bookingId: widget.request.id,
+          stage: 'warehouse_arrival',
+          photoUrl: photoUrl,
+        );
+
+        UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
+      } else {
+        UIHelpers.showErrorToast('Failed to upload GPS photo');
+      }
+
+      // Close processing
+      Navigator.pop(context);
+    } catch (e) {
+      // Close any open dialogs
+      Navigator.of(context).popUntil((route) => route is! DialogRoute);
+
+      debugPrint('Error taking GPS photo: $e');
+      UIHelpers.showErrorToast('Error taking GPS photo: $e');
+    }
   }
 
   void _startLoadingTimer() {
@@ -536,12 +977,27 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _arrivedAtClient() async {
-    _logActivity('arrived_at_dropoff');
+    _logActivity('arrived_at_dropoff_prompt');
+
     // Geo-fencing check
     if (!_isWithinGeofence) {
       _showGeofenceWarning();
       return;
     }
+
+    // Show GPS Photo Capture Dialog for destination arrival
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _buildDestinationArrivalDialog(),
+    );
+
+    if (result == null || result['confirmed'] != true) {
+      // User cancelled
+      return;
+    }
+
+    _logActivity('arrived_at_dropoff');
 
     setState(() {
       _currentStep = DeliveryStep.unloading;
@@ -549,16 +1005,424 @@ class _RiderDeliveryProgressScreenState
       _startUnloadingTimer();
     });
 
-    // Update booking status in Firestore
+    // Update booking status in Firestore with arrival photo and remarks
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'arrived_at_dropoff',
       unloadingStartedAt: DateTime.now(),
       picklistItems: _picklistItems,
+      deliveryPhotos: {
+        'destination_arrival': _destinationArrivalPhotoUrl,
+        'destination_arrival_remarks': result['remarks'] ?? '',
+      },
     );
 
     UIHelpers.showSuccessToast(
-        'Arrived at destination! Demurrage timer started.');
+        'Arrived at destination! GPS photo captured. Demurrage timer started.');
+  }
+
+  /// Build the destination arrival dialog with GPS photo capture and interactive map
+  Widget _buildDestinationArrivalDialog() {
+    return StatefulBuilder(
+      builder: (context, setDialogState) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on,
+                          color: AppColors.primaryBlue),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Arrival at Destination',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontFamily: 'Bold',
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            Navigator.pop(context, {'confirmed': false}),
+                        icon: const Icon(Icons.close),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Scrollable content
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Instructions
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.success.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.success.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.info_outline,
+                                    color: AppColors.success),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'REMARKS: Take a photo at the destination front gate. GPS location will be embedded in the photo.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Interactive Map Section
+                          const Text(
+                            'Current Location',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Interactive Google Map
+                          Container(
+                            height: 200,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.lightGrey),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: GoogleMap(
+                                initialCameraPosition: CameraPosition(
+                                  target: _dropoffCoordinates ??
+                                      const LatLng(14.5995, 120.9842),
+                                  zoom: 16,
+                                ),
+                                markers: _dropoffCoordinates != null
+                                    ? {
+                                        Marker(
+                                          markerId:
+                                              const MarkerId('destination'),
+                                          position: _dropoffCoordinates!,
+                                          infoWindow: const InfoWindow(
+                                              title: 'Destination Location'),
+                                        ),
+                                      }
+                                    : {},
+                                zoomControlsEnabled: true,
+                                mapToolbarEnabled: true,
+                                myLocationEnabled: true,
+                                myLocationButtonEnabled: true,
+                                zoomGesturesEnabled: true,
+                                scrollGesturesEnabled: true,
+                                rotateGesturesEnabled: true,
+                                tiltGesturesEnabled: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Text(
+                              'Pinch to zoom, drag to pan',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // GPS Photo Section
+                          const Text(
+                            'GPS Photo at Front Gate',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Photo Preview
+                          GestureDetector(
+                            onTap: () async {
+                              await _takeGpsDestinationPhoto();
+                              setDialogState(() {});
+                            },
+                            child: Container(
+                              height: 180,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _destinationArrivalPhoto != null
+                                      ? AppColors.success
+                                      : AppColors.lightGrey,
+                                  width: 2,
+                                ),
+                                image: _destinationArrivalPhoto != null
+                                    ? DecorationImage(
+                                        image: FileImage(
+                                            _destinationArrivalPhoto!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                              ),
+                              child: _destinationArrivalPhoto == null
+                                  ? Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.camera_alt,
+                                          size: 48,
+                                          color: Colors.grey[400],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Tap to take GPS photo',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Location & timestamp will be embedded',
+                                          style: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : null,
+                            ),
+                          ),
+
+                          if (_destinationArrivalPhoto != null) ...[
+                            const SizedBox(height: 8),
+                            Center(
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  await _takeGpsDestinationPhoto();
+                                  setDialogState(() {});
+                                },
+                                icon: const Icon(Icons.refresh, size: 18),
+                                label: const Text('Retake Photo'),
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 16),
+
+                          // Remarks Field
+                          const Text(
+                            'Remarks (Optional)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _destinationArrivalRemarksController,
+                            maxLines: 2,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Enter any remarks about the arrival...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Footer buttons
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(28),
+                      bottomRight: Radius.circular(28),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () =>
+                              Navigator.pop(context, {'confirmed': false}),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _destinationArrivalPhoto != null
+                              ? () {
+                                  Navigator.pop(context, {
+                                    'confirmed': true,
+                                    'remarks':
+                                        _destinationArrivalRemarksController
+                                            .text,
+                                  });
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.success,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Confirm Arrival',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Take GPS photo at destination arrival
+  Future<void> _takeGpsDestinationPhoto() async {
+    try {
+      _logActivity('take_gps_photo:destination_arrival');
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Get current location
+      final locationData = await _gpsCameraService.getCurrentLocationData();
+
+      // Close loading
+      Navigator.pop(context);
+
+      // Take photo
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+        maxWidth: 1920,
+        maxHeight: 1080,
+      );
+
+      if (image == null) return;
+
+      // Show processing
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Add GPS watermark
+      final File originalFile = File(image.path);
+      final File watermarkedFile = await _gpsCameraService.addGpsWatermark(
+        originalFile,
+        locationData,
+      );
+
+      setState(() {
+        _destinationArrivalPhoto = watermarkedFile;
+      });
+
+      // Upload to Firebase
+      final photoUrl = await _storageService.uploadDeliveryPhoto(
+        watermarkedFile,
+        widget.request.id,
+        'Destination Arrival GPS',
+      );
+
+      if (photoUrl != null) {
+        setState(() {
+          _destinationArrivalPhotoUrl = photoUrl;
+        });
+
+        // Add to booking document
+        await _bookingService.addDeliveryPhoto(
+          bookingId: widget.request.id,
+          stage: 'destination_arrival',
+          photoUrl: photoUrl,
+        );
+
+        UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
+      } else {
+        UIHelpers.showErrorToast('Failed to upload GPS photo');
+      }
+
+      // Close processing
+      Navigator.pop(context);
+    } catch (e) {
+      // Close any open dialogs
+      Navigator.of(context).popUntil((route) => route is! DialogRoute);
+
+      debugPrint('Error taking GPS photo: $e');
+      UIHelpers.showErrorToast('Error taking GPS photo: $e');
+    }
   }
 
   void _showGeofenceWarning() {
