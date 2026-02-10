@@ -36,14 +36,10 @@ class EmailJsService {
   }) async {
     final uri = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
 
-    final accessToken = IntegrationsConfig.emailJsAccessToken;
-
     final data = <String, dynamic>{
       'service_id': IntegrationsConfig.emailJsServiceId,
       'template_id': IntegrationsConfig.emailJsTemplateId,
       'user_id': IntegrationsConfig.emailJsPublicKey,
-      if (accessToken.isNotEmpty && !accessToken.startsWith('YOUR_'))
-        'accessToken': accessToken,
       'template_params': <String, dynamic>{
         ...templateParams,
         'to_email': toEmail,

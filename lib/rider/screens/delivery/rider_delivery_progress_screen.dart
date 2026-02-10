@@ -505,7 +505,8 @@ class _RiderDeliveryProgressScreenState
 
     // Require Service Invoice photo after finish loading
     if (_serviceInvoicePhotos.isEmpty) {
-      UIHelpers.showInfoToast('Please take a photo of the Service Invoice issued by the POD department.');
+      UIHelpers.showInfoToast(
+          'Please take a photo of the Service Invoice issued by the POD department.');
       return;
     }
 
@@ -530,7 +531,8 @@ class _RiderDeliveryProgressScreenState
       _currentStep = DeliveryStep.delivering;
       _loadingSubStep = null;
     });
-    UIHelpers.showSuccessToast('Loading completed! Service Invoice captured. Ready for delivery.');
+    UIHelpers.showSuccessToast(
+        'Loading completed! Service Invoice captured. Ready for delivery.');
   }
 
   void _arrivedAtClient() async {
@@ -885,32 +887,30 @@ class _RiderDeliveryProgressScreenState
 
       final templateParams = <String, dynamic>{
         'sender': IntegrationsConfig.reportSenderEmail,
-        'receiver_name': customerName,
+        'receiver_name': receiverName,
         'type': vehicleType,
         'plate': plate,
-        'driver': driverName ?? '',
-        'phone': driverPhone,
+        'driver_name': driverName ?? '',
+        'driver_phone': driverPhone,
         'pickup_address': pickupAddress,
-        'destination': destinationAddress,
+        'destination_address': destinationAddress,
         'fo_number': '',
         'trip_number': widget.request.id,
-        'pickup_arrival': _formatMilitaryTime(pickupArrival),
-        'pickup_start_loading': _formatMilitaryTime(startLoadingAt),
-        'pickup_finished_loading':
+        'rdd': rddStr,
+        'pickup_arrival_time': _formatMilitaryTime(pickupArrival),
+        'pickup_loading_start_time': _formatMilitaryTime(startLoadingAt),
+        'pickup_loading_finish_time':
             _formatMilitaryTime(finishLoadingAt ?? loadingFinish),
-        'destination_arrival': _formatMilitaryTime(destArrival),
-        'destination_start_unloading': _formatMilitaryTime(startUnloadingAt),
-        'destination_finished_unloading':
+        'dropoff_arrival_time': _formatMilitaryTime(destArrival),
+        'dropoff_unloading_start_time': _formatMilitaryTime(startUnloadingAt),
+        'dropoff_unloading_finish_time':
             _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
-        'receiver': receiverName,
         'received_date_time': DateFormat('MMM dd, yyyy HH:mm')
             .format(DateTime.now().toUtc().add(const Duration(hours: 8))),
         'received_timestamp_pht': DateFormat('yyyy-MM-dd HH:mm:ss')
             .format(DateTime.now().toUtc().add(const Duration(hours: 8))),
-        'start_loading_photo_url': startLoadingUrl ?? '',
-        'finish_loading_photo_url': finishLoadingUrl ?? '',
-        'start_unloading_photo_url': startUnloadingUrl ?? '',
-        'finish_unloading_photo_url': finishUnloadingUrl ?? '',
+        'loading_photo_url': startLoadingUrl ?? '',
+        'unloading_photo_url': finishUnloadingUrl ?? '',
         'receiver_id_photo_url': receiverIdUrl ?? '',
         'receiver_signature_url': receiverSignatureUrl ?? '',
         'service_invoice_urls': invoiceUrls.join('\n'),
@@ -918,10 +918,11 @@ class _RiderDeliveryProgressScreenState
             (picklistFromBooking is List && picklistFromBooking.isNotEmpty)
                 ? picklistFromBooking
                 : _picklistItems),
-
-        // Aliases (in case the EmailJS template uses different names)
-        'loading_photo_url': (finishLoadingUrl ?? startLoadingUrl) ?? '',
-        'unloading_photo_url': (finishUnloadingUrl ?? startUnloadingUrl) ?? '',
+        // Additional photos
+        'start_loading_photo_url': startLoadingUrl ?? '',
+        'finish_loading_photo_url': finishLoadingUrl ?? '',
+        'start_unloading_photo_url': startUnloadingUrl ?? '',
+        'finish_unloading_photo_url': finishUnloadingUrl ?? '',
       };
 
       // Customer + internal recipients. Internal recipients are sent as individual emails.
@@ -2177,7 +2178,8 @@ class _RiderDeliveryProgressScreenState
         children: [
           Row(
             children: [
-              const Icon(Icons.receipt_long, color: AppColors.primaryRed, size: 24),
+              const Icon(Icons.receipt_long,
+                  color: AppColors.primaryRed, size: 24),
               const SizedBox(width: 12),
               const Expanded(
                 child: Text('Service Invoice (POD)',
@@ -2191,14 +2193,18 @@ class _RiderDeliveryProgressScreenState
             decoration: BoxDecoration(
               color: AppColors.primaryBlue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.3)),
+              border: Border.all(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.3)),
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Workflow:',
-                  style: TextStyle(fontSize: 13, fontFamily: 'Bold', color: AppColors.primaryBlue),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Bold',
+                      color: AppColors.primaryBlue),
                 ),
                 SizedBox(height: 8),
                 Text(
@@ -2207,7 +2213,10 @@ class _RiderDeliveryProgressScreenState
                   '3. Submit the picklist\n'
                   '4. POD will issue printed Service Invoice\n'
                   '5. Take photo of the Service Invoice',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.5),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      height: 1.5),
                 ),
               ],
             ),
@@ -2252,7 +2261,9 @@ class _RiderDeliveryProgressScreenState
               ),
               icon: const Icon(Icons.add_a_photo, size: 18),
               label: Text(
-                _serviceInvoicePhotos.isEmpty ? 'Take Service Invoice Photo' : 'Take More Photos',
+                _serviceInvoicePhotos.isEmpty
+                    ? 'Take Service Invoice Photo'
+                    : 'Take More Photos',
                 style: const TextStyle(fontSize: 14, fontFamily: 'Medium'),
               ),
             ),
