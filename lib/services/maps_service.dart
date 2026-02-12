@@ -22,6 +22,9 @@ class MapsService {
   // The actual API key is hardcoded here for now
   static const String _apiKey = 'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o';
 
+  // Session token for Places API - reused within a search session
+  String? _currentSessionToken;
+
   /// Check if Google Maps API is properly configured
   static bool get isConfigured => _apiKey.isNotEmpty;
 
@@ -68,7 +71,7 @@ class MapsService {
               '?input=${Uri.encodeComponent(query)}'
               '&key=$_apiKey'
               '&components=country:ph' // Philippines only
-              '&sessiontoken=${_generateSessionToken()}'),
+              '&sessiontoken=${_getOrCreateSessionToken()}'),
         );
       });
 
@@ -340,8 +343,15 @@ class MapsService {
   }
 
   /// Generate a session token for Places API
-  String _generateSessionToken() {
-    return DateTime.now().millisecondsSinceEpoch.toString();
+  /// Reuses the same token within a search session to reduce billing
+  String _getOrCreateSessionToken() {
+    _currentSessionToken ??= DateTime.now().millisecondsSinceEpoch.toString();
+    return _currentSessionToken!;
+  }
+
+  /// Reset session token after a place is selected
+  void resetSessionToken() {
+    _currentSessionToken = null;
   }
 
   /// Decode Google Maps polyline

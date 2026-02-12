@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
@@ -29,6 +30,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   List<LocationModel> _recentLocations = [];
   bool _isSearching = false;
   bool _isLoadingCurrent = false;
+  Timer? _debounceTimer;
+  int _searchCounter = 0;
 
   @override
   void initState() {
@@ -45,7 +48,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     });
   }
 
-  Future<void> _searchPlaces(String query) async {
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+
     if (query.isEmpty) {
       setState(() {
         _suggestions = [];
@@ -56,18 +61,32 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
     setState(() => _isSearching = true);
 
-    final suggestions = await _mapsService.searchPlaces(query);
-
-    setState(() {
-      _suggestions = suggestions;
-      _isSearching = false;
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      _searchPlaces(query);
     });
   }
 
+  Future<void> _searchPlaces(String query) async {
+    if (query.isEmpty || !mounted) return;
+
+    final currentSearch = ++_searchCounter;
+
+    final suggestions = await _mapsService.searchPlaces(query);
+
+    if (mounted && currentSearch == _searchCounter) {
+      setState(() {
+        _suggestions = suggestions;
+        _isSearching = false;
+      });
+    }
+  }
+
   Future<void> _selectSuggestion(PlaceSuggestion suggestion) async {
+    _debounceTimer?.cancel();
     UIHelpers.showLoadingDialog(context);
 
     final location = await _mapsService.getPlaceDetails(suggestion.placeId);
+    _mapsService.resetSessionToken();
 
     if (mounted) {
       Navigator.pop(context); // Close loading dialog
@@ -117,6 +136,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -138,16 +158,33 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               children: [
                 TextField(
                   controller: _searchController,
-                  onChanged: _searchPlaces,
+                  onChanged: _onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'Search for a location',
-                    prefixIcon: const Icon(Icons.search),
+                    prefixIcon: _isSearching
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    AppColors.primaryRed),
+                              ),
+                            ),
+                          )
+                        : const Icon(Icons.search),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear),
                             onPressed: () {
-                              _searchController.clear();
-                              _searchPlaces('');
+                              setState(() {
+                                _debounceTimer?.cancel();
+                                _searchController.clear();
+                                _suggestions = [];
+                                _isSearching = false;
+                              });
                             },
                           )
                         : null,
@@ -187,11 +224,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
           // Results
           Expanded(
-            child: _isSearching
-                ? const Center(child: CircularProgressIndicator())
-                : _suggestions.isNotEmpty
-                    ? _buildSuggestionsList()
-                    : _buildRecentLocationsList(),
+            child: _suggestions.isNotEmpty
+                ? _buildSuggestionsList()
+                : _buildRecentLocationsList(),
           ),
         ],
       ),

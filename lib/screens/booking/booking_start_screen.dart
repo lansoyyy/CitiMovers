@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
@@ -31,30 +32,61 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
   List<PlaceSuggestion> _searchSuggestions = [];
   bool _isSelectingPickup = true; // Toggle between pickup and dropoff search
   bool _showLocationFields = true; // Controls visibility of location fields
+  Timer? _debounceTimer;
+  int _searchCounter = 0; // Prevents stale results from overwriting newer ones
+  String? _lastSearchError; // Stores last error for user feedback
 
-  Future<void> _searchPlaces(String query) async {
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+
     if (query.isEmpty) {
       setState(() {
         _searchSuggestions = [];
         _isSearching = false;
+        _lastSearchError = null;
       });
       return;
     }
 
-    setState(() => _isSearching = true);
-
-    final suggestions = await _mapsService.searchPlaces(query);
-
+    // Show searching indicator immediately for responsiveness
     setState(() {
-      _searchSuggestions = suggestions;
-      _isSearching = false;
+      _isSearching = true;
+      _lastSearchError = null;
+    });
+
+    // Debounce: wait 400ms after last keystroke before calling API
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      _searchPlaces(query);
     });
   }
 
+  Future<void> _searchPlaces(String query) async {
+    if (query.isEmpty || !mounted) return;
+
+    final currentSearch = ++_searchCounter;
+
+    final suggestions = await _mapsService.searchPlaces(query);
+
+    // Only update if this is still the latest search and widget is mounted
+    if (mounted && currentSearch == _searchCounter) {
+      setState(() {
+        _searchSuggestions = suggestions;
+        _isSearching = false;
+        if (suggestions.isEmpty && query.length >= 3) {
+          _lastSearchError = 'No locations found. Try a different search.';
+        } else {
+          _lastSearchError = null;
+        }
+      });
+    }
+  }
+
   Future<void> _selectSuggestion(PlaceSuggestion suggestion) async {
+    _debounceTimer?.cancel();
     UIHelpers.showLoadingDialog(context);
 
     final location = await _mapsService.getPlaceDetails(suggestion.placeId);
+    _mapsService.resetSessionToken(); // Reset token after selection
 
     if (mounted) {
       Navigator.pop(context); // Close loading dialog
@@ -69,7 +101,9 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
             _showLocationFields = false;
           }
           _searchController.clear();
-          _searchSuggestions.clear();
+          _searchSuggestions = [];
+          _isSearching = false;
+          _lastSearchError = null;
           _searchFocusNode.unfocus();
         });
 
@@ -331,22 +365,40 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
                       TextField(
                         controller: _searchController,
                         focusNode: _searchFocusNode,
-                        onChanged: _searchPlaces,
+                        onChanged: _onSearchChanged,
                         decoration: InputDecoration(
                           hintText:
                               'Search for ${_isSelectingPickup ? 'pickup' : 'drop-off'} location',
-                          prefixIcon: Icon(
-                            Icons.search,
-                            color: _isSelectingPickup
-                                ? AppColors.primaryRed
-                                : AppColors.primaryBlue,
-                          ),
+                          prefixIcon: _isSearching
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          AppColors.primaryRed),
+                                    ),
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.search,
+                                  color: _isSelectingPickup
+                                      ? AppColors.primaryRed
+                                      : AppColors.primaryBlue,
+                                ),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear),
                                   onPressed: () {
-                                    _searchController.clear();
-                                    _searchSuggestions.clear();
+                                    setState(() {
+                                      _debounceTimer?.cancel();
+                                      _searchController.clear();
+                                      _searchSuggestions = [];
+                                      _isSearching = false;
+                                      _lastSearchError = null;
+                                    });
                                   },
                                 )
                               : IconButton(
@@ -377,6 +429,43 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
                     ],
                   ),
                 ),
+
+                // Search error message
+                if (_lastSearchError != null &&
+                    _searchSuggestions.isEmpty &&
+                    !_isSearching)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: AppColors.textSecondary, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _lastSearchError!,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 // Search Suggestions
                 if (_searchSuggestions.isNotEmpty)
@@ -735,8 +824,8 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
             ),
           ),
 
-          // Loading Indicator
-          if (_isCalculating || _isSearching)
+          // Loading Indicator - only for route calculation, NOT for search
+          if (_isCalculating)
             Container(
               color: Colors.black.withOpacity(0.3),
               child: const Center(
@@ -797,6 +886,7 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
