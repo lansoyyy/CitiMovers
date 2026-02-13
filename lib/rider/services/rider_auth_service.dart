@@ -696,7 +696,8 @@ class RiderAuthService {
   }
 
   /// Update rider location
-  Future<bool> updateLocation(double latitude, double longitude) async {
+  Future<bool> updateLocation(double latitude, double longitude,
+      {String? address}) async {
     try {
       if (_currentRider == null) return false;
 
@@ -721,6 +722,7 @@ class RiderAuthService {
         riderId: updatedRider.riderId,
         latitude: latitude,
         longitude: longitude,
+        address: address,
       );
 
       _currentRider = updatedRider;

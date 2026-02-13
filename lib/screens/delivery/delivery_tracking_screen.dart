@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -7,7 +9,6 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
-import '../../services/booking_service.dart';
 import '../../rider/services/rider_location_service.dart';
 import 'delivery_completion_screen.dart';
 
@@ -84,6 +85,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   LatLng? _pickupLocation;
   LatLng? _dropoffLocation;
   LatLng? _driverLocation;
+  String? _driverAddress;
+  bool _followDriver = true;
 
   // Route points for polyline
   List<LatLng> _routePoints = [];
@@ -195,7 +198,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
   }
 
-  /// Start real-time location tracking from Firebase Realtime Database
+  /// Start real-time location tracking from Firestore
   void _startRealTimeLocationTracking() {
     final driverId = _booking.driverId;
 
@@ -215,14 +218,26 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     _trackingRiderId = driverId;
 
     _riderLocationSubscription = _riderLocationService
-        .listenToRiderLocation(driverId)
-        .listen((location) {
+        .listenToRiderLocationDetailed(driverId)
+        .listen((locationData) {
       if (!mounted) return;
-      if (location != null) {
+      if (locationData != null) {
         setState(() {
-          _driverLocation = location;
+          _driverLocation = locationData.position;
+          _driverAddress = locationData.address;
           _updateDriverMarker();
         });
+
+        // Animate camera to follow driver if follow mode is on
+        if (_followDriver && _driverLocation != null) {
+          try {
+            _mapController.animateCamera(
+              CameraUpdate.newLatLng(_driverLocation!),
+            );
+          } catch (_) {
+            // Map controller may not be initialized yet
+          }
+        }
       }
     });
   }
@@ -407,7 +422,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         icon: vehicleIcon,
         infoWindow: InfoWindow(
           title: 'Driver: ${_driver?.name ?? 'Unknown'}',
-          snippet: widget.booking.vehicle.name,
+          snippet: _driverAddress ?? widget.booking.vehicle.name,
         ),
         rotation: _calculateRotation(),
       ),
@@ -731,19 +746,29 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
                   // Map (fixed height inside scroll view)
                   SizedBox(
-                    height: 260,
+                    height: 300,
                     child: GoogleMap(
                       onMapCreated: _onMapCreated,
                       initialCameraPosition: CameraPosition(
-                        target:
-                            _pickupLocation ?? const LatLng(14.5995, 120.9842),
+                        target: _driverLocation ??
+                            _pickupLocation ??
+                            const LatLng(14.5995, 120.9842),
                         zoom: 13.0,
                       ),
                       markers: _markers,
                       polylines: _polylines,
+                      gestureRecognizers: <Factory<
+                          OneSequenceGestureRecognizer>>{
+                        Factory<OneSequenceGestureRecognizer>(
+                            () => EagerGestureRecognizer()),
+                      },
                       myLocationEnabled: false,
                       myLocationButtonEnabled: false,
                       zoomControlsEnabled: true,
+                      zoomGesturesEnabled: true,
+                      scrollGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
+                      tiltGesturesEnabled: true,
                       mapToolbarEnabled: false,
                       compassEnabled: true,
                     ),

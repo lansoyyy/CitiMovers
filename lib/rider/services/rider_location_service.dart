@@ -3,6 +3,15 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+/// Data class for detailed rider location info
+class RiderLocationData {
+  final LatLng position;
+  final String? address;
+  final int? updatedAt;
+
+  RiderLocationData({required this.position, this.address, this.updatedAt});
+}
+
 /// Rider Location Service for CitiMovers
 /// Handles rider location updates using Firestore
 /// Consolidated to use only Firestore for consistency
@@ -40,14 +49,19 @@ class RiderLocationService {
     required String riderId,
     required double latitude,
     required double longitude,
+    String? address,
   }) async {
     try {
+      final locationData = <String, dynamic>{
+        'latitude': latitude,
+        'longitude': longitude,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      };
+      if (address != null) {
+        locationData['address'] = address;
+      }
       await _firestore.collection('riders').doc(riderId).update({
-        'currentLocation': {
-          'latitude': latitude,
-          'longitude': longitude,
-          'updatedAt': DateTime.now().millisecondsSinceEpoch,
-        },
+        'currentLocation': locationData,
         'lastActive': DateTime.now().millisecondsSinceEpoch,
       });
       debugPrint(
@@ -70,8 +84,8 @@ class RiderLocationService {
       final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
 
       if (currentLocation != null) {
-        final lat = currentLocation!['latitude'] as num?;
-        final lng = currentLocation!['longitude'] as num?;
+        final lat = currentLocation['latitude'] as num?;
+        final lng = currentLocation['longitude'] as num?;
 
         if (lat != null && lng != null) {
           return LatLng(lat.toDouble(), lng.toDouble());
@@ -105,8 +119,8 @@ class RiderLocationService {
 
         // Only include riders with valid location coordinates
         if (currentLocation != null &&
-            currentLocation!.containsKey('latitude') &&
-            currentLocation!.containsKey('longitude')) {
+            currentLocation.containsKey('latitude') &&
+            currentLocation.containsKey('longitude')) {
           Map<String, dynamic> riderData = Map<String, dynamic>.from(data);
           riderData['riderId'] = doc.id;
 
@@ -255,6 +269,11 @@ class RiderLocationService {
 
   /// Listen to rider location updates in real-time
   Stream<LatLng?> listenToRiderLocation(String riderId) {
+    return listenToRiderLocationDetailed(riderId).map((data) => data?.position);
+  }
+
+  /// Listen to rider location updates in real-time with address info
+  Stream<RiderLocationData?> listenToRiderLocationDetailed(String riderId) {
     return _firestore
         .collection('riders')
         .doc(riderId)
@@ -264,17 +283,23 @@ class RiderLocationService {
         return null;
       }
 
-      final data = snapshot.data() as Map<String, dynamic>?;
+      final data = snapshot.data();
       final currentLocation = data?['currentLocation'] as Map<String, dynamic>?;
 
       if (currentLocation != null &&
-          currentLocation!.containsKey('latitude') &&
-          currentLocation!.containsKey('longitude')) {
-        final lat = currentLocation!['latitude'] as num?;
-        final lng = currentLocation!['longitude'] as num?;
+          currentLocation.containsKey('latitude') &&
+          currentLocation.containsKey('longitude')) {
+        final lat = currentLocation['latitude'] as num?;
+        final lng = currentLocation['longitude'] as num?;
+        final address = currentLocation['address'] as String?;
+        final updatedAt = currentLocation['updatedAt'] as int?;
 
         if (lat != null && lng != null) {
-          return LatLng(lat.toDouble(), lng.toDouble());
+          return RiderLocationData(
+            position: LatLng(lat.toDouble(), lng.toDouble()),
+            address: address,
+            updatedAt: updatedAt,
+          );
         }
       }
       return null;

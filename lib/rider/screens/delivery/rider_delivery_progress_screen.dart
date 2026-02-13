@@ -10,9 +10,12 @@ import 'package:citimovers/services/maps_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:citimovers/rider/services/rider_location_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -170,21 +173,76 @@ class _RiderDeliveryProgressScreenState
     super.dispose();
   }
 
-  /// Start periodic location tracking
+  /// Start periodic location tracking — every 3 seconds for real-time navigation
   void _startLocationTracking() {
+    // Do an initial location update immediately
+    _updateDriverLocation();
+
     _locationTrackingTimer =
-        Timer.periodic(const Duration(seconds: 30), (timer) async {
-      // Get actual GPS location using LocationService
-      final location = await _locationService.getCurrentLocation();
-      if (location != null) {
-        // Update location in both Firestore (via RiderAuthService) and Realtime Database (via RiderLocationService)
-        await _riderAuthService.updateLocation(
-          location.latitude,
-          location.longitude,
-        );
-      }
+        Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (!mounted) return;
+      await _updateDriverLocation();
     });
   }
+
+  /// Fetch GPS, reverse-geocode (throttled), push to Firestore, update UI
+  Future<void> _updateDriverLocation() async {
+    final location = await _locationService.getCurrentLocation();
+    if (location == null || !mounted) return;
+
+    final newLatLng = LatLng(location.latitude, location.longitude);
+
+    // Throttle reverse geocoding — only every 15 s or if moved > 100 m
+    String? address = _currentDriverAddress;
+    final now = DateTime.now();
+    final shouldUpdateAddress = _lastAddressUpdate == null ||
+        now.difference(_lastAddressUpdate!).inSeconds >= 15 ||
+        (_currentDriverLocation != null &&
+            _distanceMeters(_currentDriverLocation!, newLatLng) > 100);
+
+    if (shouldUpdateAddress) {
+      final result = await _mapsService.getAddressFromCoordinates(
+        location.latitude,
+        location.longitude,
+      );
+      if (result != null) {
+        address = result.address;
+        _lastAddressUpdate = now;
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _currentDriverLocation = newLatLng;
+      _currentDriverAddress = address;
+    });
+
+    // Push to Firestore (auth service writes top-level + nested currentLocation)
+    await _riderAuthService.updateLocation(
+      location.latitude,
+      location.longitude,
+      address: address,
+    );
+
+    // Animate map camera to follow driver
+    _activeMapController?.animateCamera(
+      CameraUpdate.newLatLng(newLatLng),
+    );
+  }
+
+  /// Simple equirectangular distance in metres (good enough for short distances)
+  double _distanceMeters(LatLng a, LatLng b) {
+    const double earthRadius = 6371000; // metres
+    final dLat = (b.latitude - a.latitude) * 3.14159265359 / 180;
+    final dLng = (b.longitude - a.longitude) * 3.14159265359 / 180;
+    final avgLat = (a.latitude + b.latitude) / 2 * 3.14159265359 / 180;
+    final x = dLng * _cos(avgLat);
+    return earthRadius * _sqrt(x * x + dLat * dLat);
+  }
+
+  double _cos(double rad) => rad.cos();
+  double _sqrt(double val) => val.sqrt();
 
   final ImagePicker _picker = ImagePicker();
 
@@ -198,12 +256,19 @@ class _RiderDeliveryProgressScreenState
   // Location tracking timer
   Timer? _locationTrackingTimer;
 
+  // Real-time driver location
+  LatLng? _currentDriverLocation;
+  String? _currentDriverAddress;
+  DateTime? _lastAddressUpdate;
+  GoogleMapController? _activeMapController;
+
   // Actual coordinates from geocoding
   LatLng? _pickupCoordinates;
   LatLng? _dropoffCoordinates;
 
-  Set<Marker> _createMarkers(LatLng position, String id, String title) {
-    return {
+  Set<Marker> _createMarkersWithDriver(
+      LatLng position, String id, String title) {
+    final markers = <Marker>{
       Marker(
         markerId: MarkerId(id),
         position: position,
@@ -211,13 +276,28 @@ class _RiderDeliveryProgressScreenState
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       ),
     };
+    if (_currentDriverLocation != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: _currentDriverLocation!,
+          infoWindow: InfoWindow(
+            title: 'My Location',
+            snippet: _currentDriverAddress ?? 'Locating...',
+          ),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        ),
+      );
+    }
+    return markers;
   }
 
   Set<Marker> _createRouteMarkers() {
     if (_pickupCoordinates == null || _dropoffCoordinates == null) {
       return {};
     }
-    return {
+    final markers = <Marker>{
       Marker(
         markerId: const MarkerId('pickup'),
         position: _pickupCoordinates!,
@@ -231,6 +311,21 @@ class _RiderDeliveryProgressScreenState
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       ),
     };
+    if (_currentDriverLocation != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: _currentDriverLocation!,
+          infoWindow: InfoWindow(
+            title: 'My Location',
+            snippet: _currentDriverAddress ?? 'Locating...',
+          ),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        ),
+      );
+    }
+    return markers;
   }
 
   // --- Actions ---
@@ -443,20 +538,22 @@ class _RiderDeliveryProgressScreenState
                               borderRadius: BorderRadius.circular(12),
                               child: GoogleMap(
                                 initialCameraPosition: CameraPosition(
-                                  target: _pickupCoordinates ??
+                                  target: _currentDriverLocation ??
+                                      _pickupCoordinates ??
                                       const LatLng(14.5995, 120.9842),
                                   zoom: 16,
                                 ),
-                                markers: _pickupCoordinates != null
-                                    ? {
-                                        Marker(
-                                          markerId: const MarkerId('current'),
-                                          position: _pickupCoordinates!,
-                                          infoWindow: const InfoWindow(
-                                              title: 'Warehouse Location'),
-                                        ),
-                                      }
-                                    : {},
+                                markers: _createMarkersWithDriver(
+                                  _pickupCoordinates ??
+                                      const LatLng(14.5995, 120.9842),
+                                  'warehouse',
+                                  'Warehouse Location',
+                                ),
+                                gestureRecognizers: <Factory<
+                                    OneSequenceGestureRecognizer>>{
+                                  Factory<OneSequenceGestureRecognizer>(
+                                      () => EagerGestureRecognizer()),
+                                },
                                 zoomControlsEnabled: true,
                                 mapToolbarEnabled: true,
                                 myLocationEnabled: true,
@@ -466,7 +563,7 @@ class _RiderDeliveryProgressScreenState
                                 rotateGesturesEnabled: true,
                                 tiltGesturesEnabled: true,
                                 onMapCreated: (controller) {
-                                  // Map is ready
+                                  _activeMapController = controller;
                                 },
                               ),
                             ),
@@ -1128,21 +1225,22 @@ class _RiderDeliveryProgressScreenState
                               borderRadius: BorderRadius.circular(12),
                               child: GoogleMap(
                                 initialCameraPosition: CameraPosition(
-                                  target: _dropoffCoordinates ??
+                                  target: _currentDriverLocation ??
+                                      _dropoffCoordinates ??
                                       const LatLng(14.5995, 120.9842),
                                   zoom: 16,
                                 ),
-                                markers: _dropoffCoordinates != null
-                                    ? {
-                                        Marker(
-                                          markerId:
-                                              const MarkerId('destination'),
-                                          position: _dropoffCoordinates!,
-                                          infoWindow: const InfoWindow(
-                                              title: 'Destination Location'),
-                                        ),
-                                      }
-                                    : {},
+                                markers: _createMarkersWithDriver(
+                                  _dropoffCoordinates ??
+                                      const LatLng(14.5995, 120.9842),
+                                  'destination',
+                                  'Destination Location',
+                                ),
+                                gestureRecognizers: <Factory<
+                                    OneSequenceGestureRecognizer>>{
+                                  Factory<OneSequenceGestureRecognizer>(
+                                      () => EagerGestureRecognizer()),
+                                },
                                 zoomControlsEnabled: true,
                                 mapToolbarEnabled: true,
                                 myLocationEnabled: true,
@@ -1151,6 +1249,9 @@ class _RiderDeliveryProgressScreenState
                                 scrollGesturesEnabled: true,
                                 rotateGesturesEnabled: true,
                                 tiltGesturesEnabled: true,
+                                onMapCreated: (controller) {
+                                  _activeMapController = controller;
+                                },
                               ),
                             ),
                           ),
@@ -2077,18 +2178,31 @@ class _RiderDeliveryProgressScreenState
             borderRadius: BorderRadius.circular(20),
             child: GoogleMap(
               initialCameraPosition: CameraPosition(
-                target: _pickupCoordinates ?? const LatLng(14.5995, 120.9842),
+                target: _currentDriverLocation ??
+                    _pickupCoordinates ??
+                    const LatLng(14.5995, 120.9842),
                 zoom: 14,
               ),
-              markers: _createMarkers(
+              markers: _createMarkersWithDriver(
                 _pickupCoordinates ?? const LatLng(14.5995, 120.9842),
                 'warehouse',
                 'Pickup Location',
               ),
-              zoomControlsEnabled: false,
+              gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer()),
+              },
+              onMapCreated: (controller) {
+                _activeMapController = controller;
+              },
+              zoomControlsEnabled: true,
               mapToolbarEnabled: false,
               myLocationEnabled: true,
               myLocationButtonEnabled: true,
+              zoomGesturesEnabled: true,
+              scrollGesturesEnabled: true,
+              rotateGesturesEnabled: true,
+              tiltGesturesEnabled: true,
             ),
           ),
         ),
@@ -2240,7 +2354,7 @@ class _RiderDeliveryProgressScreenState
             borderRadius: BorderRadius.circular(20),
             child: GoogleMap(
               initialCameraPosition: CameraPosition(
-                target: _getCenterPosition(),
+                target: _currentDriverLocation ?? _getCenterPosition(),
                 zoom: 12,
               ),
               markers: _createRouteMarkers(),
@@ -2248,15 +2362,31 @@ class _RiderDeliveryProgressScreenState
                 if (_pickupCoordinates != null && _dropoffCoordinates != null)
                   Polyline(
                     polylineId: const PolylineId('route'),
-                    points: [_pickupCoordinates!, _dropoffCoordinates!],
+                    points: [
+                      _pickupCoordinates!,
+                      if (_currentDriverLocation != null)
+                        _currentDriverLocation!,
+                      _dropoffCoordinates!,
+                    ],
                     color: AppColors.primaryBlue,
                     width: 5,
                   ),
               },
-              zoomControlsEnabled: false,
+              gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer()),
+              },
+              onMapCreated: (controller) {
+                _activeMapController = controller;
+              },
+              zoomControlsEnabled: true,
               mapToolbarEnabled: false,
               myLocationEnabled: true,
               myLocationButtonEnabled: true,
+              zoomGesturesEnabled: true,
+              scrollGesturesEnabled: true,
+              rotateGesturesEnabled: true,
+              tiltGesturesEnabled: true,
             ),
           ),
         ),
