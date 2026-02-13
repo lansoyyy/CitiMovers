@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../utils/app_colors.dart';
-import '../utils/ui_helpers.dart';
+import '../services/auth_service.dart';
+import '../models/booking_model.dart';
+import 'delivery/delivery_tracking_screen.dart';
 import 'profile/profile_screen.dart';
 import 'tabs/home_tab.dart';
 import 'tabs/bookings_tab.dart';
-import 'tabs/notifications_tab.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,6 +24,50 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _checkAndResumeActiveBooking();
+  }
+
+  /// Check if there is an active booking and resume tracking
+  Future<void> _checkAndResumeActiveBooking() async {
+    try {
+      final authService = AuthService();
+      final user = await authService.getCurrentUser();
+      if (user == null || !mounted) return;
+
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('customerId', isEqualTo: user.userId)
+          .where('status', whereIn: [
+            'pending',
+            'accepted',
+            'arrived_at_pickup',
+            'loading_complete',
+            'in_transit',
+            'in_progress',
+            'arrived_at_dropoff',
+            'unloading_complete',
+          ])
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty || !mounted) return;
+
+      final doc = querySnapshot.docs.first;
+      final booking = BookingModel.fromMap({
+        ...doc.data(),
+        'bookingId': doc.id,
+      });
+
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DeliveryTrackingScreen(booking: booking),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error checking active booking: $e');
+    }
   }
 
   @override
