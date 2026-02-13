@@ -966,6 +966,68 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
+  void _viewSignatureFullScreen(String? imageUrl, String title) {
+    if (imageUrl == null || imageUrl.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor:
+              Colors.white, // WHITE background for signature visibility
+          appBar: AppBar(
+            backgroundColor: AppColors.white,
+            title: Text(title),
+            iconTheme: const IconThemeData(color: AppColors.textPrimary),
+            elevation: 0,
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      color: AppColors.primaryRed,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: AppColors.primaryRed, size: 50),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Failed to load signature',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDetailedTimeline() {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -1294,7 +1356,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ),
           if (completed && photoUrl != null && photoUrl.isNotEmpty)
             GestureDetector(
-              onTap: () => _viewImageFullScreen(photoUrl, label),
+              onTap: () => label == 'Digital Signature'
+                  ? _viewSignatureFullScreen(photoUrl, label)
+                  : _viewImageFullScreen(photoUrl, label),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
