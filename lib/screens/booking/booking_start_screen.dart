@@ -157,33 +157,53 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
 
     setState(() => _isCalculating = true);
 
-    final routeInfo = await _mapsService.calculateRoute(
-      _pickupLocation!,
-      _dropoffLocation!,
-    );
+    try {
+      final routeInfo = await _mapsService.calculateRoute(
+        _pickupLocation!,
+        _dropoffLocation!,
+      );
 
-    setState(() {
-      _distance = routeInfo?.distanceKm;
-      _durationMinutes = routeInfo?.durationMinutes;
-      // Calculate ETA based on current time + duration
-      if (_durationMinutes != null) {
-        _estimatedArrival =
-            DateTime.now().add(Duration(minutes: _durationMinutes!));
+      if (routeInfo != null) {
+        setState(() {
+          _distance = routeInfo.distanceKm;
+          _durationMinutes = routeInfo.durationMinutes;
+          // Calculate ETA based on current time + duration
+          if (_durationMinutes != null) {
+            _estimatedArrival =
+                DateTime.now().add(Duration(minutes: _durationMinutes!));
 
-        // Calculate estimated delivery time (ETA + 2 hours for loading/unloading)
-        _estimatedDelivery = _estimatedArrival!.add(const Duration(hours: 2));
+            // Calculate estimated delivery time (ETA + 2 hours for loading/unloading)
+            _estimatedDelivery =
+                _estimatedArrival!.add(const Duration(hours: 2));
+          }
+
+          // Calculate estimated fare using default vehicle type
+          _estimatedFare = _mapsService.calculateFare(
+            distanceKm: _distance!,
+            vehicleType: '10-Wheeler Wingvan',
+          );
+
+          _isCalculating = false;
+        });
+      } else {
+        // Route calculation failed but we still have both locations
+        // Set a fallback distance to enable the button
+        setState(() {
+          _distance = 0.0; // Will be calculated server-side if needed
+          _durationMinutes = 0;
+          _estimatedFare = 0.0;
+          _isCalculating = false;
+        });
+        UIHelpers.showErrorToast('Could not calculate route distance');
       }
-
-      // Calculate estimated fare using default vehicle type
-      if (_distance != null) {
-        _estimatedFare = _mapsService.calculateFare(
-          distanceKm: _distance!,
-          vehicleType: '10-Wheeler Wingvan',
-        );
-      }
-
-      _isCalculating = false;
-    });
+    } catch (e) {
+      debugPrint('Error calculating distance: $e');
+      setState(() {
+        _isCalculating = false;
+      });
+      UIHelpers.showErrorToast(
+          'Failed to calculate distance. Please try again.');
+    }
   }
 
   void _continueToVehicleSelection() {
@@ -369,25 +389,12 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
                         decoration: InputDecoration(
                           hintText:
                               'Search for ${_isSelectingPickup ? 'pickup' : 'drop-off'} location',
-                          prefixIcon: _isSearching
-                              ? const Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          AppColors.primaryRed),
-                                    ),
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.search,
-                                  color: _isSelectingPickup
-                                      ? AppColors.primaryRed
-                                      : AppColors.primaryBlue,
-                                ),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: _isSelectingPickup
+                                ? AppColors.primaryRed
+                                : AppColors.primaryBlue,
+                          ),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear),
