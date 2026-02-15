@@ -128,10 +128,24 @@ class RiderAuthService {
       final riderId = _storage.read('riderId') as String?;
       final phoneNumber = _storage.read('riderPhoneNumber') as String?;
 
+      // Try to load full rider data first
+      final riderData = _storage.read('riderData');
+      if (riderData is Map && riderData.isNotEmpty) {
+        try {
+          _currentRider = RiderModel.fromMap(Map<String, dynamic>.from(riderData));
+          debugPrint('Rider restored from storage: ${_currentRider?.name}');
+          return;
+        } catch (e) {
+          debugPrint('Error parsing stored rider data: $e');
+        }
+      }
+
+      // Legacy fallback: if only ID/phone stored, we need to re-fetch from Firestore
       if (riderId != null &&
           riderId.isNotEmpty &&
           phoneNumber != null &&
           phoneNumber.isNotEmpty) {
+        // Return early - caller should call getCurrentRider() to fetch from Firestore
         return;
       }
 
@@ -157,6 +171,8 @@ class RiderAuthService {
   Future<void> _saveRiderToStorage(RiderModel rider) async {
     await _storage.write('riderId', rider.riderId);
     await _storage.write('riderPhoneNumber', rider.phoneNumber);
+    // Store full rider data for session restoration
+    await _storage.write('riderData', rider.toMap());
   }
 
   Future<void> _clearRiderFromStorage() async {
@@ -846,5 +862,73 @@ class RiderAuthService {
     }
     final bookingService = BookingService();
     return bookingService.getRiderDeliveryRequests(_currentRider!.riderId);
+  }
+
+  // ==================== Delivery State Persistence ====================
+
+  /// Save current active delivery state for resume after login
+  Future<void> saveActiveDeliveryState({
+    required String bookingId,
+    required String currentStep,
+    String? loadingSubStep,
+    String? unloadingSubStep,
+    String? receivingSubStep,
+  }) async {
+    try {
+      final state = {
+        'bookingId': bookingId,
+        'currentStep': currentStep,
+        'loadingSubStep': loadingSubStep,
+        'unloadingSubStep': unloadingSubStep,
+        'receivingSubStep': receivingSubStep,
+        'savedAt': DateTime.now().millisecondsSinceEpoch,
+      };
+      await _storage.write('activeDeliveryState', state);
+      debugPrint('Active delivery state saved: $bookingId - $currentStep');
+    } catch (e) {
+      debugPrint('Error saving active delivery state: $e');
+    }
+  }
+
+  /// Get saved active delivery state
+  Map<String, dynamic>? getActiveDeliveryState() {
+    try {
+      final state = _storage.read('activeDeliveryState');
+      if (state is Map && state.isNotEmpty) {
+        // Check if state is not too old (e.g., within last 24 hours)
+        final savedAt = state['savedAt'] as int?;
+        if (savedAt != null) {
+          final savedTime = DateTime.fromMillisecondsSinceEpoch(savedAt);
+          final now = DateTime.now();
+          final diff = now.difference(savedTime);
+          if (diff.inHours > 24) {
+            // State is too old, clear it
+            clearActiveDeliveryState();
+            return null;
+          }
+        }
+        return Map<String, dynamic>.from(state);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting active delivery state: $e');
+      return null;
+    }
+  }
+
+  /// Clear saved active delivery state
+  Future<void> clearActiveDeliveryState() async {
+    try {
+      await _storage.remove('activeDeliveryState');
+      debugPrint('Active delivery state cleared');
+    } catch (e) {
+      debugPrint('Error clearing active delivery state: $e');
+    }
+  }
+
+  /// Check if rider has an active delivery that needs to be resumed
+  bool hasActiveDeliveryToResume() {
+    final state = getActiveDeliveryState();
+    return state != null && state['bookingId'] != null;
   }
 }

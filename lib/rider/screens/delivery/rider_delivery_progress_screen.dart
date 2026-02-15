@@ -170,7 +170,28 @@ class _RiderDeliveryProgressScreenState
     _receiverNameController.dispose();
     _arrivalRemarksController.dispose();
     _destinationArrivalRemarksController.dispose();
+    
+    // Save current delivery state before disposing
+    _saveDeliveryState();
+    
     super.dispose();
+  }
+
+  /// Save current delivery state for resume after login
+  void _saveDeliveryState() {
+    // Only save if not completed
+    if (_currentStep == DeliveryStep.completed) {
+      _riderAuthService.clearActiveDeliveryState();
+      return;
+    }
+
+    _riderAuthService.saveActiveDeliveryState(
+      bookingId: widget.request.id,
+      currentStep: _currentStep.toString(),
+      loadingSubStep: _loadingSubStep?.toString(),
+      unloadingSubStep: _unloadingSubStep?.toString(),
+      receivingSubStep: _receivingSubStep.toString(),
+    );
   }
 
   /// Start periodic location tracking — every 3 seconds for real-time navigation
@@ -413,6 +434,9 @@ class _RiderDeliveryProgressScreenState
       _startLoadingTimer();
     });
 
+    // Save delivery state
+    _saveDeliveryState();
+
     // Update booking status in Firestore with arrival photo and remarks
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
@@ -594,8 +618,9 @@ class _RiderDeliveryProgressScreenState
                           // Photo Preview - No scroll conflicts here
                           GestureDetector(
                             onTap: () async {
-                              await _takeGpsArrivalPhoto();
-                              setDialogState(() {});
+                              await _takeGpsArrivalPhoto(onPhotoTaken: () {
+                                setDialogState(() {});
+                              });
                             },
                             child: Container(
                               height: 180,
@@ -654,8 +679,9 @@ class _RiderDeliveryProgressScreenState
                             Center(
                               child: TextButton.icon(
                                 onPressed: () async {
-                                  await _takeGpsArrivalPhoto();
-                                  setDialogState(() {});
+                                  await _takeGpsArrivalPhoto(onPhotoTaken: () {
+                                    setDialogState(() {});
+                                  });
                                 },
                                 icon: const Icon(Icons.refresh, size: 18),
                                 label: const Text('Retake Photo'),
@@ -753,7 +779,7 @@ class _RiderDeliveryProgressScreenState
   }
 
   /// Take GPS photo at warehouse arrival
-  Future<void> _takeGpsArrivalPhoto() async {
+  Future<void> _takeGpsArrivalPhoto({VoidCallback? onPhotoTaken}) async {
     try {
       _logActivity('take_gps_photo:warehouse_arrival');
 
@@ -828,6 +854,9 @@ class _RiderDeliveryProgressScreenState
 
       // Close processing
       Navigator.pop(context);
+      
+      // Notify dialog to refresh
+      onPhotoTaken?.call();
     } catch (e) {
       // Close any open dialogs
       Navigator.of(context).popUntil((route) => route is! DialogRoute);
@@ -1052,6 +1081,7 @@ class _RiderDeliveryProgressScreenState
     _loadingDemurrageFee = 0.0;
 
     // Update booking status in Firestore with demurrage data
+    // Note: delivery photos are already saved by addDeliveryPhoto when taken
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'loading_complete',
@@ -1059,16 +1089,16 @@ class _RiderDeliveryProgressScreenState
       loadingDemurrageFee: _loadingDemurrageFee,
       loadingDemurrageSeconds: _loadingDuration.inSeconds,
       picklistItems: _picklistItems,
-      deliveryPhotos: {
-        'start_loading': _startLoadingPhotoUrl,
-        'finish_loading': _finishLoadingPhotoUrl,
-      },
     );
 
     setState(() {
       _currentStep = DeliveryStep.delivering;
       _loadingSubStep = null;
     });
+    
+    // Save delivery state
+    _saveDeliveryState();
+    
     UIHelpers.showSuccessToast(
         'Loading completed! Service Invoice captured. Ready for delivery.');
   }
@@ -1101,6 +1131,9 @@ class _RiderDeliveryProgressScreenState
       _unloadingSubStep = UnloadingSubStep.arrived;
       _startUnloadingTimer();
     });
+
+    // Save delivery state
+    _saveDeliveryState();
 
     // Update booking status in Firestore with arrival photo and remarks
     await _bookingService.updateBookingStatusWithDetails(
@@ -1281,8 +1314,9 @@ class _RiderDeliveryProgressScreenState
                           // Photo Preview
                           GestureDetector(
                             onTap: () async {
-                              await _takeGpsDestinationPhoto();
-                              setDialogState(() {});
+                              await _takeGpsDestinationPhoto(onPhotoTaken: () {
+                                setDialogState(() {});
+                              });
                             },
                             child: Container(
                               height: 180,
@@ -1341,8 +1375,9 @@ class _RiderDeliveryProgressScreenState
                             Center(
                               child: TextButton.icon(
                                 onPressed: () async {
-                                  await _takeGpsDestinationPhoto();
-                                  setDialogState(() {});
+                                  await _takeGpsDestinationPhoto(onPhotoTaken: () {
+                                    setDialogState(() {});
+                                  });
                                 },
                                 icon: const Icon(Icons.refresh, size: 18),
                                 label: const Text('Retake Photo'),
@@ -1442,7 +1477,7 @@ class _RiderDeliveryProgressScreenState
   }
 
   /// Take GPS photo at destination arrival
-  Future<void> _takeGpsDestinationPhoto() async {
+  Future<void> _takeGpsDestinationPhoto({VoidCallback? onPhotoTaken}) async {
     try {
       _logActivity('take_gps_photo:destination_arrival');
 
@@ -1517,6 +1552,9 @@ class _RiderDeliveryProgressScreenState
 
       // Close processing
       Navigator.pop(context);
+      
+      // Notify dialog to refresh
+      onPhotoTaken?.call();
     } catch (e) {
       // Close any open dialogs
       Navigator.of(context).popUntil((route) => route is! DialogRoute);
@@ -1581,16 +1619,13 @@ class _RiderDeliveryProgressScreenState
     _unloadingDemurrageFee = 0.0;
 
     // Update booking status in Firestore with demurrage data
+    // Note: delivery photos are already saved by addDeliveryPhoto when taken
     await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'unloading_complete',
       unloadingCompletedAt: DateTime.now(),
       unloadingDemurrageFee: _unloadingDemurrageFee,
       picklistItems: _picklistItems,
-      deliveryPhotos: {
-        'start_unloading': _startUnloadingPhotoUrl,
-        'finish_unloading': _finishUnloadingPhotoUrl,
-      },
     );
 
     setState(() {
@@ -1599,6 +1634,10 @@ class _RiderDeliveryProgressScreenState
       _receivingSubStep = ReceivingSubStep.receiverName;
       _receiverIdPhotoConfirmed = false;
     });
+    
+    // Save delivery state
+    _saveDeliveryState();
+    
     UIHelpers.showSuccessToast(
         'Unloading completed! Ready for receiver confirmation.');
   }
