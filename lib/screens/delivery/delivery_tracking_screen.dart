@@ -1146,7 +1146,18 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             isCompleted: _currentStep.index > DeliveryStep.unloading.index,
             subSteps: [
               _buildSubStep(
-                  'Arrived at Destination', _unloadingSubStep != null, null),
+                  'Arrived at Destination', 
+                  _unloadingSubStep != null, 
+                  _unloadingSubStep != null
+                      ? (_getPhotoUrl('destination_arrival').isNotEmpty
+                          ? _getPhotoUrl('destination_arrival')
+                          : _getPhotoUrl('dropoff_arrival'))
+                      : null),
+              _buildSubStep(
+                  'Arrival Remarks',
+                  _getPhotoUrl('destination_arrival_remarks').isNotEmpty,
+                  null,
+                  remark: _booking.deliveryPhotos?['destination_arrival_remarks']?.toString()),
               _buildSubStep(
                   'Start Unloading Photo',
                   _startUnloadingPhotoTaken,
@@ -1171,6 +1182,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             isActive: _currentStep == DeliveryStep.receiving,
             isCompleted: _currentStep.index > DeliveryStep.receiving.index,
             subSteps: [
+              if (_booking.receiverName != null && _booking.receiverName!.isNotEmpty)
+                _buildSubStep(
+                    'Receiver: ${_booking.receiverName}',
+                    true,
+                    null),
               _buildSubStep(
                   'Receiver ID Photo',
                   _receiverIdPhotoTaken,
@@ -1357,57 +1373,84 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
-  Widget _buildSubStep(String label, bool completed, String? photoUrl) {
+  Widget _buildSubStep(String label, bool completed, String? photoUrl, {String? remark}) {
     return Padding(
       padding: const EdgeInsets.only(left: 28, top: 4, bottom: 4),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            completed ? Icons.check_circle : Icons.radio_button_unchecked,
-            size: 14,
-            color: completed ? AppColors.success : AppColors.grey,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color:
-                    completed ? AppColors.textPrimary : AppColors.textSecondary,
-                fontFamily: completed ? 'Medium' : 'Regular',
+          Row(
+            children: [
+              Icon(
+                completed ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 14,
+                color: completed ? AppColors.success : AppColors.grey,
               ),
-            ),
-          ),
-          if (completed && photoUrl != null && photoUrl.isNotEmpty)
-            GestureDetector(
-              onTap: () => label == 'Digital Signature'
-                  ? _viewSignatureFullScreen(photoUrl, label)
-                  : _viewImageFullScreen(photoUrl, label),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color:
+                        completed ? AppColors.textPrimary : AppColors.textSecondary,
+                    fontFamily: completed ? 'Medium' : 'Regular',
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.visibility,
-                        size: 12, color: AppColors.primaryBlue),
-                    const SizedBox(width: 4),
-                    Text(
-                      'View',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.primaryBlue,
-                        fontFamily: 'Medium',
-                      ),
+              ),
+              if (completed && photoUrl != null && photoUrl.isNotEmpty)
+                GestureDetector(
+                  onTap: () => label == 'Digital Signature'
+                      ? _viewSignatureFullScreen(photoUrl, label)
+                      : _viewImageFullScreen(photoUrl, label),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.visibility,
+                            size: 12, color: AppColors.primaryBlue),
+                        const SizedBox(width: 4),
+                        Text(
+                          'View',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.primaryBlue,
+                            fontFamily: 'Medium',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (remark != null && remark.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 22),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Text(
+                  'Remarks: $remark',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ),
             ),
+          ],
         ],
       ),
     );

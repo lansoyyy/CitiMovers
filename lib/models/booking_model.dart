@@ -35,6 +35,7 @@ class BookingModel {
   final double? unloadingDemurrageFee;
   final Map<String, dynamic>? deliveryPhotos;
   final String? receiverName;
+  final List<dynamic>? picklistItems;
   final DateTime? completedAt;
   final String? cancellationReason;
 
@@ -67,6 +68,7 @@ class BookingModel {
     this.unloadingDemurrageFee,
     this.deliveryPhotos,
     this.receiverName,
+    this.picklistItems,
     this.completedAt,
     this.cancellationReason,
   });
@@ -135,6 +137,7 @@ class BookingModel {
       unloadingDemurrageFee: (map['unloadingDemurrageFee'] as num?)?.toDouble(),
       deliveryPhotos: _parseMap(map['deliveryPhotos']),
       receiverName: map['receiverName'] as String?,
+      picklistItems: map['picklistItems'] as List<dynamic>?,
       completedAt: _parseFirestoreDate(map['completedAt']),
       cancellationReason: map['cancellationReason'] as String?,
     );
@@ -171,6 +174,7 @@ class BookingModel {
       'unloadingDemurrageFee': unloadingDemurrageFee,
       'deliveryPhotos': deliveryPhotos,
       'receiverName': receiverName,
+      'picklistItems': picklistItems,
       'completedAt': completedAt?.millisecondsSinceEpoch,
       'cancellationReason': cancellationReason,
     };
@@ -206,6 +210,7 @@ class BookingModel {
     double? unloadingDemurrageFee,
     Map<String, dynamic>? deliveryPhotos,
     String? receiverName,
+    List<dynamic>? picklistItems,
     DateTime? completedAt,
     String? cancellationReason,
   }) {
@@ -239,6 +244,7 @@ class BookingModel {
           unloadingDemurrageFee ?? this.unloadingDemurrageFee,
       deliveryPhotos: deliveryPhotos ?? this.deliveryPhotos,
       receiverName: receiverName ?? this.receiverName,
+      picklistItems: picklistItems ?? this.picklistItems,
       completedAt: completedAt ?? this.completedAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
     );

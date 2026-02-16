@@ -46,6 +46,9 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   Map<String, dynamic>? _deliveryPhotos;
   bool _isLoadingPhotos = true;
 
+  // Picklist items
+  List<Map<String, dynamic>> _picklistItems = [];
+
   // Tip-related variables
   bool _wantsToTip = false;
   double? _selectedTipAmount;
@@ -100,9 +103,31 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
     _animationController.forward();
 
-    // Fetch driver name and delivery photos
+    // Fetch driver name, delivery photos, and picklist
     _fetchDriverName();
     _fetchDeliveryPhotos();
+    _fetchPicklistItems();
+  }
+
+  Future<void> _fetchPicklistItems() async {
+    try {
+      final bookingData =
+          await _bookingService.getBookingById(widget.booking.bookingId!);
+      if (bookingData != null && bookingData.picklistItems != null) {
+        setState(() {
+          _picklistItems = List<Map<String, dynamic>>.from(bookingData.picklistItems!);
+        });
+      } else {
+        setState(() {
+          _picklistItems = [];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching picklist items: $e');
+      setState(() {
+        _picklistItems = [];
+      });
+    }
   }
 
   Future<void> _fetchDriverName() async {
@@ -572,6 +597,9 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                       widget.booking.vehicle.name),
                   _buildSummaryRow(
                       Icons.person, 'Driver', _driverName ?? 'Loading...'),
+                  if (widget.booking.receiverName != null && widget.booking.receiverName!.isNotEmpty)
+                    _buildSummaryRow(
+                        Icons.verified_user, 'Receiver', widget.booking.receiverName!),
                   _buildSummaryRow(Icons.calendar_today, 'Date',
                       '${widget.booking.createdAt.day}/${widget.booking.createdAt.month}/${widget.booking.createdAt.year}'),
                   _buildSummaryRow(Icons.access_time, 'Time',
@@ -703,6 +731,17 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   ),
                   const SizedBox(height: 16),
                   const Text(
+                    'Destination Arrival Photo',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildProofImageBox('Arrived at Customer', 'destination_arrival'),
+                  const SizedBox(height: 16),
+                  const Text(
                     'Receiver ID Photo',
                     style: TextStyle(
                       fontSize: 13,
@@ -714,6 +753,17 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   _buildProofImageBox('Receiver ID', 'receiver_id'),
                   const SizedBox(height: 16),
                   const Text(
+                    'Service Invoice',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildProofImageBox('Invoice Copy', 'service_invoice'),
+                  const SizedBox(height: 16),
+                  const Text(
                     'Receiver Signature',
                     style: TextStyle(
                       fontSize: 13,
@@ -723,6 +773,20 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   ),
                   const SizedBox(height: 8),
                   _buildSignaturePlaceholderBox(),
+                  // Picklist Section
+                  if (_picklistItems.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Picklist Items',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildPicklistSection(),
+                  ],
                 ],
               ),
             ),
@@ -1711,5 +1775,55 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     if (rating >= 3) return 'Good';
     if (rating >= 2) return 'Fair';
     return 'Poor';
+  }
+
+  Widget _buildPicklistSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _picklistItems.map((item) {
+          final itemName = (item['item'] ?? '').toString();
+          final qty = (item['quantity'] ?? '').toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    itemName,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Qty: $qty',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Bold',
+                      color: AppColors.primaryRed,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 }
