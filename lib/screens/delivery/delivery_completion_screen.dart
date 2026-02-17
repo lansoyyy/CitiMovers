@@ -5,7 +5,6 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
-import '../../services/storage_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/driver_service.dart';
 
@@ -29,7 +28,6 @@ class DeliveryCompletionScreen extends StatefulWidget {
 class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     with SingleTickerProviderStateMixin {
   final BookingService _bookingService = BookingService();
-  final StorageService _storageService = StorageService();
   final AuthService _authService = AuthService();
   final DriverService _driverService = DriverService.instance;
 
@@ -44,7 +42,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   bool _isSubmitting = false;
   String? _driverName;
   Map<String, dynamic>? _deliveryPhotos;
-  bool _isLoadingPhotos = true;
 
   // Picklist items
   List<Map<String, dynamic>> _picklistItems = [];
@@ -68,12 +65,11 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     {'icon': Icons.more_horiz, 'label': 'Others'},
   ];
 
-  double get _baseFare => widget.booking.estimatedFare;
-
-  double get _totalDemurrage =>
-      widget.loadingDemurrage + widget.unloadingDemurrage;
-
-  double get _totalAmount => _baseFare + _totalDemurrage;
+  double get _totalFare {
+    final finalFare = widget.booking.finalFare;
+    if (finalFare != null && finalFare > 0) return finalFare;
+    return widget.booking.estimatedFare;
+  }
 
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -111,21 +107,24 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
   Future<void> _fetchPicklistItems() async {
     try {
-      final bookingData =
-          await _bookingService.getBookingById(widget.booking.bookingId!);
-      if (bookingData != null && bookingData.picklistItems != null) {
+      final bookingId = widget.booking.bookingId;
+      if (bookingId == null || bookingId.isEmpty) {
         setState(() {
-          _picklistItems = List<Map<String, dynamic>>.from(bookingData.picklistItems!);
+          _picklistItems = _parsePicklistItems(widget.booking.picklistItems);
         });
-      } else {
-        setState(() {
-          _picklistItems = [];
-        });
+        return;
       }
+
+      final bookingData = await _bookingService.getBookingById(bookingId);
+      setState(() {
+        _picklistItems = _parsePicklistItems(
+          bookingData?.picklistItems ?? widget.booking.picklistItems,
+        );
+      });
     } catch (e) {
       debugPrint('Error fetching picklist items: $e');
       setState(() {
-        _picklistItems = [];
+        _picklistItems = _parsePicklistItems(widget.booking.picklistItems);
       });
     }
   }
@@ -144,39 +143,110 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
   Future<void> _fetchDeliveryPhotos() async {
     try {
-      // Get fresh booking data to ensure we have the latest delivery photos
-      final bookingData =
-          await _bookingService.getBookingById(widget.booking.bookingId!);
-      if (bookingData != null && bookingData.deliveryPhotos != null) {
+      final bookingId = widget.booking.bookingId;
+      if (bookingId == null || bookingId.isEmpty) {
         setState(() {
-          _deliveryPhotos = bookingData.deliveryPhotos;
-          _isLoadingPhotos = false;
+          _deliveryPhotos = _normalizePhotosMap(widget.booking.deliveryPhotos);
         });
-      } else {
-        setState(() {
-          _deliveryPhotos = widget.booking.deliveryPhotos;
-          _isLoadingPhotos = false;
-        });
+        return;
       }
+
+      final bookingData = await _bookingService.getBookingById(bookingId);
+      setState(() {
+        _deliveryPhotos = _normalizePhotosMap(
+          bookingData?.deliveryPhotos ?? widget.booking.deliveryPhotos,
+        );
+      });
     } catch (e) {
       debugPrint('Error fetching delivery photos: $e');
       setState(() {
-        _deliveryPhotos = widget.booking.deliveryPhotos;
-        _isLoadingPhotos = false;
+        _deliveryPhotos = _normalizePhotosMap(widget.booking.deliveryPhotos);
       });
     }
   }
 
-  String? _getPhotoUrl(String key) {
-    if (_deliveryPhotos == null) {
-      debugPrint('_getPhotoUrl: _deliveryPhotos is null for key: $key');
-      return null;
+  List<Map<String, dynamic>> _parsePicklistItems(dynamic raw) {
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Map<String, dynamic>? _normalizePhotosMap(Map<String, dynamic>? raw) {
+    if (raw == null) return null;
+    return raw.map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  String _extractDeliveryValueAsString(dynamic value) {
+    if (value is String) return value.trim();
+    if (value is Map) {
+      final url = value['url'];
+      if (url is String && url.trim().isNotEmpty) return url.trim();
+      final text = value['value'] ?? value['text'];
+      if (text is String && text.trim().isNotEmpty) return text.trim();
     }
-    final value = _deliveryPhotos![key];
-    debugPrint('_getPhotoUrl: key=$key, value=$value');
-    if (value is String) return value;
-    if (value is Map && value['url'] is String) return value['url'];
+    return '';
+  }
+
+  String? _firstNonEmptyPhotoUrl(List<String> keys) {
+    for (final key in keys) {
+      final url = _extractDeliveryValueAsString(_deliveryPhotos?[key]);
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+      }
+    }
     return null;
+  }
+
+  String _getMetadataText(String key) {
+    final value = _extractDeliveryValueAsString(_deliveryPhotos?[key]);
+    return value;
+  }
+
+  String? _getPhotoUrl(String key) {
+    switch (key) {
+      case 'start_loading':
+        return _firstNonEmptyPhotoUrl(['start_loading', 'start_loading_photo']);
+      case 'finish_loading':
+        return _firstNonEmptyPhotoUrl(
+            ['finish_loading', 'finished_loading', 'finish_loading_photo']);
+      case 'start_unloading':
+        return _firstNonEmptyPhotoUrl(
+            ['start_unloading', 'start_unloading_photo']);
+      case 'finish_unloading':
+        return _firstNonEmptyPhotoUrl([
+          'finish_unloading',
+          'finished_unloading',
+          'finish_unloading_photo'
+        ]);
+      case 'destination_arrival':
+        return _firstNonEmptyPhotoUrl(
+            ['destination_arrival', 'dropoff_arrival']);
+      case 'receiver_id':
+        return _firstNonEmptyPhotoUrl(['receiver_id', 'receiver_id_photo']);
+      case 'receiver_signature':
+        return _firstNonEmptyPhotoUrl(['receiver_signature', 'signature']);
+      case 'damage_photo':
+        return _firstNonEmptyPhotoUrl(
+            ['damage_photo', 'damaged_boxes', 'empty_truck']);
+      case 'service_invoice':
+        final photos = _deliveryPhotos;
+        if (photos == null) return null;
+        final invoiceEntries = photos.entries
+            .where((entry) => entry.key.startsWith('service_invoice_'))
+            .toList()
+          ..sort((a, b) => a.key.compareTo(b.key));
+        for (final entry in invoiceEntries) {
+          final url = _extractDeliveryValueAsString(entry.value);
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            return url;
+          }
+        }
+        return _firstNonEmptyPhotoUrl(['service_invoice']);
+      default:
+        return _firstNonEmptyPhotoUrl([key]);
+    }
   }
 
   void _viewSignatureFullScreen(String? imageUrl, String title) {
@@ -452,11 +522,23 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
       return;
     }
 
+    final bookingId = widget.booking.bookingId;
+    final riderId = widget.booking.driverId;
+    if (bookingId == null ||
+        bookingId.isEmpty ||
+        riderId == null ||
+        riderId.isEmpty) {
+      UIHelpers.showErrorToast(
+          'Missing booking or rider details. Please try again.');
+      setState(() => _isSubmitting = false);
+      return;
+    }
+
     // Submit review to Firebase
     final success = await _bookingService.submitReview(
-      bookingId: widget.booking.bookingId!,
+      bookingId: bookingId,
       customerId: user.userId,
-      riderId: widget.booking.driverId!,
+      riderId: riderId,
       rating: _rating,
       review: _reviewController.text.trim().isEmpty
           ? null
@@ -597,15 +679,18 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                       widget.booking.vehicle.name),
                   _buildSummaryRow(
                       Icons.person, 'Driver', _driverName ?? 'Loading...'),
-                  if (widget.booking.receiverName != null && widget.booking.receiverName!.isNotEmpty)
-                    _buildSummaryRow(
-                        Icons.verified_user, 'Receiver', widget.booking.receiverName!),
+                  if (widget.booking.receiverName != null &&
+                      widget.booking.receiverName!.isNotEmpty)
+                    _buildSummaryRow(Icons.verified_user, 'Receiver',
+                        widget.booking.receiverName!),
                   _buildSummaryRow(Icons.calendar_today, 'Date',
                       '${widget.booking.createdAt.day}/${widget.booking.createdAt.month}/${widget.booking.createdAt.year}'),
                   _buildSummaryRow(Icons.access_time, 'Time',
                       '${widget.booking.createdAt.hour}:${widget.booking.createdAt.minute.toString().padLeft(2, '0')}'),
-                  _buildSummaryRow(Icons.payments, 'Fare',
-                      'P${widget.booking.estimatedFare.toStringAsFixed(2)}'),
+                  _buildSummaryRow(Icons.route, 'Distance',
+                      '${widget.booking.distance.toStringAsFixed(0)} KM'),
+                  _buildSummaryRow(Icons.payments, 'Total Fare',
+                      'P${_totalFare.toStringAsFixed(2)}'),
                 ],
               ),
             ),
@@ -630,7 +715,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Fare & Demurrage Breakdown',
+                    'Trip Amount Summary',
                     style: TextStyle(
                       fontSize: 18,
                       fontFamily: 'Bold',
@@ -638,18 +723,11 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
+                  _buildAmountRow('Distance',
+                      '${widget.booking.distance.toStringAsFixed(0)} KM'),
                   _buildAmountRow(
-                      'Base Fare', 'P${_baseFare.toStringAsFixed(2)}'),
-                  _buildAmountRow('Loading Demurrage',
-                      'P${widget.loadingDemurrage.toStringAsFixed(2)}'),
-                  _buildAmountRow('Unloading Demurrage',
-                      'P${widget.unloadingDemurrage.toStringAsFixed(2)}'),
-                  const Divider(height: 24),
-                  _buildAmountRow('Total Demurrage',
-                      'P${_totalDemurrage.toStringAsFixed(2)}'),
-                  _buildAmountRow(
-                    'Total Amount',
-                    'P${_totalAmount.toStringAsFixed(2)}',
+                    'Total Fare',
+                    'P${_totalFare.toStringAsFixed(2)}',
                     isTotal: true,
                   ),
                 ],
@@ -684,6 +762,29 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                     ),
                   ),
                   const SizedBox(height: 12),
+                  const Text(
+                    'Arrival Photos',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildProofImageBox(
+                            'Arrived at Warehouse', 'warehouse_arrival'),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildProofImageBox(
+                            'Arrived at Dropoff', 'destination_arrival'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   const Text(
                     'Loading Photos',
                     style: TextStyle(
@@ -729,17 +830,153 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Destination Arrival Photo',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontFamily: 'Medium',
-                      color: AppColors.textSecondary,
+                  // Damage Report Section
+                  if (_deliveryPhotos?['has_damage'] == true ||
+                      _deliveryPhotos?['damaged_items'] != null ||
+                      _getPhotoUrl('damage_photo') != null) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Damage Report',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildProofImageBox('Arrived at Customer', 'destination_arrival'),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.scaffoldBackground,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.lightGrey),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _deliveryPhotos?['has_damage'] == true
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.check_circle_outline,
+                                color: _deliveryPhotos?['has_damage'] == true
+                                    ? AppColors.primaryRed
+                                    : AppColors.success,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _deliveryPhotos?['has_damage'] == true
+                                    ? 'Damaged Items Reported'
+                                    : 'No Damage Reported',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Medium',
+                                  color: _deliveryPhotos?['has_damage'] == true
+                                      ? AppColors.primaryRed
+                                      : AppColors.success,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_deliveryPhotos?['damaged_items'] != null) ...[
+                            const SizedBox(height: 12),
+                            const Divider(),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'DAMAGED ITEMS',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'Bold',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...(() {
+                              final damagedItems =
+                                  _deliveryPhotos?['damaged_items'];
+                              if (damagedItems is List) {
+                                return damagedItems.map<Widget>((item) {
+                                  final name =
+                                      (item is Map ? (item['item'] ?? '') : '')
+                                          .toString();
+                                  final qty = (item is Map
+                                          ? (item['quantity'] ?? '')
+                                          : '')
+                                      .toString();
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(name,
+                                            style:
+                                                const TextStyle(fontSize: 13)),
+                                        Text(qty,
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontFamily: 'Medium')),
+                                      ],
+                                    ),
+                                  );
+                                }).toList();
+                              }
+                              return [];
+                            })(),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.primaryRed.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Total',
+                                      style: TextStyle(
+                                          fontSize: 13, fontFamily: 'Bold')),
+                                  Text(
+                                    '${() {
+                                      final damagedItems =
+                                          _deliveryPhotos?['damaged_items'];
+                                      if (damagedItems is List) {
+                                        return damagedItems.fold(0,
+                                            (sum, item) {
+                                          if (item is Map) {
+                                            return sum +
+                                                (int.tryParse(item['quantity']
+                                                            ?.toString() ??
+                                                        '0') ??
+                                                    0);
+                                          }
+                                          return sum;
+                                        });
+                                      }
+                                      return 0;
+                                    }()}',
+                                    style: const TextStyle(
+                                        fontSize: 13, fontFamily: 'Bold'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildProofImageBox(
+                      _deliveryPhotos?['has_damage'] == true
+                          ? 'Photo of Damaged Boxes'
+                          : 'Photo of Empty Truck',
+                      'damage_photo',
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   const Text(
                     'Receiver ID Photo',
@@ -1622,7 +1859,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
   Widget _buildSignaturePlaceholderBox() {
     final imageUrl =
-        _getPhotoUrl('receiver_signature') ?? _getPhotoUrl('signature');
+        _firstNonEmptyPhotoUrl(['receiver_signature', 'signature']);
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
     debugPrint(
@@ -1631,16 +1868,14 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         '_buildSignaturePlaceholderBox: _deliveryPhotos=$_deliveryPhotos');
 
     // Get the timestamp from delivery photos
-    String? timestampStr;
-    if (_deliveryPhotos != null) {
-      timestampStr =
-          _deliveryPhotos!['receiver_signature_timestamp'] as String? ??
-              _deliveryPhotos!['received_at_pht'] as String?;
-    }
+    final timestampStr =
+        _getMetadataText('receiver_signature_timestamp').isNotEmpty
+            ? _getMetadataText('receiver_signature_timestamp')
+            : _getMetadataText('received_at_pht');
 
     // Format timestamp if available
     String formattedTimestamp = '';
-    if (timestampStr != null && timestampStr.isNotEmpty) {
+    if (timestampStr.isNotEmpty) {
       try {
         final dateTime = DateTime.parse(timestampStr);
         formattedTimestamp =
@@ -1683,7 +1918,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                 borderRadius: BorderRadius.circular(8),
                 image: hasImage
                     ? DecorationImage(
-                        image: NetworkImage(imageUrl!),
+                        image: NetworkImage(imageUrl),
                         fit: BoxFit.contain,
                       )
                     : null,
@@ -1805,7 +2040,8 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primaryRed.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),

@@ -555,10 +555,20 @@ class BookingService {
           if (value is Map) {
             merged[stage] = value;
           } else if (value is String) {
-            merged[stage] = {
-              'url': value,
-              'uploadedAt': DateTime.now().millisecondsSinceEpoch,
-            };
+            final trimmed = value.trim();
+            final isPhotoUrl =
+                trimmed.startsWith('http://') || trimmed.startsWith('https://');
+
+            // Keep plain metadata strings (remarks, timestamps, etc.) as-is.
+            // Only wrap actual photo URLs in the expected photo object format.
+            if (isPhotoUrl) {
+              merged[stage] = {
+                'url': trimmed,
+                'uploadedAt': DateTime.now().millisecondsSinceEpoch,
+              };
+            } else {
+              merged[stage] = trimmed;
+            }
           } else {
             merged[stage] = value;
           }

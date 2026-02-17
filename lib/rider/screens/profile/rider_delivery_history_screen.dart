@@ -58,13 +58,14 @@ class _RiderDeliveryHistoryScreenState
       List<DeliveryHistory> deliveries = [];
       Map<String, String> customerNames = {};
       Map<String, double> ratings = {};
+      Map<String, Map<String, String>> riderInfo = {}; // Cache rider info
 
       final sorted = bookingsQuery.docs.map((doc) {
         final booking = BookingModel.fromMap({
           ...doc.data(),
           'bookingId': doc.id,
         });
-        return {'doc': doc, 'booking': booking};
+        return {'doc': doc, 'booking': booking, 'rawData': doc.data()};
       }).toList();
 
       sorted.sort((a, b) {
@@ -76,6 +77,7 @@ class _RiderDeliveryHistoryScreenState
       for (final entry in sorted) {
         final doc = entry['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
         final booking = entry['booking'] as BookingModel;
+        final rawData = entry['rawData'] as Map<String, dynamic>;
 
         if (booking.customerName != null && booking.customerName!.isNotEmpty) {
           customerNames[booking.customerId] = booking.customerName!;
@@ -90,6 +92,35 @@ class _RiderDeliveryHistoryScreenState
           if (customerDoc.exists) {
             final customer = UserModel.fromMap(customerDoc.data()!);
             customerNames[booking.customerId] = customer.name;
+          }
+        }
+
+        // Fetch rider info if not already cached
+        final driverId = booking.driverId ?? riderId;
+        if (!riderInfo.containsKey(driverId)) {
+          final riderDoc =
+              await _firestore.collection('riders').doc(driverId).get();
+          if (riderDoc.exists) {
+            final data = riderDoc.data()!;
+            riderInfo[driverId] = {
+              'name': data['name']?.toString() ?? '',
+              'phone': data['phoneNumber']?.toString() ?? '',
+              'plate': data['vehiclePlateNumber']?.toString() ?? '',
+            };
+          } else {
+            // Fallback to users collection
+            final userDoc =
+                await _firestore.collection('users').doc(driverId).get();
+            if (userDoc.exists) {
+              final data = userDoc.data()!;
+              riderInfo[driverId] = {
+                'name': data['name']?.toString() ?? '',
+                'phone': data['phoneNumber']?.toString() ?? '',
+                'plate': data['vehiclePlateNumber']?.toString() ?? '',
+              };
+            } else {
+              riderInfo[driverId] = {'name': '', 'phone': '', 'plate': ''};
+            }
           }
         }
 
@@ -116,6 +147,32 @@ class _RiderDeliveryHistoryScreenState
             booking.dropoffLocation.longitude);
         final duration = _calculateDuration(distance);
 
+        // Parse timestamps from raw data
+        DateTime? parseTimestamp(dynamic value) {
+          if (value == null) return null;
+          if (value is Timestamp) return value.toDate();
+          if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+          return null;
+        }
+
+        final arrivedAtPickup = parseTimestamp(rawData['arrivedAtPickup']);
+        final startLoading = parseTimestamp(rawData['loadingStartedAt']);
+        final finishedLoading = parseTimestamp(rawData['loadingCompletedAt']);
+        final onTheWayToDropoff = parseTimestamp(rawData['inTransitAt']);
+        final arrivedAtDropoff = parseTimestamp(rawData['arrivedAtDropoff']);
+        final startUnloading = parseTimestamp(rawData['unloadingStartedAt']);
+        final finishedUnloading =
+            parseTimestamp(rawData['unloadingCompletedAt']);
+        final completedAt = parseTimestamp(rawData['completedAt']);
+
+        // Get payment status
+        final paymentStatus =
+            (rawData['paymentStatus'] as String?) ?? 'pending';
+        final paymentMethod = booking.paymentMethod;
+
+        final info =
+            riderInfo[driverId] ?? {'name': '', 'phone': '', 'plate': ''};
+
         final delivery = DeliveryHistory(
           bookingId: doc.id,
           date: DateFormat('MMM d, yyyy').format(booking.createdAt),
@@ -132,6 +189,19 @@ class _RiderDeliveryHistoryScreenState
           rating: ratings[doc.id] ?? 0.0,
           deliveryPhotos: booking.deliveryPhotos,
           receiverName: booking.receiverName,
+          driverName: info['name'] ?? '',
+          driverPhone: info['phone'] ?? '',
+          vehiclePlate: info['plate'] ?? '',
+          arrivedAtPickup: arrivedAtPickup,
+          startLoading: startLoading,
+          finishedLoading: finishedLoading,
+          onTheWayToDropoff: onTheWayToDropoff,
+          arrivedAtDropoff: arrivedAtDropoff,
+          startUnloading: startUnloading,
+          finishedUnloading: finishedUnloading,
+          completedAt: completedAt,
+          paymentStatus: paymentStatus,
+          paymentMethod: paymentMethod,
         );
         deliveries.add(delivery);
       }
@@ -372,6 +442,25 @@ class DeliveryHistory {
   final Map<String, dynamic>? deliveryPhotos;
   final String? receiverName;
 
+  // Driver info
+  final String driverName;
+  final String driverPhone;
+  final String vehiclePlate;
+
+  // Timestamps
+  final DateTime? arrivedAtPickup;
+  final DateTime? startLoading;
+  final DateTime? finishedLoading;
+  final DateTime? onTheWayToDropoff;
+  final DateTime? arrivedAtDropoff;
+  final DateTime? startUnloading;
+  final DateTime? finishedUnloading;
+  final DateTime? completedAt;
+
+  // Payment
+  final String paymentStatus;
+  final String paymentMethod;
+
   DeliveryHistory({
     required this.bookingId,
     required this.date,
@@ -386,6 +475,19 @@ class DeliveryHistory {
     required this.rating,
     this.deliveryPhotos,
     this.receiverName,
+    this.driverName = '',
+    this.driverPhone = '',
+    this.vehiclePlate = '',
+    this.arrivedAtPickup,
+    this.startLoading,
+    this.finishedLoading,
+    this.onTheWayToDropoff,
+    this.arrivedAtDropoff,
+    this.startUnloading,
+    this.finishedUnloading,
+    this.completedAt,
+    this.paymentStatus = 'pending',
+    this.paymentMethod = '',
   });
 }
 
@@ -474,7 +576,8 @@ class _DeliveryHistoryCard extends StatelessWidget {
     return photos;
   }
 
-  void _viewImageFullScreen(BuildContext context, String? imageUrl, String title) {
+  void _viewImageFullScreen(
+      BuildContext context, String? imageUrl, String title) {
     if (imageUrl == null || imageUrl.isEmpty) return;
 
     Navigator.push(
@@ -577,7 +680,8 @@ class _DeliveryHistoryCard extends StatelessWidget {
                 Expanded(
                   child: GridView.builder(
                     controller: scrollController,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
@@ -587,7 +691,8 @@ class _DeliveryHistoryCard extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final photo = photos[index];
                       return GestureDetector(
-                        onTap: () => _viewImageFullScreen(context, photo.value, photo.key),
+                        onTap: () => _viewImageFullScreen(
+                            context, photo.value, photo.key),
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
@@ -602,13 +707,18 @@ class _DeliveryHistoryCard extends StatelessWidget {
                                     photo.value!,
                                     fit: BoxFit.cover,
                                     width: double.infinity,
-                                    loadingBuilder: (context, child, loadingProgress) {
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
                                       if (loadingProgress == null) return child;
                                       return Center(
                                         child: CircularProgressIndicator(
-                                          value: loadingProgress.expectedTotalBytes != null
-                                              ? loadingProgress.cumulativeBytesLoaded /
-                                                  loadingProgress.expectedTotalBytes!
+                                          value: loadingProgress
+                                                      .expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
                                               : null,
                                           color: AppColors.primaryRed,
                                         ),
@@ -626,7 +736,8 @@ class _DeliveryHistoryCard extends StatelessWidget {
                                   ),
                                 ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 8, horizontal: 12),
                                   color: AppColors.scaffoldBackground,
                                   child: Text(
                                     photo.key,
@@ -655,10 +766,16 @@ class _DeliveryHistoryCard extends StatelessWidget {
     );
   }
 
+  String _formatTimestamp(DateTime? dt) {
+    if (dt == null) return '—';
+    return DateFormat('MMM d, yyyy h:mm a').format(dt);
+  }
+
   @override
   Widget build(BuildContext context) {
     final photoCount = _getAllPhotoUrls().length;
-    final hasReceiverName = delivery.receiverName != null && delivery.receiverName!.isNotEmpty;
+    final hasReceiverName =
+        delivery.receiverName != null && delivery.receiverName!.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -681,12 +798,14 @@ class _DeliveryHistoryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                delivery.bookingId,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontFamily: 'Bold',
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Text(
+                  delivery.bookingId,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               Container(
@@ -708,186 +827,167 @@ class _DeliveryHistoryCard extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          // Date & Time
-          Row(
-            children: [
-              Icon(
-                Icons.calendar_today,
-                size: 14,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${delivery.date} • ${delivery.time}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'Regular',
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Locations
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryRed,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Container(
-                    width: 2,
-                    height: 30,
-                    color: AppColors.lightGrey,
-                  ),
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // === PICK-UP SECTION ===
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.scaffoldBackground,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text(
-                      delivery.from,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
-                        color: AppColors.textPrimary,
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primaryRed,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Text(
-                      delivery.to,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Details
-          Row(
-            children: [
-              _DetailChip(
-                icon: Icons.straighten,
-                text: delivery.distance,
-              ),
-              const SizedBox(width: 8),
-              _DetailChip(
-                icon: Icons.access_time,
-                text: delivery.duration,
-              ),
-              const SizedBox(width: 8),
-              _DetailChip(
-                icon: Icons.local_shipping,
-                text: delivery.vehicleType,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-          const Divider(),
-          const SizedBox(height: 12),
-
-          // Customer & Receiver Info
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                    const SizedBox(width: 8),
                     const Text(
-                      'Customer',
+                      'PICK-UP ADDRESS',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Regular',
+                        fontSize: 11,
+                        fontFamily: 'Bold',
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      delivery.customerName,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Medium',
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    if (hasReceiverName) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Receiver',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'Regular',
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        delivery.receiverName!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Medium',
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.star,
-                        size: 16,
-                        color: Colors.amber,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        delivery.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Bold',
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 8),
+                Text(
+                  delivery.from,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
                   ),
-                ],
+                ),
+                const SizedBox(height: 12),
+                _buildLogRow(
+                    'Plate',
+                    delivery.vehiclePlate.isNotEmpty
+                        ? delivery.vehiclePlate
+                        : '—'),
+                _buildLogRow('Driver',
+                    delivery.driverName.isNotEmpty ? delivery.driverName : '—'),
+                _buildLogRow(
+                    'Phone',
+                    delivery.driverPhone.isNotEmpty
+                        ? delivery.driverPhone
+                        : '—'),
+                _buildLogRow('Arrived at pick-up',
+                    _formatTimestamp(delivery.arrivedAtPickup)),
+                _buildLogRow(
+                    'Start loading', _formatTimestamp(delivery.startLoading)),
+                _buildLogRow('Finished loading',
+                    _formatTimestamp(delivery.finishedLoading)),
+                _buildLogRow('On the way to drop-off',
+                    _formatTimestamp(delivery.onTheWayToDropoff)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // === DROP-OFF SECTION ===
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.scaffoldBackground,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.success,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'DROP-OFF ADDRESS',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Bold',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  delivery.to,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildLogRow('Arrived at drop-off',
+                    _formatTimestamp(delivery.arrivedAtDropoff)),
+                _buildLogRow('Start unloading',
+                    _formatTimestamp(delivery.startUnloading)),
+                _buildLogRow('Finished unloading',
+                    _formatTimestamp(delivery.finishedUnloading)),
+                _buildLogRow('Name of receiver',
+                    hasReceiverName ? delivery.receiverName! : '—'),
+                _buildLogRow('Date/time received',
+                    _formatTimestamp(delivery.completedAt)),
+                _buildLogRow('Status', 'Completed Delivery'),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // === SUMMARY SECTION ===
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.primaryRed.withValues(alpha: 0.2),
               ),
-            ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildSummaryItem(
+                        'Distance', delivery.distance, Icons.straighten),
+                    _buildSummaryItem(
+                        'Amount',
+                        '₱${delivery.fare.toStringAsFixed(0)}',
+                        Icons.payments_outlined),
+                    _buildSummaryItem(
+                        'Payment',
+                        delivery.paymentStatus == 'paid' ? 'Paid' : 'Pending',
+                        delivery.paymentStatus == 'paid'
+                            ? Icons.check_circle
+                            : Icons.access_time,
+                        color: delivery.paymentStatus == 'paid'
+                            ? AppColors.success
+                            : AppColors.warning),
+                  ],
+                ),
+              ],
+            ),
           ),
 
           // View Photos Button
@@ -896,7 +996,8 @@ class _DeliveryHistoryCard extends StatelessWidget {
             GestureDetector(
               onTap: () => _showPhotoGallery(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
                   color: AppColors.primaryBlue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -930,39 +1031,64 @@ class _DeliveryHistoryCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _DetailChip extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _DetailChip({
-    required this.icon,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.scaffoldBackground,
-        borderRadius: BorderRadius.circular(8),
-      ),
+  Widget _buildLogRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem(String label, String value, IconData icon,
+      {Color? color}) {
+    return Expanded(
+      child: Column(
         children: [
           Icon(
             icon,
-            size: 14,
-            color: AppColors.textSecondary,
+            size: 20,
+            color: color ?? AppColors.primaryRed,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(height: 4),
           Text(
-            text,
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontFamily: 'Bold',
+              color: color ?? AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
             style: const TextStyle(
-              fontSize: 12,
-              fontFamily: 'Medium',
+              fontSize: 10,
+              fontFamily: 'Regular',
               color: AppColors.textSecondary,
             ),
           ),

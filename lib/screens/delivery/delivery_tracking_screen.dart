@@ -58,12 +58,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   // Demurrage Tracking (Loading)
   Duration _loadingDuration = Duration.zero;
   double _loadingDemurrageFee = 0.0;
-  bool _loadingDemurrageStarted = false;
 
   // Demurrage Tracking (Unloading)
   Duration _unloadingDuration = Duration.zero;
   double _unloadingDemurrageFee = 0.0;
-  bool _unloadingDemurrageStarted = false;
 
   // Photo status tracking
   bool _startLoadingPhotoTaken = false;
@@ -310,8 +308,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
       _loadingDuration = loadingDuration;
       _unloadingDuration = unloadingDuration;
-      _loadingDemurrageStarted = loadingActive;
-      _unloadingDemurrageStarted = unloadingActive;
       _loadingDemurrageFee = loadingFee;
       _unloadingDemurrageFee = unloadingFee;
 
@@ -719,8 +715,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                     ),
                   ),
 
-                  // Demurrage Summary
-                  _buildDemurrageSummaryCard(),
+                  // Trip Summary (customer-visible values only)
+                  _buildTripSummaryCard(),
                   const SizedBox(height: 10),
 
                   // Current Step Details
@@ -929,12 +925,84 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     }
   }
 
+  String _extractDeliveryValueAsString(dynamic value) {
+    if (value is String) return value.trim();
+    if (value is Map) {
+      final url = value['url'];
+      if (url is String && url.trim().isNotEmpty) return url.trim();
+      final text = value['value'] ?? value['text'];
+      if (text is String && text.trim().isNotEmpty) return text.trim();
+    }
+    return '';
+  }
+
+  List<String> _photoKeyCandidates(String key) {
+    switch (key) {
+      case 'finish_loading':
+        return ['finish_loading', 'finished_loading', 'finish_loading_photo'];
+      case 'start_loading':
+        return ['start_loading', 'start_loading_photo'];
+      case 'finish_unloading':
+        return [
+          'finish_unloading',
+          'finished_unloading',
+          'finish_unloading_photo'
+        ];
+      case 'start_unloading':
+        return ['start_unloading', 'start_unloading_photo'];
+      case 'receiver_id':
+        return ['receiver_id', 'receiver_id_photo'];
+      case 'receiver_signature':
+        return ['receiver_signature', 'signature'];
+      case 'destination_arrival':
+        return ['destination_arrival', 'dropoff_arrival'];
+      default:
+        return [key];
+    }
+  }
+
   String _getPhotoUrl(String key) {
     final photos = _booking.deliveryPhotos;
     if (photos == null) return '';
-    final value = photos[key];
-    if (value is String) return value;
-    if (value is Map && value['url'] is String) return value['url'];
+
+    for (final candidate in _photoKeyCandidates(key)) {
+      final resolved = _extractDeliveryValueAsString(photos[candidate]);
+      if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+        return resolved;
+      }
+    }
+
+    if (key == 'service_invoice') {
+      final invoiceEntries = photos.entries
+          .where((entry) => entry.key.startsWith('service_invoice_'))
+          .toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+
+      for (final entry in invoiceEntries) {
+        final resolved = _extractDeliveryValueAsString(entry.value);
+        if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+          return resolved;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  String _getDeliveryMetadataText(String key) {
+    final photos = _booking.deliveryPhotos;
+    if (photos == null) return '';
+
+    final keys = [key];
+    if (key == 'destination_arrival_remarks') {
+      keys.add('dropoff_arrival_remarks');
+    }
+
+    for (final candidate in keys) {
+      final resolved = _extractDeliveryValueAsString(photos[candidate]);
+      if (resolved.isNotEmpty) return resolved;
+    }
+
     return '';
   }
 
@@ -1109,17 +1177,21 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             isCompleted: _currentStep.index > DeliveryStep.loading.index,
             subSteps: [
               _buildSubStep(
-                  'Arrived at Warehouse', _loadingSubStep != null, null),
+                  'Arrived at Warehouse',
+                  _currentStep.index >= DeliveryStep.loading.index,
+                  _getPhotoUrl('warehouse_arrival').isNotEmpty
+                      ? _getPhotoUrl('warehouse_arrival')
+                      : null),
               _buildSubStep(
                   'Start Loading Photo',
-                  _startLoadingPhotoTaken,
-                  _startLoadingPhotoTaken
+                  _getPhotoUrl('start_loading').isNotEmpty,
+                  _getPhotoUrl('start_loading').isNotEmpty
                       ? _getPhotoUrl('start_loading')
                       : null),
               _buildSubStep(
                   'Finish Loading Photo',
-                  _finishLoadingPhotoTaken,
-                  _finishLoadingPhotoTaken
+                  _getPhotoUrl('finish_loading').isNotEmpty,
+                  _getPhotoUrl('finish_loading').isNotEmpty
                       ? _getPhotoUrl('finish_loading')
                       : null),
             ],
@@ -1146,28 +1218,30 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             isCompleted: _currentStep.index > DeliveryStep.unloading.index,
             subSteps: [
               _buildSubStep(
-                  'Arrived at Destination', 
-                  _unloadingSubStep != null, 
-                  _unloadingSubStep != null
+                  'Arrived at Destination',
+                  _currentStep.index >= DeliveryStep.unloading.index,
+                  _getPhotoUrl('destination_arrival').isNotEmpty
                       ? (_getPhotoUrl('destination_arrival').isNotEmpty
                           ? _getPhotoUrl('destination_arrival')
                           : _getPhotoUrl('dropoff_arrival'))
                       : null),
               _buildSubStep(
                   'Arrival Remarks',
-                  _getPhotoUrl('destination_arrival_remarks').isNotEmpty,
+                  _getDeliveryMetadataText('destination_arrival_remarks')
+                      .isNotEmpty,
                   null,
-                  remark: _booking.deliveryPhotos?['destination_arrival_remarks']?.toString()),
+                  remark:
+                      _getDeliveryMetadataText('destination_arrival_remarks')),
               _buildSubStep(
                   'Start Unloading Photo',
-                  _startUnloadingPhotoTaken,
-                  _startUnloadingPhotoTaken
+                  _getPhotoUrl('start_unloading').isNotEmpty,
+                  _getPhotoUrl('start_unloading').isNotEmpty
                       ? _getPhotoUrl('start_unloading')
                       : null),
               _buildSubStep(
                   'Finish Unloading Photo',
-                  _finishUnloadingPhotoTaken,
-                  _finishUnloadingPhotoTaken
+                  _getPhotoUrl('finish_unloading').isNotEmpty,
+                  _getPhotoUrl('finish_unloading').isNotEmpty
                       ? _getPhotoUrl('finish_unloading')
                       : null),
             ],
@@ -1182,23 +1256,21 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             isActive: _currentStep == DeliveryStep.receiving,
             isCompleted: _currentStep.index > DeliveryStep.receiving.index,
             subSteps: [
-              if (_booking.receiverName != null && _booking.receiverName!.isNotEmpty)
-                _buildSubStep(
-                    'Receiver: ${_booking.receiverName}',
-                    true,
-                    null),
+              if (_booking.receiverName != null &&
+                  _booking.receiverName!.isNotEmpty)
+                _buildSubStep('Receiver: ${_booking.receiverName}', true, null),
               _buildSubStep(
                   'Receiver ID Photo',
-                  _receiverIdPhotoTaken,
-                  _receiverIdPhotoTaken
+                  _getPhotoUrl('receiver_id').isNotEmpty,
+                  _getPhotoUrl('receiver_id').isNotEmpty
                       ? (_getPhotoUrl('receiver_id').isNotEmpty
                           ? _getPhotoUrl('receiver_id')
                           : _getPhotoUrl('receiver_id_photo'))
                       : null),
               _buildSubStep(
                   'Digital Signature',
-                  _receiverSignatureTaken,
-                  _receiverSignatureTaken
+                  _getPhotoUrl('receiver_signature').isNotEmpty,
+                  _getPhotoUrl('receiver_signature').isNotEmpty
                       ? (_getPhotoUrl('receiver_signature').isNotEmpty
                           ? _getPhotoUrl('receiver_signature')
                           : _getPhotoUrl('signature'))
@@ -1373,7 +1445,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
-  Widget _buildSubStep(String label, bool completed, String? photoUrl, {String? remark}) {
+  Widget _buildSubStep(String label, bool completed, String? photoUrl,
+      {String? remark}) {
     return Padding(
       padding: const EdgeInsets.only(left: 28, top: 4, bottom: 4),
       child: Column(
@@ -1392,8 +1465,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   label,
                   style: TextStyle(
                     fontSize: 13,
-                    color:
-                        completed ? AppColors.textPrimary : AppColors.textSecondary,
+                    color: completed
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
                     fontFamily: completed ? 'Medium' : 'Regular',
                   ),
                 ),
@@ -1404,7 +1478,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                       ? _viewSignatureFullScreen(photoUrl, label)
                       : _viewImageFullScreen(photoUrl, label),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.primaryBlue.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -1492,8 +1567,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
-  Widget _buildDemurrageSummaryCard() {
-    final double totalDemurrage = _loadingDemurrageFee + _unloadingDemurrageFee;
+  Widget _buildTripSummaryCard() {
+    final totalFare = (_booking.finalFare != null && _booking.finalFare! > 0)
+        ? _booking.finalFare!
+        : _booking.estimatedFare;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1528,7 +1605,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               ),
               const SizedBox(width: 12),
               const Text(
-                'Demurrage Summary',
+                'Trip Summary',
                 style: TextStyle(
                   fontSize: 16,
                   fontFamily: 'Bold',
@@ -1537,26 +1614,42 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          _buildDemurrageInfo(
-              'Loading', _loadingDuration, _loadingDemurrageFee),
-          const SizedBox(height: 8),
-          _buildDemurrageInfo(
-              'Unloading', _unloadingDuration, _unloadingDemurrageFee),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Total Demurrage',
+                'Distance',
                 style: TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'Medium',
+                  fontSize: 14,
+                  fontFamily: 'Bold',
                   color: AppColors.textSecondary,
                 ),
               ),
               Text(
-                'P${totalDemurrage.toStringAsFixed(2)}',
+                '${_booking.distance.toStringAsFixed(0)} KM',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total Fare',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Bold',
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              Text(
+                'P${totalFare.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 16,
                   fontFamily: 'Bold',
@@ -1564,15 +1657,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Demurrage is charged every 4 hours at 25% of delivery fare.',
-            style: TextStyle(
-              fontSize: 10,
-              fontFamily: 'Regular',
-              color: AppColors.textHint,
-            ),
           ),
         ],
       ),
@@ -1620,7 +1704,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Distance: Calculating...',
+          'Distance: ${_booking.distance.toStringAsFixed(0)} KM',
+          style: TextStyle(fontSize: 12, color: AppColors.textHint),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Total Fare: P${((_booking.finalFare != null && _booking.finalFare! > 0) ? _booking.finalFare! : _booking.estimatedFare).toStringAsFixed(2)}',
           style: TextStyle(fontSize: 12, color: AppColors.textHint),
         ),
       ],
@@ -1648,11 +1737,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         _buildProcessStep('Arrived at Warehouse', _loadingSubStep != null),
         _buildProcessStep('Start Loading Photo', _startLoadingPhotoTaken),
         _buildProcessStep('Finish Loading Photo', _finishLoadingPhotoTaken),
-        if (_loadingDemurrageStarted) ...[
-          const SizedBox(height: 8),
-          _buildDemurrageInfo(
-              'Loading', _loadingDuration, _loadingDemurrageFee),
-        ],
       ],
     );
   }
@@ -1710,11 +1794,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         _buildProcessStep('Arrived at Destination', _unloadingSubStep != null),
         _buildProcessStep('Start Unloading Photo', _startUnloadingPhotoTaken),
         _buildProcessStep('Finish Unloading Photo', _finishUnloadingPhotoTaken),
-        if (_unloadingDemurrageStarted) ...[
-          const SizedBox(height: 8),
-          _buildDemurrageInfo(
-              'Unloading', _unloadingDuration, _unloadingDemurrageFee),
-        ],
       ],
     );
   }
@@ -1766,33 +1845,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               color:
                   completed ? AppColors.textPrimary : AppColors.textSecondary,
               fontFamily: completed ? 'Medium' : 'Regular',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDemurrageInfo(String type, Duration duration, double fee) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String timerText =
-        '${twoDigits(duration.inHours)}:${twoDigits(duration.inMinutes.remainder(60))}:${twoDigits(duration.inSeconds.remainder(60))}';
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.warning.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.timer, color: AppColors.warning, size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$type Time: $timerText (Fee: P${fee.toStringAsFixed(2)})',
-              style: const TextStyle(fontSize: 12, color: AppColors.warning),
             ),
           ),
         ],

@@ -41,6 +41,7 @@ enum DeliveryStep {
   loading, // Includes "Arrived" -> "Start Loading" -> "Finish Loading"
   delivering,
   unloading, // Includes "Arrived" -> "Start Unloading" -> "Finish Unloading"
+  damageReport, // Report damaged items after unloading
   receiving,
   completed
 }
@@ -110,6 +111,14 @@ class _RiderDeliveryProgressScreenState
 
   final List<Map<String, dynamic>> _picklistItems = [];
 
+  // Damage Reporting
+  bool _hasDamage = false;
+  final List<Map<String, dynamic>> _damagedItems = [];
+  File? _damagePhoto;
+  String? _damagePhotoUrl;
+  final TextEditingController _damageItemController = TextEditingController();
+  final TextEditingController _damageQtyController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -170,10 +179,10 @@ class _RiderDeliveryProgressScreenState
     _receiverNameController.dispose();
     _arrivalRemarksController.dispose();
     _destinationArrivalRemarksController.dispose();
-    
+
     // Save current delivery state before disposing
     _saveDeliveryState();
-    
+
     super.dispose();
   }
 
@@ -854,7 +863,7 @@ class _RiderDeliveryProgressScreenState
 
       // Close processing
       Navigator.pop(context);
-      
+
       // Notify dialog to refresh
       onPhotoTaken?.call();
     } catch (e) {
@@ -928,6 +937,10 @@ class _RiderDeliveryProgressScreenState
         } else if (photoType == 'Receiver ID') {
           setState(() {
             _idPhotoUrl = photoUrl;
+          });
+        } else if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
+          setState(() {
+            _damagePhotoUrl = photoUrl;
           });
         }
 
@@ -1095,10 +1108,10 @@ class _RiderDeliveryProgressScreenState
       _currentStep = DeliveryStep.delivering;
       _loadingSubStep = null;
     });
-    
+
     // Save delivery state
     _saveDeliveryState();
-    
+
     UIHelpers.showSuccessToast(
         'Loading completed! Service Invoice captured. Ready for delivery.');
   }
@@ -1375,7 +1388,8 @@ class _RiderDeliveryProgressScreenState
                             Center(
                               child: TextButton.icon(
                                 onPressed: () async {
-                                  await _takeGpsDestinationPhoto(onPhotoTaken: () {
+                                  await _takeGpsDestinationPhoto(
+                                      onPhotoTaken: () {
                                     setDialogState(() {});
                                   });
                                 },
@@ -1552,7 +1566,7 @@ class _RiderDeliveryProgressScreenState
 
       // Close processing
       Navigator.pop(context);
-      
+
       // Notify dialog to refresh
       onPhotoTaken?.call();
     } catch (e) {
@@ -1629,15 +1643,15 @@ class _RiderDeliveryProgressScreenState
     );
 
     setState(() {
-      _currentStep = DeliveryStep.receiving;
+      _currentStep = DeliveryStep.damageReport;
       _unloadingSubStep = null;
-      _receivingSubStep = ReceivingSubStep.receiverName;
-      _receiverIdPhotoConfirmed = false;
+      _hasDamage = false;
+      _damagedItems.clear();
     });
-    
+
     // Save delivery state
     _saveDeliveryState();
-    
+
     UIHelpers.showSuccessToast(
         'Unloading completed! Ready for receiver confirmation.');
   }
@@ -2124,6 +2138,8 @@ class _RiderDeliveryProgressScreenState
         return _buildDeliveringView();
       case DeliveryStep.unloading:
         return _buildUnloadingView();
+      case DeliveryStep.damageReport:
+        return _buildDamageReportView();
       case DeliveryStep.receiving:
         return _buildReceivingView();
       case DeliveryStep.completed:
@@ -2149,6 +2165,8 @@ class _RiderDeliveryProgressScreenState
         onTap = _arrivedAtClient;
         break;
       case DeliveryStep.unloading:
+        return const SizedBox.shrink();
+      case DeliveryStep.damageReport:
         return const SizedBox.shrink();
       case DeliveryStep.receiving:
         return const SizedBox.shrink();
@@ -2544,6 +2562,422 @@ class _RiderDeliveryProgressScreenState
                   borderRadius: BorderRadius.circular(16)),
             ),
             child: const Text('Finish Unloading',
+                style: TextStyle(
+                    fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDamageReportView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTotalDemurrageHoursCard(),
+        const SizedBox(height: 24),
+        const Text('Damaged While Unloading',
+            style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
+        const SizedBox(height: 8),
+        const Text(
+          'Report any damaged items from the delivery. Items must match the picklist.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 16),
+
+        // Picklist Reference
+        if (_picklistItems.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.scaffoldBackground,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.lightGrey),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'PICKLIST REFERENCE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'Bold',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...List.generate(_picklistItems.length, (i) {
+                  final item = (_picklistItems[i]['item'] ?? '').toString();
+                  final qty = (_picklistItems[i]['quantity'] ?? '').toString();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(item, style: const TextStyle(fontSize: 13)),
+                        Text(qty,
+                            style: const TextStyle(
+                                fontSize: 13, fontFamily: 'Medium')),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Damage Check
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _hasDamage = false;
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: !_hasDamage
+                        ? AppColors.success.withValues(alpha: 0.1)
+                        : AppColors.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color:
+                          !_hasDamage ? AppColors.success : AppColors.lightGrey,
+                      width: !_hasDamage ? 2 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: !_hasDamage
+                            ? AppColors.success
+                            : AppColors.textSecondary,
+                        size: 32,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No Damage',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                          color: !_hasDamage
+                              ? AppColors.success
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Take photo of empty truck',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: !_hasDamage
+                              ? AppColors.success
+                              : AppColors.textHint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _hasDamage = true;
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _hasDamage
+                        ? AppColors.primaryRed.withValues(alpha: 0.1)
+                        : AppColors.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _hasDamage
+                          ? AppColors.primaryRed
+                          : AppColors.lightGrey,
+                      width: _hasDamage ? 2 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: _hasDamage
+                            ? AppColors.primaryRed
+                            : AppColors.textSecondary,
+                        size: 32,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Has Damage',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                          color: _hasDamage
+                              ? AppColors.primaryRed
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Report damaged items',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _hasDamage
+                              ? AppColors.primaryRed
+                              : AppColors.textHint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // Damaged Items Entry (if has damage)
+        if (_hasDamage) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: AppColors.primaryRed.withValues(alpha: 0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'DAMAGED ITEMS',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'Bold',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Entry Form
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Autocomplete<String>(
+                        optionsBuilder: (TextEditingValue textEditingValue) {
+                          if (textEditingValue.text.isEmpty) {
+                            return const Iterable<String>.empty();
+                          }
+                          return _picklistItems
+                              .map((e) => (e['item'] ?? '').toString())
+                              .where((item) => item.toLowerCase().contains(
+                                  textEditingValue.text.toLowerCase()));
+                        },
+                        onSelected: (String selection) {
+                          _damageItemController.text = selection;
+                        },
+                        fieldViewBuilder:
+                            (context, controller, focusNode, onFieldSubmitted) {
+                          return TextField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            decoration: InputDecoration(
+                              labelText: 'Item Name',
+                              hintText: 'Enter item from picklist',
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 12),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _damageQtyController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Qty/Cases',
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () {
+                        final item = _damageItemController.text.trim();
+                        final qty = _damageQtyController.text.trim();
+                        if (item.isEmpty || qty.isEmpty) {
+                          UIHelpers.showErrorToast(
+                              'Please enter item and quantity');
+                          return;
+                        }
+                        // Validate item exists in picklist
+                        final exists = _picklistItems.any((e) =>
+                            (e['item'] ?? '').toString().toLowerCase() ==
+                            item.toLowerCase());
+                        if (!exists) {
+                          UIHelpers.showErrorToast('Item must match picklist');
+                          return;
+                        }
+                        setState(() {
+                          _damagedItems.add({'item': item, 'quantity': qty});
+                          _damageItemController.clear();
+                          _damageQtyController.clear();
+                        });
+                      },
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.primaryRed,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      icon: const Icon(Icons.add, color: Colors.white),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Damaged Items List
+                if (_damagedItems.isNotEmpty) ...[
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  ...List.generate(_damagedItems.length, (i) {
+                    final item = _damagedItems[i]['item'] ?? '';
+                    final qty = _damagedItems[i]['quantity'] ?? '';
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(item,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                          Text(qty,
+                              style: const TextStyle(
+                                  fontSize: 13, fontFamily: 'Medium')),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _damagedItems.removeAt(i);
+                              });
+                            },
+                            icon: const Icon(Icons.close,
+                                size: 18, color: AppColors.textHint),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  // Total
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total',
+                            style: TextStyle(fontSize: 13, fontFamily: 'Bold')),
+                        Text(
+                          '${_damagedItems.fold(0, (sum, e) => sum + (int.tryParse(e['quantity'] ?? '0') ?? 0))}',
+                          style:
+                              const TextStyle(fontSize: 13, fontFamily: 'Bold'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Photo Capture
+        _buildPhotoStep(
+          _hasDamage ? 'Photo of Damaged Boxes' : 'Photo of Empty Truck',
+          _damagePhoto,
+          (file) => _damagePhoto = file,
+          photoType: _hasDamage ? 'Damaged Boxes' : 'Empty Truck',
+        ),
+
+        const SizedBox(height: 24),
+
+        // Continue Button
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: () async {
+              if (_damagePhoto == null) {
+                UIHelpers.showInfoToast('Please take a photo.');
+                return;
+              }
+              if (_hasDamage && _damagedItems.isEmpty) {
+                UIHelpers.showInfoToast(
+                    'Please add at least one damaged item.');
+                return;
+              }
+
+              // Ensure damage photo is uploaded
+              if (_damagePhotoUrl == null) {
+                UIHelpers.showInfoToast('Please wait for photo to upload.');
+                return;
+              }
+
+              // Save damaged items to Firestore
+              await _bookingService.updateBookingStatusWithDetails(
+                bookingId: widget.request.id,
+                status: 'damage_reported',
+                picklistItems: _picklistItems,
+                deliveryPhotos: {
+                  if (_hasDamage) 'damaged_items': _damagedItems,
+                  'damage_photo': _damagePhotoUrl,
+                  'has_damage': _hasDamage,
+                },
+              );
+
+              setState(() {
+                _currentStep = DeliveryStep.receiving;
+                _receivingSubStep = ReceivingSubStep.receiverName;
+                _receiverIdPhotoConfirmed = false;
+              });
+
+              _saveDeliveryState();
+              UIHelpers.showSuccessToast(
+                  'Damage report saved. Proceed to receiver confirmation.');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            child: const Text('Continue to Receiving',
                 style: TextStyle(
                     fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
           ),
