@@ -2790,6 +2790,10 @@ class _RiderDeliveryProgressScreenState
                         },
                         fieldViewBuilder:
                             (context, controller, focusNode, onFieldSubmitted) {
+                          // Sync the autocomplete controller with our controller
+                          controller.addListener(() {
+                            _damageItemController.text = controller.text;
+                          });
                           return TextField(
                             controller: controller,
                             focusNode: focusNode,
