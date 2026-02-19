@@ -5,14 +5,17 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
 import '../../rider/models/rider_model.dart';
 import '../../rider/services/rider_location_service.dart';
+import '../../services/chat_service.dart';
 import 'delivery_completion_screen.dart';
 import 'crew_profile_screen.dart';
+import '../chat/chat_screen.dart';
 
 enum DeliveryStep {
   headingToWarehouse,
@@ -84,6 +87,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   // Rider data (for crew profiles)
   RiderModel? _rider;
   bool _isLoadingRider = true;
+
+  // Chat service
+  final ChatService _chatService = ChatService();
 
   // Real-time locations from booking
   LatLng? _pickupLocation;
@@ -793,115 +799,61 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
           // Bottom Action Buttons
           Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: _isDelivered
-                  ? Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      DeliveryCompletionScreen(
-                                    booking: _booking,
-                                    loadingDemurrage: _loadingDemurrageFee,
-                                    unloadingDemurrage: _unloadingDemurrageFee,
-                                  ),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: _isDelivered
+                ? Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DeliveryCompletionScreen(
+                                  booking: _booking,
+                                  loadingDemurrage: _loadingDemurrageFee,
+                                  unloadingDemurrage: _unloadingDemurrageFee,
                                 ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.check_circle,
-                              size: 20,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'Confirm Receipt & Review',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontFamily: 'Bold',
                               ),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.check_circle,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Confirm Receipt & Review',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Bold',
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.success,
-                              foregroundColor: AppColors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.success,
+                            foregroundColor: AppColors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        // Row(
-                        //   children: [
-                        //     Expanded(
-                        //       child: OutlinedButton.icon(
-                        //         onPressed: () {
-                        //           UIHelpers.showInfoToast(
-                        //               'Contact driver feature coming soon');
-                        //         },
-                        //         icon: const Icon(Icons.phone, size: 18),
-                        //         label: const Text(
-                        //           'Contact',
-                        //           style: TextStyle(
-                        //             fontSize: 14,
-                        //             fontFamily: 'Medium',
-                        //           ),
-                        //         ),
-                        //         style: OutlinedButton.styleFrom(
-                        //           padding:
-                        //               const EdgeInsets.symmetric(vertical: 12),
-                        //           side: BorderSide(
-                        //               color:
-                        //                   AppColors.primaryRed.withOpacity(0.3)),
-                        //           foregroundColor: AppColors.primaryRed,
-                        //         ),
-                        //       ),
-                        //     ),
-                        //     const SizedBox(width: 12),
-                        //     Expanded(
-                        //       child: OutlinedButton.icon(
-                        //         onPressed: () {
-                        //           UIHelpers.showInfoToast(
-                        //               'Report issue feature coming soon');
-                        //         },
-                        //         icon: const Icon(Icons.report_problem, size: 18),
-                        //         label: const Text(
-                        //           'Report',
-                        //           style: TextStyle(
-                        //             fontSize: 14,
-                        //             fontFamily: 'Medium',
-                        //           ),
-                        //         ),
-                        //         style: OutlinedButton.styleFrom(
-                        //           padding:
-                        //               const EdgeInsets.symmetric(vertical: 12),
-                        //           side: BorderSide(
-                        //               color:
-                        //                   AppColors.primaryRed.withOpacity(0.3)),
-                        //           foregroundColor: AppColors.primaryRed,
-                        //         ),
-                        //       ),
-                        //     ),
-                        //   ],
-                        // ),
-                      ],
-                    )
-                  : null),
+                      ),
+                    ],
+                  )
+                : _buildActiveDeliveryActions(),
+          ),
         ],
       ),
     );
@@ -1370,6 +1322,133 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     }
 
     return '';
+  }
+
+  /// Build action buttons for active delivery (Chat and Call)
+  Widget _buildActiveDeliveryActions() {
+    final driverPhone = _driver?.phoneNumber ?? _rider?.phoneNumber ?? '';
+    final driverName = _driver?.name ?? _rider?.name ?? 'Driver';
+
+    return Column(
+      children: [
+        // Chat Button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _openChat(),
+            icon: const Icon(Icons.chat, size: 20, color: Colors.white),
+            label: const Text(
+              'Chat with Driver',
+              style: TextStyle(
+                fontSize: 16,
+                fontFamily: 'Bold',
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+              foregroundColor: AppColors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Call Button
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: driverPhone.isNotEmpty
+                ? () => _makePhoneCall(driverPhone, driverName)
+                : null,
+            icon: const Icon(Icons.phone, size: 20),
+            label: Text(
+              driverPhone.isNotEmpty
+                  ? 'Call Driver'
+                  : 'Driver phone unavailable',
+              style: const TextStyle(
+                fontSize: 16,
+                fontFamily: 'Bold',
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryRed,
+              side: BorderSide(
+                color: driverPhone.isNotEmpty
+                    ? AppColors.primaryRed
+                    : AppColors.textSecondary,
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Open chat screen with driver
+  Future<void> _openChat() async {
+    if (_rider == null) {
+      UIHelpers.showErrorToast('Driver information not available');
+      return;
+    }
+
+    final bookingId = _booking.bookingId ?? '';
+    final customerId = _booking.customerId;
+    final customerName = _booking.customerName ?? 'Customer';
+    final driverId = _booking.driverId ?? '';
+
+    if (bookingId.isEmpty || driverId.isEmpty) {
+      UIHelpers.showErrorToast('Booking information not available');
+      return;
+    }
+
+    // Get or create chat room
+    final chatRoom = await _chatService.getOrCreateChatRoom(
+      bookingId: bookingId,
+      customerId: customerId,
+      customerName: customerName,
+      driverId: driverId,
+      driverName: _rider!.name,
+    );
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            chatRoomId: chatRoom.chatRoomId,
+            currentUserId: customerId,
+            currentUserName: customerName,
+            currentUserType: 'customer',
+            otherUserName: _rider!.name,
+            otherUserPhone: _rider!.phoneNumber,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Make phone call using url_launcher
+  Future<void> _makePhoneCall(String phoneNumber, String name) async {
+    try {
+      final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        if (mounted) {
+          UIHelpers.showErrorToast('Could not launch phone call');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        UIHelpers.showErrorToast('Error making phone call: $e');
+      }
+    }
   }
 
   String _getDeliveryMetadataText(String key) {

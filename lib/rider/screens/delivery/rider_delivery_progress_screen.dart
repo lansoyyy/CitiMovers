@@ -18,10 +18,13 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:citimovers/rider/services/rider_location_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:citimovers/config/integrations_config.dart';
 import 'package:citimovers/services/emailjs_service.dart';
 import 'package:citimovers/services/gps_map_camera_service.dart';
+import 'package:citimovers/services/chat_service.dart';
+import 'package:citimovers/screens/chat/chat_screen.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -59,6 +62,7 @@ class _RiderDeliveryProgressScreenState
   final StorageService _storageService = StorageService();
   final LocationService _locationService = LocationService();
   final MapsService _mapsService = MapsService();
+  final ChatService _chatService = ChatService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
@@ -2144,6 +2148,22 @@ class _RiderDeliveryProgressScreenState
         backgroundColor: AppColors.white,
         foregroundColor: AppColors.textPrimary,
         elevation: 0.5,
+        actions: [
+          // Chat button - only show during active delivery
+          if (_currentStep != DeliveryStep.completed)
+            IconButton(
+              icon: const Icon(Icons.chat, color: AppColors.primaryRed),
+              onPressed: () => _openChatWithCustomer(),
+              tooltip: 'Chat with Customer',
+            ),
+          // Call button - only show during active delivery
+          if (_currentStep != DeliveryStep.completed)
+            IconButton(
+              icon: const Icon(Icons.phone, color: AppColors.primaryRed),
+              onPressed: () => _callCustomer(),
+              tooltip: 'Call Customer',
+            ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -3927,6 +3947,75 @@ class _RiderDeliveryProgressScreenState
         ],
       ),
     );
+  }
+
+  /// Open chat screen with customer
+  Future<void> _openChatWithCustomer() async {
+    final riderId = _riderAuthService.currentRider?.riderId ?? '';
+    final riderName = _riderAuthService.currentRider?.name ?? 'Driver';
+
+    if (riderId.isEmpty) {
+      UIHelpers.showErrorToast('Driver information not available');
+      return;
+    }
+
+    // Get booking data to fetch customerId
+    final bookingData = await _getBookingDoc(widget.request.id);
+    final customerId = (bookingData?['customerId'] as String?) ?? '';
+
+    if (customerId.isEmpty) {
+      UIHelpers.showErrorToast('Customer information not available');
+      return;
+    }
+
+    // Get or create chat room
+    final chatRoom = await _chatService.getOrCreateChatRoom(
+      bookingId: widget.request.id,
+      customerId: customerId,
+      customerName: widget.request.customerName,
+      driverId: riderId,
+      driverName: riderName,
+    );
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            chatRoomId: chatRoom.chatRoomId,
+            currentUserId: riderId,
+            currentUserName: riderName,
+            currentUserType: 'driver',
+            otherUserName: widget.request.customerName,
+            otherUserPhone: widget.request.customerPhone,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Call customer using url_launcher
+  Future<void> _callCustomer() async {
+    final customerPhone = widget.request.customerPhone;
+    if (customerPhone.isEmpty) {
+      UIHelpers.showErrorToast('Customer phone number not available');
+      return;
+    }
+
+    try {
+      final Uri phoneUri = Uri(scheme: 'tel', path: customerPhone);
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        if (mounted) {
+          UIHelpers.showErrorToast('Could not launch phone call');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        UIHelpers.showErrorToast('Error making phone call: $e');
+      }
+    }
   }
 }
 
