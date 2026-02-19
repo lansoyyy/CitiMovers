@@ -9,8 +9,10 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
+import '../../rider/models/rider_model.dart';
 import '../../rider/services/rider_location_service.dart';
 import 'delivery_completion_screen.dart';
+import 'crew_profile_screen.dart';
 
 enum DeliveryStep {
   headingToWarehouse,
@@ -79,6 +81,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   DriverModel? _driver;
   bool _isLoadingDriver = true;
 
+  // Rider data (for crew profiles)
+  RiderModel? _rider;
+  bool _isLoadingRider = true;
+
   // Real-time locations from booking
   LatLng? _pickupLocation;
   LatLng? _dropoffLocation;
@@ -111,22 +117,27 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         if (doc.exists && doc.data() != null) {
           setState(() {
             _driver = DriverModel.fromMap(doc.data()!);
+            _rider = RiderModel.fromMap(doc.data()!);
             _isLoadingDriver = false;
+            _isLoadingRider = false;
           });
         } else {
           setState(() {
             _isLoadingDriver = false;
+            _isLoadingRider = false;
           });
         }
       } catch (e) {
         debugPrint('Error fetching driver data: $e');
         setState(() {
           _isLoadingDriver = false;
+          _isLoadingRider = false;
         });
       }
     } else {
       setState(() {
         _isLoadingDriver = false;
+        _isLoadingRider = false;
       });
     }
   }
@@ -719,6 +730,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   _buildTripSummaryCard(),
                   const SizedBox(height: 10),
 
+                  // Crew Profile Section - Only visible during active delivery
+                  if (!_isDelivered && _currentStep != DeliveryStep.completed)
+                    _buildCrewProfileSection(),
+
+                  const SizedBox(height: 10),
+
                   // Current Step Details
                   if (_currentStep != DeliveryStep.completed)
                     Container(
@@ -923,6 +940,372 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       case DeliveryStep.completed:
         return 'Delivered';
     }
+  }
+
+  /// Build crew profile section - visible only during active delivery
+  Widget _buildCrewProfileSection() {
+    if (_isLoadingRider) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          ),
+        ),
+      );
+    }
+
+    if (_rider == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Count crew members
+    final crewCount = 1 +
+        (_rider!.helper1 != null ? 1 : 0) +
+        (_rider!.helper2 != null ? 1 : 0);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withOpacity(0.05),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.group,
+                  color: AppColors.primaryRed,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Delivery Crew',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        '$crewCount crew member${crewCount > 1 ? 's' : ''} assigned',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Regular',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'Active',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Medium',
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Crew avatars row
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                // Driver avatar
+                _buildCrewAvatar(
+                  name: _rider!.name,
+                  photoUrl: _rider!.photoUrl,
+                  role: 'Driver',
+                  isDriver: true,
+                ),
+
+                // Helper 1 avatar
+                if (_rider!.helper1 != null)
+                  _buildCrewAvatar(
+                    name: _rider!.helper1!.name,
+                    photoUrl: _rider!.helper1!.photoUrl,
+                    role: 'Helper 1',
+                    isDriver: false,
+                  ),
+
+                // Helper 2 avatar
+                if (_rider!.helper2 != null)
+                  _buildCrewAvatar(
+                    name: _rider!.helper2!.name,
+                    photoUrl: _rider!.helper2!.photoUrl,
+                    role: 'Helper 2',
+                    isDriver: false,
+                  ),
+              ],
+            ),
+          ),
+
+          // Vehicle info summary
+          if (_rider!.vehiclePlateNumber != null)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.lightGrey.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.local_shipping,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _rider!.vehicleType,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Plate: ${_rider!.vehiclePlateNumber}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Bold',
+                            color: AppColors.primaryRed,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // View Full Profile Button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CrewProfileScreen(
+                        rider: _rider!,
+                        isDeliveryCompleted: _isDelivered,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.badge_outlined, size: 18),
+                label: const Text(
+                  'View Crew Profiles & Documents',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryRed,
+                  side: BorderSide(
+                    color: AppColors.primaryRed.withOpacity(0.3),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Privacy note
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Colors.orange.shade700,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Profiles visible during delivery only. Hidden after completion.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'Regular',
+                      color: Colors.orange.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCrewAvatar({
+    required String name,
+    String? photoUrl,
+    required String role,
+    required bool isDriver,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: Column(
+        children: [
+          // Avatar
+          Container(
+            width: 60,
+            height: 70,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDriver
+                    ? AppColors.primaryRed.withOpacity(0.5)
+                    : AppColors.textSecondary.withOpacity(0.3),
+                width: 2,
+              ),
+              color: AppColors.lightGrey,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: photoUrl != null && photoUrl.isNotEmpty
+                  ? Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: AppColors.lightGrey,
+                          child: Icon(
+                            Icons.person,
+                            size: 30,
+                            color: AppColors.textSecondary,
+                          ),
+                        );
+                      },
+                    )
+                  : Container(
+                      color: AppColors.lightGrey,
+                      child: Icon(
+                        Icons.person,
+                        size: 30,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Name (truncated)
+          SizedBox(
+            width: 60,
+            child: Text(
+              name.split(' ').first,
+              style: const TextStyle(
+                fontSize: 11,
+                fontFamily: 'Medium',
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Role badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: isDriver
+                  ? AppColors.primaryRed.withOpacity(0.1)
+                  : AppColors.textSecondary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              role,
+              style: TextStyle(
+                fontSize: 9,
+                fontFamily: 'Bold',
+                color:
+                    isDriver ? AppColors.primaryRed : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _extractDeliveryValueAsString(dynamic value) {
