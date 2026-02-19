@@ -1,4 +1,4 @@
-package com.algovision.citimovers_drivers
+package com.algovision.citimovers
 
 import io.flutter.embedding.android.FlutterActivity
 
