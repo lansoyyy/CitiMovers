@@ -114,8 +114,8 @@ class _RiderDeliveryProgressScreenState
   // Damage Reporting
   bool _hasDamage = false;
   final List<Map<String, dynamic>> _damagedItems = [];
-  File? _damagePhoto;
-  String? _damagePhotoUrl;
+  final List<File> _damagePhotos = [];
+  final List<String> _damagePhotoUrls = [];
   final TextEditingController _damageItemController = TextEditingController();
   final TextEditingController _damageQtyController = TextEditingController();
 
@@ -940,7 +940,7 @@ class _RiderDeliveryProgressScreenState
           });
         } else if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
           setState(() {
-            _damagePhotoUrl = photoUrl;
+            _damagePhotoUrls.add(photoUrl);
           });
         }
 
@@ -1941,6 +1941,13 @@ class _RiderDeliveryProgressScreenState
         'finish_loading_photo_url': finishLoadingUrl ?? '',
         'start_unloading_photo_url': startUnloadingUrl ?? '',
         'finish_unloading_photo_url': finishUnloadingUrl ?? '',
+        // Required by EmailJS template
+        'bcc_emails': '',
+        'cc_emails': '',
+        'email': customerEmail,
+        'to_email': customerEmail,
+        'subject':
+            '${vehicleType.isNotEmpty ? vehicleType : 'TYPE'}_${plate.isNotEmpty ? plate : 'PLATE'}_${rddStr}_Citimovers',
       };
 
       // Customer + internal recipients. Internal recipients are sent as individual emails.
@@ -1985,16 +1992,20 @@ class _RiderDeliveryProgressScreenState
       }
 
       for (final to in allRecipients) {
-        await EmailJsService.instance.sendTemplateEmail(
+        final success = await EmailJsService.instance.sendTemplateEmail(
           toEmail: to,
           subject: subject,
           templateParams: templateParams,
         );
+        debugPrint('Email sent to $to: ${success ? "SUCCESS" : "FAILED"}');
 
         await Future.delayed(const Duration(milliseconds: 1100));
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('Error sending completion emails: $e');
+      debugPrint('Stack trace: $stackTrace');
+      UIHelpers.showErrorToast(
+          'Failed to send report emails. Please check logs.');
     }
   }
 
@@ -2922,12 +2933,108 @@ class _RiderDeliveryProgressScreenState
           const SizedBox(height: 16),
         ],
 
-        // Photo Capture
-        _buildPhotoStep(
-          _hasDamage ? 'Photo of Damaged Boxes' : 'Photo of Empty Truck',
-          _damagePhoto,
-          (file) => _damagePhoto = file,
-          photoType: _hasDamage ? 'Damaged Boxes' : 'Empty Truck',
+        // Multiple Photos Capture
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _hasDamage ? 'Photos of Damaged Boxes' : 'Photo of Empty Truck',
+              style: const TextStyle(fontSize: 14, fontFamily: 'Medium'),
+            ),
+            const SizedBox(height: 8),
+            // Photo Grid
+            if (_damagePhotos.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(_damagePhotos.length, (index) {
+                  return Stack(
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.lightGrey),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            _damagePhotos[index],
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _damagePhotos.removeAt(index);
+                              if (index < _damagePhotoUrls.length) {
+                                _damagePhotoUrls.removeAt(index);
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryRed,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.close,
+                                size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      // Upload indicator
+                      if (index >= _damagePhotoUrls.length)
+                        Positioned(
+                          bottom: 4,
+                          right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
+              ),
+            const SizedBox(height: 12),
+            // Add Photo Button
+            OutlinedButton.icon(
+              onPressed: () {
+                _takePhoto(
+                  (file) {
+                    _damagePhotos.add(file);
+                  },
+                  _hasDamage ? 'Damaged Boxes' : 'Empty Truck',
+                );
+              },
+              icon: const Icon(Icons.add_a_photo),
+              label: Text(
+                  _damagePhotos.isEmpty ? 'Take Photo' : 'Add More Photos'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryRed,
+                side: const BorderSide(color: AppColors.primaryRed),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 24),
@@ -2938,8 +3045,8 @@ class _RiderDeliveryProgressScreenState
           height: 56,
           child: ElevatedButton(
             onPressed: () async {
-              if (_damagePhoto == null) {
-                UIHelpers.showInfoToast('Please take a photo.');
+              if (_damagePhotos.isEmpty) {
+                UIHelpers.showInfoToast('Please take at least one photo.');
                 return;
               }
               if (_hasDamage && _damagedItems.isEmpty) {
@@ -2948,9 +3055,9 @@ class _RiderDeliveryProgressScreenState
                 return;
               }
 
-              // Ensure damage photo is uploaded
-              if (_damagePhotoUrl == null) {
-                UIHelpers.showInfoToast('Please wait for photo to upload.');
+              // Ensure all damage photos are uploaded
+              if (_damagePhotoUrls.length < _damagePhotos.length) {
+                UIHelpers.showInfoToast('Please wait for photos to upload.');
                 return;
               }
 
@@ -2961,7 +3068,7 @@ class _RiderDeliveryProgressScreenState
                 picklistItems: _picklistItems,
                 deliveryPhotos: {
                   if (_hasDamage) 'damaged_items': _damagedItems,
-                  'damage_photo': _damagePhotoUrl,
+                  'damage_photos': _damagePhotoUrls,
                   'has_damage': _hasDamage,
                 },
               );

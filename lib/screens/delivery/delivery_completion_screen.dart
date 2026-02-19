@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
@@ -35,8 +33,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   final TextEditingController _customTipController = TextEditingController();
   final TextEditingController _otherTipReasonController =
       TextEditingController();
-  final ImagePicker _imagePicker = ImagePicker();
-  final List<XFile> _selectedImages = [];
 
   double _rating = 0.0;
   bool _isSubmitting = false;
@@ -386,122 +382,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
     _customTipController.dispose();
     _otherTipReasonController.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: source,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
-      );
-
-      if (image != null) {
-        setState(() {
-          _selectedImages.add(image);
-        });
-        UIHelpers.showSuccessToast('Image added successfully');
-      }
-    } catch (e) {
-      UIHelpers.showErrorToast('Failed to pick image: $e');
-    }
-  }
-
-  void _removeImage(int index) {
-    setState(() {
-      _selectedImages.removeAt(index);
-    });
-  }
-
-  void _showImageSourceDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.lightGrey,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Add Photo',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontFamily: 'Bold',
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.camera_alt,
-                    color: AppColors.primaryRed,
-                  ),
-                ),
-                title: const Text(
-                  'Take Photo',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontFamily: 'Medium',
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.photo_library,
-                    color: AppColors.primaryRed,
-                  ),
-                ),
-                title: const Text(
-                  'Choose from Gallery',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontFamily: 'Medium',
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _submitReview() async {
@@ -970,12 +850,83 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    _buildProofImageBox(
-                      _deliveryPhotos?['has_damage'] == true
-                          ? 'Photo of Damaged Boxes'
-                          : 'Photo of Empty Truck',
-                      'damage_photo',
-                    ),
+                    // Multiple Damage Photos
+                    if (_deliveryPhotos?['damage_photos'] is List) ...[
+                      Builder(
+                        builder: (context) {
+                          final damagePhotos =
+                              _deliveryPhotos?['damage_photos'] as List;
+                          if (damagePhotos.isEmpty) {
+                            return _buildProofImageBox(
+                              _deliveryPhotos?['has_damage'] == true
+                                  ? 'Photo of Damaged Boxes'
+                                  : 'Photo of Empty Truck',
+                              'damage_photo',
+                            );
+                          }
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children:
+                                List.generate(damagePhotos.length, (index) {
+                              final url = damagePhotos[index]?.toString() ?? '';
+                              if (url.isEmpty) return const SizedBox.shrink();
+                              return GestureDetector(
+                                onTap: () => _viewImageFullScreen(
+                                  url,
+                                  '${_deliveryPhotos?['has_damage'] == true ? 'Damaged Boxes' : 'Empty Truck'} Photo ${index + 1}',
+                                ),
+                                child: Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.scaffoldBackground,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: AppColors.lightGrey),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      url,
+                                      fit: BoxFit.cover,
+                                      loadingBuilder:
+                                          (context, child, loadingProgress) {
+                                        if (loadingProgress == null)
+                                          return child;
+                                        return Center(
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.primaryRed,
+                                          ),
+                                        );
+                                      },
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                        return Container(
+                                          color: AppColors.scaffoldBackground,
+                                          child: const Icon(
+                                            Icons.broken_image,
+                                            color: AppColors.textHint,
+                                            size: 32,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          );
+                        },
+                      ),
+                    ] else
+                      _buildProofImageBox(
+                        _deliveryPhotos?['has_damage'] == true
+                            ? 'Photo of Damaged Boxes'
+                            : 'Photo of Empty Truck',
+                        'damage_photo',
+                      ),
                   ],
                   const SizedBox(height: 16),
                   const Text(
@@ -1162,135 +1113,6 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                       color: AppColors.textPrimary,
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Image Upload Section
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Add Photos (Optional)',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontFamily: 'Bold',
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Share photos of your delivery',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Regular',
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Image Grid
-                  if (_selectedImages.isNotEmpty)
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
-                      ),
-                      itemCount: _selectedImages.length,
-                      itemBuilder: (context, index) {
-                        return Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(_selectedImages[index].path),
-                                width: double.infinity,
-                                height: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: GestureDetector(
-                                onTap: () => _removeImage(index),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-
-                  if (_selectedImages.isNotEmpty) const SizedBox(height: 12),
-
-                  // Add Photo Button
-                  if (_selectedImages.length < 5)
-                    GestureDetector(
-                      onTap: _showImageSourceDialog,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          color: AppColors.scaffoldBackground,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.primaryRed.withOpacity(0.3),
-                            width: 1.5,
-                            style: BorderStyle.solid,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.add_photo_alternate,
-                              color: AppColors.primaryRed,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Add Photo (${_selectedImages.length}/5)',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.primaryRed,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
