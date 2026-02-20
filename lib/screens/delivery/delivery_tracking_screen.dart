@@ -13,9 +13,11 @@ import '../../models/driver_model.dart';
 import '../../rider/models/rider_model.dart';
 import '../../rider/services/rider_location_service.dart';
 import '../../services/chat_service.dart';
+import '../../services/booking_service.dart';
 import 'delivery_completion_screen.dart';
 import 'crew_profile_screen.dart';
 import '../chat/chat_screen.dart';
+import '../booking/cancel_booking_dialog.dart';
 
 enum DeliveryStep {
   headingToWarehouse,
@@ -116,7 +118,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   // Fetch driver data from Firestore
   Future<void> _fetchDriverData() async {
     final driverId = _booking.driverId;
-    if (driverId != null && driverId.isNotEmpty) {
+    if (driverId != null && driverId!.isNotEmpty) {
       try {
         final doc = await _firestore.collection('riders').doc(driverId).get();
 
@@ -1328,6 +1330,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   Widget _buildActiveDeliveryActions() {
     final driverPhone = _driver?.phoneNumber ?? _rider?.phoneNumber ?? '';
     final driverName = _driver?.name ?? _rider?.name ?? 'Driver';
+    final canCancel =
+        _booking.status == 'pending' || _booking.status == 'accepted';
 
     return Column(
       children: [
@@ -1386,6 +1390,28 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             ),
           ),
         ),
+        if (canCancel) ...[
+          const SizedBox(height: 12),
+          // Cancel Booking Button
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: () => _showCancelBookingDialog(),
+              icon: const Icon(Icons.cancel_outlined, size: 18),
+              label: const Text(
+                'Cancel Booking',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Medium',
+                ),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1430,6 +1456,15 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ),
         ),
       );
+    }
+  }
+
+  /// Show cancel booking dialog
+  Future<void> _showCancelBookingDialog() async {
+    final result = await showCancelBookingDialog(context, _booking);
+    if (result == true && mounted) {
+      // Booking was cancelled, navigate back
+      Navigator.pop(context);
     }
   }
 

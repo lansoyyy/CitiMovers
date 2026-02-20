@@ -7,6 +7,7 @@ import '../../models/driver_model.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../delivery/delivery_tracking_screen.dart';
+import '../booking/cancel_booking_dialog.dart';
 
 class BookingsTab extends StatefulWidget {
   const BookingsTab({super.key});
@@ -1269,6 +1270,34 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
                   const SizedBox(height: 12),
                 ],
 
+                // Cancel Booking Button (for pending bookings)
+                if (widget.booking.status == 'pending') ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showCancelBookingDialog(),
+                      icon: const Icon(Icons.cancel_outlined, size: 18),
+                      label: const Text(
+                        'Cancel Booking',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Medium',
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.error,
+                        side: BorderSide(
+                          color: AppColors.error,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+
                 // Secondary Actions Row
                 // Row(
                 //   children: [
@@ -1357,6 +1386,15 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
         ],
       ),
     );
+  }
+
+  /// Show cancel booking dialog
+  Future<void> _showCancelBookingDialog() async {
+    final result = await showCancelBookingDialog(context, widget.booking);
+    if (result == true && mounted) {
+      // Booking was cancelled, close the bottom sheet
+      Navigator.pop(context);
+    }
   }
 
   Widget _buildSectionCard(String title, IconData icon, List<Widget> children) {
