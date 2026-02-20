@@ -900,7 +900,8 @@ class _RiderDeliveryProgressScreenState
     });
   }
 
-  Future<void> _takePhoto(Function(File) onPicked, String photoType) async {
+  Future<void> _takePhoto(Function(File) onPicked, String photoType,
+      {Function(File)? onRemove}) async {
     _logActivity('take_photo:$photoType');
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
@@ -957,6 +958,12 @@ class _RiderDeliveryProgressScreenState
 
         UIHelpers.showSuccessToast('$photoType photo captured and uploaded!');
       } else {
+        // Remove the photo from the list if upload failed
+        if (onRemove != null) {
+          setState(() {
+            onRemove(file);
+          });
+        }
         UIHelpers.showErrorToast('Failed to upload $photoType photo');
       }
     }
@@ -3120,6 +3127,9 @@ class _RiderDeliveryProgressScreenState
                     _damagePhotos.add(file);
                   },
                   _hasDamage ? 'Damaged Boxes' : 'Empty Truck',
+                  onRemove: (file) {
+                    _damagePhotos.remove(file);
+                  },
                 );
               },
               icon: const Icon(Icons.add_a_photo),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -150,17 +151,37 @@ class StorageService {
           .child(bookingId)
           .child(fileName);
 
-      final uploadTask = await RetryUtility.retryUploadOperation(() async {
-        return await storageRef.putFile(
-          compressed,
-          SettableMetadata(
-            contentType: _getContentType(fileExtension),
-          ),
-        );
-      });
+      // Add timeout to prevent indefinite loading
+      const uploadTimeout = Duration(minutes: 5);
 
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
-      return downloadUrl;
+      String? downloadUrl;
+
+      try {
+        // Upload with timeout on the entire operation
+        downloadUrl = await RetryUtility.retryUploadOperation(() async {
+          return await storageRef
+              .putFile(
+                compressed,
+                SettableMetadata(
+                  contentType: _getContentType(fileExtension),
+                ),
+              )
+              .then((task) => task.ref.getDownloadURL())
+              .timeout(
+            uploadTimeout,
+            onTimeout: () {
+              debugPrint('StorageService: Upload timeout after $uploadTimeout');
+              throw TimeoutException('Upload timed out after $uploadTimeout');
+            },
+          );
+        });
+
+        return downloadUrl;
+      } on TimeoutException catch (e) {
+        debugPrint('StorageService: Upload timeout exception: $e');
+        throw Exception(
+            'Upload timed out. Please check your internet connection and try again.');
+      }
     } catch (e) {
       debugPrint('StorageService: Error uploading delivery photo: $e');
       return null;
