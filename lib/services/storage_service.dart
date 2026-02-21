@@ -152,12 +152,13 @@ class StorageService {
           .child(fileName);
 
       // Add timeout to prevent indefinite loading
-      const uploadTimeout = Duration(minutes: 5);
+      const uploadTimeout = Duration(minutes: 3);
+      const perAttemptTimeout = Duration(seconds: 60);
 
       String? downloadUrl;
 
       try {
-        // Upload with timeout on the entire operation
+        // Upload with timeout on the entire operation (including retries)
         downloadUrl = await RetryUtility.retryUploadOperation(() async {
           return await storageRef
               .putFile(
@@ -168,13 +169,21 @@ class StorageService {
               )
               .then((task) => task.ref.getDownloadURL())
               .timeout(
-            uploadTimeout,
+            perAttemptTimeout,
             onTimeout: () {
-              debugPrint('StorageService: Upload timeout after $uploadTimeout');
-              throw TimeoutException('Upload timed out after $uploadTimeout');
+              debugPrint(
+                  'StorageService: Upload attempt timeout after $perAttemptTimeout');
+              throw TimeoutException(
+                  'Upload attempt timed out after $perAttemptTimeout');
             },
           );
-        });
+        }).timeout(
+          uploadTimeout,
+          onTimeout: () {
+            debugPrint('StorageService: Upload timeout after $uploadTimeout');
+            throw TimeoutException('Upload timed out after $uploadTimeout');
+          },
+        );
 
         return downloadUrl;
       } on TimeoutException catch (e) {

@@ -123,26 +123,41 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         final doc = await _firestore.collection('riders').doc(driverId).get();
 
         if (doc.exists && doc.data() != null) {
+          final driverData = Map<String, dynamic>.from(doc.data()!);
+
+          // Ensure driverId is included in the data for DriverModel
+          if (!driverData.containsKey('driverId')) {
+            driverData['driverId'] = driverId;
+          }
+
+          // Ensure riderId is included in the data for RiderModel
+          if (!driverData.containsKey('riderId')) {
+            driverData['riderId'] = driverId;
+          }
+
           setState(() {
-            _driver = DriverModel.fromMap(doc.data()!);
-            _rider = RiderModel.fromMap(doc.data()!);
+            _driver = DriverModel.fromMap(driverData);
+            _rider = RiderModel.fromMap(driverData);
             _isLoadingDriver = false;
             _isLoadingRider = false;
           });
         } else {
+          debugPrint('Driver document not found for ID: $driverId');
           setState(() {
             _isLoadingDriver = false;
             _isLoadingRider = false;
           });
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
         debugPrint('Error fetching driver data: $e');
+        debugPrint('Stack trace: $stackTrace');
         setState(() {
           _isLoadingDriver = false;
           _isLoadingRider = false;
         });
       }
     } else {
+      debugPrint('Driver ID is null or empty in booking');
       setState(() {
         _isLoadingDriver = false;
         _isLoadingRider = false;
@@ -1333,23 +1348,37 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     final canCancel =
         _booking.status == 'pending' || _booking.status == 'accepted';
 
+    // Disable buttons while loading driver data
+    final isLoading = _isLoadingDriver || _isLoadingRider;
+    final hasDriverData = _driver != null || _rider != null;
+
     return Column(
       children: [
         // Chat Button
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: () => _openChat(),
-            icon: const Icon(Icons.chat, size: 20, color: Colors.white),
-            label: const Text(
-              'Chat with Driver',
-              style: TextStyle(
+            onPressed: isLoading ? null : () => _openChat(),
+            icon: isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.chat, size: 20, color: Colors.white),
+            label: Text(
+              isLoading ? 'Loading...' : 'Chat with Driver',
+              style: const TextStyle(
                 fontSize: 16,
                 fontFamily: 'Bold',
               ),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryRed,
+              backgroundColor:
+                  isLoading ? AppColors.textSecondary : AppColors.primaryRed,
               foregroundColor: AppColors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -1363,25 +1392,37 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: driverPhone.isNotEmpty
-                ? () => _makePhoneCall(driverPhone, driverName)
-                : null,
-            icon: const Icon(Icons.phone, size: 20),
+            onPressed: (isLoading || driverPhone.isEmpty)
+                ? null
+                : () => _makePhoneCall(driverPhone, driverName),
+            icon: isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primaryRed,
+                    ),
+                  )
+                : const Icon(Icons.phone, size: 20),
             label: Text(
-              driverPhone.isNotEmpty
-                  ? 'Call Driver'
-                  : 'Driver phone unavailable',
+              isLoading
+                  ? 'Loading...'
+                  : (driverPhone.isNotEmpty
+                      ? 'Call Driver'
+                      : 'Driver phone unavailable'),
               style: const TextStyle(
                 fontSize: 16,
                 fontFamily: 'Bold',
               ),
             ),
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primaryRed,
+              foregroundColor:
+                  isLoading ? AppColors.textSecondary : AppColors.primaryRed,
               side: BorderSide(
-                color: driverPhone.isNotEmpty
-                    ? AppColors.primaryRed
-                    : AppColors.textSecondary,
+                color: (isLoading || driverPhone.isEmpty)
+                    ? AppColors.textSecondary
+                    : AppColors.primaryRed,
               ),
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -1418,8 +1459,19 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   /// Open chat screen with driver
   Future<void> _openChat() async {
+    if (_isLoadingRider) {
+      UIHelpers.showErrorToast('Loading driver information...');
+      return;
+    }
+
     if (_rider == null) {
-      UIHelpers.showErrorToast('Driver information not available');
+      final driverId = _booking.driverId;
+      if (driverId == null || driverId!.isEmpty) {
+        UIHelpers.showErrorToast('No driver assigned to this booking yet');
+      } else {
+        UIHelpers.showErrorToast(
+            'Driver information not available. Please try again later.');
+      }
       return;
     }
 
