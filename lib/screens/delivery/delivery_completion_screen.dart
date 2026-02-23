@@ -655,7 +655,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                     children: [
                       Expanded(
                         child: _buildProofImageBox(
-                            'Arrived at Warehouse', 'warehouse_arrival'),
+                            'Arrived at Pickup', 'warehouse_arrival'),
                       ),
                       const SizedBox(width: 8),
                       Expanded(

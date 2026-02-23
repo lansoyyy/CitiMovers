@@ -879,10 +879,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   String _getDeliveryStatusText() {
     switch (_currentStep) {
       case DeliveryStep.headingToWarehouse:
-        return 'Heading to Warehouse';
+        return 'Heading to Pickup';
       case DeliveryStep.loading:
         if (_loadingSubStep == LoadingSubStep.arrived) {
-          return 'Arrived at Warehouse';
+          return 'Arrived at Pickup';
         }
         if (_loadingSubStep == LoadingSubStep.startLoading) {
           return 'Loading Started';
@@ -1348,7 +1348,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     final canCancel =
         _booking.status == 'pending' || _booking.status == 'accepted';
 
-    // Disable buttons while loading driver data
+    // Chat button is always enabled, call button is enabled when driver data is available
     final isLoading = _isLoadingDriver || _isLoadingRider;
     final hasDriverData = _driver != null || _rider != null;
 
@@ -1358,7 +1358,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: isLoading ? null : () => _openChat(),
+            onPressed: () => _openChat(),
             icon: isLoading
                 ? const SizedBox(
                     width: 20,
@@ -1369,8 +1369,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                     ),
                   )
                 : const Icon(Icons.chat, size: 20, color: Colors.white),
-            label: Text(
-              isLoading ? 'Loading...' : 'Chat with Driver',
+            label: const Text(
+              'Chat with Driver',
               style: const TextStyle(
                 fontSize: 16,
                 fontFamily: 'Bold',
@@ -1392,35 +1392,25 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: (isLoading || driverPhone.isEmpty)
+            onPressed: driverPhone.isEmpty
                 ? null
                 : () => _makePhoneCall(driverPhone, driverName),
-            icon: isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primaryRed,
-                    ),
-                  )
-                : const Icon(Icons.phone, size: 20),
+            icon: const Icon(Icons.phone, size: 20),
             label: Text(
-              isLoading
-                  ? 'Loading...'
-                  : (driverPhone.isNotEmpty
-                      ? 'Call Driver'
-                      : 'Driver phone unavailable'),
+              driverPhone.isNotEmpty
+                  ? 'Call Driver'
+                  : 'Driver phone unavailable',
               style: const TextStyle(
                 fontSize: 16,
                 fontFamily: 'Bold',
               ),
             ),
             style: OutlinedButton.styleFrom(
-              foregroundColor:
-                  isLoading ? AppColors.textSecondary : AppColors.primaryRed,
+              foregroundColor: driverPhone.isEmpty
+                  ? AppColors.textSecondary
+                  : AppColors.primaryRed,
               side: BorderSide(
-                color: (isLoading || driverPhone.isEmpty)
+                color: driverPhone.isEmpty
                     ? AppColors.textSecondary
                     : AppColors.primaryRed,
               ),
@@ -1459,22 +1449,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   /// Open chat screen with driver
   Future<void> _openChat() async {
-    if (_isLoadingRider) {
-      UIHelpers.showErrorToast('Loading driver information...');
-      return;
-    }
-
-    if (_rider == null) {
-      final driverId = _booking.driverId;
-      if (driverId == null || driverId!.isEmpty) {
-        UIHelpers.showErrorToast('No driver assigned to this booking yet');
-      } else {
-        UIHelpers.showErrorToast(
-            'Driver information not available. Please try again later.');
-      }
-      return;
-    }
-
     final bookingId = _booking.bookingId ?? '';
     final customerId = _booking.customerId;
     final customerName = _booking.customerName ?? 'Customer';
@@ -1485,13 +1459,31 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       return;
     }
 
+    // Determine driver name and phone
+    String driverName = 'Driver';
+    String? driverPhone;
+
+    // Try to get from rider if available
+    if (_rider != null) {
+      driverName = _rider!.name;
+      driverPhone = _rider!.phoneNumber;
+    } else {
+      // Try to get from existing chat room
+      final existingChatRoom =
+          await _chatService.getChatRoomByBookingId(bookingId);
+      if (existingChatRoom != null && existingChatRoom.driverName.isNotEmpty) {
+        driverName = existingChatRoom.driverName;
+      }
+      // Otherwise use default "Driver" name and proceed
+    }
+
     // Get or create chat room
     final chatRoom = await _chatService.getOrCreateChatRoom(
       bookingId: bookingId,
       customerId: customerId,
       customerName: customerName,
       driverId: driverId,
-      driverName: _rider!.name,
+      driverName: driverName,
     );
 
     if (mounted) {
@@ -1503,8 +1495,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             currentUserId: customerId,
             currentUserName: customerName,
             currentUserType: 'customer',
-            otherUserName: _rider!.name,
-            otherUserPhone: _rider!.phoneNumber,
+            otherUserName: driverName,
+            otherUserPhone: driverPhone,
           ),
         ),
       );
@@ -1704,11 +1696,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ),
           const SizedBox(height: 20),
 
-          // Step 1: Heading to Warehouse
+          // Step 1: Heading to Pickup
           _buildTimelineStep(
             stepNumber: 1,
-            title: 'Heading to Warehouse',
-            subtitle: 'Driver is en route to pickup location',
+            title: 'Heading to Pickup',
+            subtitle: 'Driver is on the way to your location',
             icon: Icons.warehouse,
             isActive: _currentStep == DeliveryStep.headingToWarehouse,
             isCompleted:
@@ -1720,13 +1712,13 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           _buildTimelineStep(
             stepNumber: 2,
             title: 'Loading Process',
-            subtitle: 'At warehouse - loading goods',
+            subtitle: 'At pickup - loading goods',
             icon: Icons.inventory,
             isActive: _currentStep == DeliveryStep.loading,
             isCompleted: _currentStep.index > DeliveryStep.loading.index,
             subSteps: [
               _buildSubStep(
-                  'Arrived at Warehouse',
+                  'Arrived at Pickup',
                   _currentStep.index >= DeliveryStep.loading.index,
                   _getPhotoUrl('warehouse_arrival').isNotEmpty
                       ? _getPhotoUrl('warehouse_arrival')
@@ -2248,7 +2240,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Driver is heading to the warehouse to pick up your package.',
+          'Driver is heading to your location to pick up your package.',
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 8),
@@ -2283,7 +2275,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        _buildProcessStep('Arrived at Warehouse', _loadingSubStep != null),
+        _buildProcessStep('Arrived at Pickup', _loadingSubStep != null),
         _buildProcessStep('Start Loading Photo', _startLoadingPhotoTaken),
         _buildProcessStep('Finish Loading Photo', _finishLoadingPhotoTaken),
       ],

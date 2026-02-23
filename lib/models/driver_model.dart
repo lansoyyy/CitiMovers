@@ -48,7 +48,9 @@ class DriverModel {
     return DriverModel(
       driverId: map['driverId'] as String,
       name: map['name'] as String,
-      phoneNumber: map['phoneNumber'] as String,
+      phoneNumber:
+          (map['phoneNumber'] ?? map['phone'] ?? map['contactNumber'] ?? '')
+              .toString(),
       email: map['email'] as String?,
       photoUrl: map['photoUrl'] as String?,
       vehicleType: map['vehicleType'] as String,

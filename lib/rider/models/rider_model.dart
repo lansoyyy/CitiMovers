@@ -235,7 +235,9 @@ class RiderModel {
     return RiderModel(
       riderId: (json['riderId'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
-      phoneNumber: (json['phoneNumber'] ?? '').toString(),
+      phoneNumber:
+          (json['phoneNumber'] ?? json['phone'] ?? json['contactNumber'] ?? '')
+              .toString(),
       email: json['email'] as String?,
       photoUrl: json['photoUrl'] as String?,
       vehicleType: (json['vehicleType'] ?? 'AUV').toString(),
