@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../utils/app_colors.dart';
 import '../services/auth_service.dart';
+import '../services/booking_service.dart';
+import '../services/booking_status_service.dart';
 import '../models/booking_model.dart';
 import 'delivery/delivery_tracking_screen.dart';
 import 'profile/profile_screen.dart';
@@ -17,61 +18,152 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
+  final AuthService _authService = AuthService();
+  final BookingService _bookingService = BookingService();
+
+  bool _hasCheckedActiveBooking = false;
+  bool _isCheckingActiveBooking = false;
+  String? _lastResumedBookingId;
+  DateTime? _lastResumeAt;
+
+  bool _isDuplicateResume(String bookingId) {
+    if (_lastResumedBookingId != bookingId) return false;
+    if (_lastResumeAt == null) return false;
+    return DateTime.now().difference(_lastResumeAt!) <
+        const Duration(seconds: 3);
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 3, vsync: this);
-    _checkAndResumeActiveBooking();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndResumeActiveBooking();
+    });
   }
 
-  /// Check if there is an active booking and resume tracking
-  Future<void> _checkAndResumeActiveBooking() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _hasCheckedActiveBooking = false;
+      _checkAndResumeActiveBooking(force: true);
+    }
+  }
+
+  /// Check if there is an active/pending booking and resume tracking.
+  Future<void> _checkAndResumeActiveBooking({bool force = false}) async {
+    if (_isCheckingActiveBooking) return;
+    if (_hasCheckedActiveBooking && !force) return;
+
+    _isCheckingActiveBooking = true;
+    _hasCheckedActiveBooking = true;
+
     try {
-      final authService = AuthService();
-      final user = await authService.getCurrentUser();
+      final user = await _authService.getCurrentUser();
       if (user == null || !mounted) return;
 
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('bookings')
-          .where('customerId', isEqualTo: user.userId)
-          .where('status', whereIn: [
-            'pending',
-            'accepted',
-            'arrived_at_pickup',
-            'loading_complete',
-            'in_transit',
-            'in_progress',
-            'arrived_at_dropoff',
-            'unloading_complete',
-          ])
-          .limit(1)
-          .get();
+      BookingModel? bookingToResume;
 
-      if (querySnapshot.docs.isEmpty || !mounted) return;
+      // Fast-path: restore from saved active state if possible.
+      final savedState = _authService.getActiveBookingState();
+      final savedBookingId = savedState?['bookingId']?.toString() ?? '';
+      if (savedBookingId.isNotEmpty) {
+        final fromSaved = await _bookingService.getBookingById(savedBookingId);
+        if (fromSaved != null &&
+            fromSaved.customerId == user.userId &&
+            _bookingService.isBookingEligibleForAutoContinue(fromSaved)) {
+          bookingToResume = fromSaved;
+        } else {
+          await _authService.clearActiveBookingState();
+        }
+      }
 
-      final doc = querySnapshot.docs.first;
-      final booking = BookingModel.fromMap({
-        ...doc.data(),
-        'bookingId': doc.id,
-      });
+      if (bookingToResume != null) {
+        final normalized =
+            BookingStatusService.normalizeStatus(bookingToResume.status);
+        final message = BookingStatusService.isPending(normalized)
+            ? 'Resuming your booking search...'
+            : 'Resuming your active delivery...';
+        await _resumeBooking(bookingToResume, message: message);
+        return;
+      }
 
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DeliveryTrackingScreen(booking: booking),
-        ),
-      );
+      final activeBooking =
+          await _bookingService.getMostRecentActiveUserBooking(user.userId);
+      if (activeBooking != null) {
+        await _resumeBooking(activeBooking,
+            message: 'Resuming your active delivery...');
+        return;
+      }
+
+      final pendingBooking =
+          await _bookingService.getMostRecentPendingUserBooking(user.userId);
+      if (pendingBooking != null) {
+        await _resumeBooking(pendingBooking,
+            message: 'Resuming your booking search...');
+        return;
+      }
+
+      await _authService.clearActiveBookingState();
     } catch (e) {
       debugPrint('Error checking active booking: $e');
+    } finally {
+      _isCheckingActiveBooking = false;
     }
+  }
+
+  Future<void> _resumeBooking(BookingModel booking,
+      {required String message}) async {
+    final bookingId = booking.bookingId;
+    if (bookingId == null || bookingId.isEmpty) return;
+    if (_isDuplicateResume(bookingId) || !mounted) return;
+
+    _lastResumedBookingId = bookingId;
+    _lastResumeAt = DateTime.now();
+
+    await _authService.saveActiveBookingState(
+      bookingId: bookingId,
+      status: booking.status,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.success,
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeliveryTrackingScreen(booking: booking),
+      ),
+    ).then((_) {
+      _hasCheckedActiveBooking = false;
+    });
+  }
+
+  @override
+  void deactivate() {
+    _hasCheckedActiveBooking = false;
+    super.deactivate();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
   }
@@ -82,50 +174,55 @@ class _HomeScreenState extends State<HomeScreen>
     const ProfileScreen(),
   ];
 
-  void _onItemTapped(int index) {
-    _tabController.animateTo(index);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: TabBarView(
-        controller: _tabController,
-        physics: const NeverScrollableScrollPhysics(),
-        children: _screens,
+      body: Stack(
+        children: [
+          TabBarView(
+            controller: _tabController,
+            physics: const NeverScrollableScrollPhysics(),
+            children: _screens,
+          ),
+          if (_isCheckingActiveBooking)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+        ],
       ),
-      bottomNavigationBar: Container(
-        child: TabBar(
-          controller: _tabController,
-          onTap: (index) {
-            _tabController.animateTo(index);
-          },
-          indicatorColor: Colors.transparent,
-          labelColor: AppColors.primaryRed,
-          unselectedLabelColor: AppColors.textSecondary,
-          labelStyle: const TextStyle(
-            fontFamily: 'Medium',
-            fontSize: 12,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontFamily: 'Regular',
-            fontSize: 12,
-          ),
-          tabs: const [
-            Tab(
-              icon: Icon(FontAwesomeIcons.house),
-              text: 'Home',
-            ),
-            Tab(
-              icon: Icon(FontAwesomeIcons.rectangleList),
-              text: 'Bookings',
-            ),
-            Tab(
-              icon: Icon(FontAwesomeIcons.user),
-              text: 'Profile',
-            ),
-          ],
+      bottomNavigationBar: TabBar(
+        controller: _tabController,
+        onTap: (index) {
+          _tabController.animateTo(index);
+        },
+        indicatorColor: Colors.transparent,
+        labelColor: AppColors.primaryRed,
+        unselectedLabelColor: AppColors.textSecondary,
+        labelStyle: const TextStyle(
+          fontFamily: 'Medium',
+          fontSize: 12,
         ),
+        unselectedLabelStyle: const TextStyle(
+          fontFamily: 'Regular',
+          fontSize: 12,
+        ),
+        tabs: const [
+          Tab(
+            icon: Icon(FontAwesomeIcons.house),
+            text: 'Home',
+          ),
+          Tab(
+            icon: Icon(FontAwesomeIcons.rectangleList),
+            text: 'Bookings',
+          ),
+          Tab(
+            icon: Icon(FontAwesomeIcons.user),
+            text: 'Profile',
+          ),
+        ],
       ),
     );
   }

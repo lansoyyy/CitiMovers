@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../models/booking_model.dart';
+import '../../services/booking_service.dart';
 import '../../utils/app_colors.dart';
 import '../models/delivery_request_model.dart';
 import '../services/rider_auth_service.dart';
@@ -18,13 +19,28 @@ class RiderHomeScreen extends StatefulWidget {
 }
 
 class _RiderHomeScreenState extends State<RiderHomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   late List<Widget> _screens;
+  final RiderAuthService _authService = RiderAuthService();
+  final BookingService _bookingService = BookingService();
+
+  bool _hasCheckedActiveDriverBooking = false;
+  bool _isCheckingActiveDriverBooking = false;
+  String? _lastResumedBookingId;
+  DateTime? _lastResumeAt;
+
+  bool _isDuplicateResume(String bookingId) {
+    if (_lastResumedBookingId != bookingId) return false;
+    if (_lastResumeAt == null) return false;
+    return DateTime.now().difference(_lastResumeAt!) <
+        const Duration(seconds: 3);
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 4, vsync: this);
     _screens = [
       RiderHomeTab(tabController: _tabController),
@@ -32,61 +48,99 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
       const RiderEarningsTab(),
       const RiderProfileTab(),
     ];
-    _checkAndResumeActiveDelivery();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndResumeActiveDelivery();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _hasCheckedActiveDriverBooking = false;
+      _checkAndResumeActiveDelivery(force: true);
+    }
   }
 
   /// Check if there is an active delivery and resume progress screen
-  Future<void> _checkAndResumeActiveDelivery() async {
+  Future<void> _checkAndResumeActiveDelivery({bool force = false}) async {
+    if (_isCheckingActiveDriverBooking) return;
+    if (_hasCheckedActiveDriverBooking && !force) return;
+
+    _hasCheckedActiveDriverBooking = true;
+    _isCheckingActiveDriverBooking = true;
+
     try {
-      final authService = RiderAuthService();
-      final rider = await authService.getCurrentRider();
+      final rider = await _authService.getCurrentRider();
       if (rider == null || !mounted) return;
 
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('bookings')
-          .where('driverId', isEqualTo: rider.riderId)
-          .where('status', whereIn: [
-            'accepted',
-            'arrived_at_pickup',
-            'loading_complete',
-            'in_transit',
-            'in_progress',
-            'arrived_at_dropoff',
-            'unloading_complete',
-          ])
-          .limit(1)
-          .get();
+      BookingModel? booking;
 
-      if (querySnapshot.docs.isEmpty || !mounted) return;
+      // Fast-path: restore from saved active state if possible.
+      final savedState = _authService.getActiveDeliveryState();
+      final savedBookingId = savedState?['bookingId']?.toString() ?? '';
+      if (savedBookingId.isNotEmpty) {
+        final fromSaved = await _bookingService.getBookingById(savedBookingId);
+        if (fromSaved != null &&
+            fromSaved.driverId == rider.riderId &&
+            _bookingService.isBookingEligibleForAutoContinue(fromSaved)) {
+          booking = fromSaved;
+        }
+      }
 
-      final doc = querySnapshot.docs.first;
-      final data = doc.data();
-      final request = _bookingToDeliveryRequest(doc.id, data);
+      booking ??=
+          await _bookingService.getMostRecentActiveDriverBooking(rider.riderId);
 
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => RiderDeliveryProgressScreen(request: request),
-        ),
-      );
+      if (booking == null) {
+        await _authService.clearActiveDeliveryState();
+        return;
+      }
+
+      await _resumeActiveDriverBooking(booking);
     } catch (e) {
       debugPrint('Error checking active delivery: $e');
+    } finally {
+      _isCheckingActiveDriverBooking = false;
     }
   }
 
-  /// Convert a Firestore booking document to DeliveryRequest
-  DeliveryRequest _bookingToDeliveryRequest(
-      String bookingId, Map<String, dynamic> data) {
-    final createdAt = data['createdAt'];
-    DateTime createdDate;
-    if (createdAt is int) {
-      createdDate = DateTime.fromMillisecondsSinceEpoch(createdAt);
-    } else if (createdAt is Timestamp) {
-      createdDate = createdAt.toDate();
-    } else {
-      createdDate = DateTime.now();
-    }
+  Future<void> _resumeActiveDriverBooking(BookingModel booking) async {
+    final bookingId = booking.bookingId ?? '';
+    if (bookingId.isEmpty || !mounted) return;
+    if (_isDuplicateResume(bookingId)) return;
+
+    _lastResumedBookingId = bookingId;
+    _lastResumeAt = DateTime.now();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        backgroundColor: AppColors.success,
+        content: Text(
+          'Resuming your active delivery...',
+          style: TextStyle(color: Colors.white),
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    final request = _bookingToDeliveryRequest(booking);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RiderDeliveryProgressScreen(request: request),
+      ),
+    ).then((_) {
+      _hasCheckedActiveDriverBooking = false;
+    });
+  }
+
+  /// Convert BookingModel into DeliveryRequest for rider progress screen.
+  DeliveryRequest _bookingToDeliveryRequest(BookingModel booking) {
+    final bookingId = booking.bookingId ?? '';
+    final createdDate = booking.createdAt;
     final difference = DateTime.now().difference(createdDate);
     String requestTime;
     if (difference.inMinutes < 1) {
@@ -99,34 +153,24 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
       requestTime = '${difference.inDays} days ago';
     }
 
-    final customerName = data['customerName'] as String? ?? 'Unknown';
-    final customerPhone = data['customerPhone'] as String? ?? 'N/A';
+    final customerName = booking.customerName ?? 'Unknown';
+    final customerPhone = booking.customerPhone ?? 'N/A';
 
-    final pickupLocationRaw = data['pickupLocation'];
-    final dropoffLocationRaw = data['dropoffLocation'];
-    final pickupLocation = pickupLocationRaw is Map
-        ? (pickupLocationRaw['address'] ?? '').toString()
-        : (pickupLocationRaw ?? '').toString();
-    final deliveryLocation = dropoffLocationRaw is Map
-        ? (dropoffLocationRaw['address'] ?? '').toString()
-        : (dropoffLocationRaw ?? '').toString();
+    final pickupLocation = booking.pickupLocation.address;
+    final deliveryLocation = booking.dropoffLocation.address;
 
-    final distance = (data['distance'] as num?)?.toDouble() ?? 0.0;
-    final estimatedDuration =
-        (data['estimatedDuration'] as num?)?.toDouble() ?? 0.0;
-    final fare = ((data['finalFare'] as num?)?.toDouble() ?? 0.0) > 0
-        ? (data['finalFare'] as num).toDouble()
-        : (data['estimatedFare'] as num?)?.toDouble() ?? 0.0;
+    final distance = booking.distance;
+    final estimatedDuration = (booking.estimatedDuration ?? 0).toDouble();
+    final fare = ((booking.finalFare ?? 0) > 0)
+        ? booking.finalFare!
+        : booking.estimatedFare;
 
-    final vehicleRaw = data['vehicle'];
-    final vehicleType =
-        vehicleRaw is Map ? (vehicleRaw['type'] ?? '').toString() : '';
-    final vehicleCapacity =
-        vehicleRaw is Map ? (vehicleRaw['capacity'] ?? '').toString() : '';
+    final vehicleType = booking.vehicle.type;
+    final vehicleCapacity = booking.vehicle.capacity;
     final packageType = vehicleType.isNotEmpty ? vehicleType : 'Standard';
     final weight = vehicleCapacity.isNotEmpty ? vehicleCapacity : 'N/A';
-    final specialInstructions = data['notes'] as String? ?? 'None';
-    final urgency = data['urgency'] as String? ?? 'Normal';
+    final specialInstructions = booking.notes ?? 'None';
+    const urgency = 'Normal';
 
     return DeliveryRequest(
       id: bookingId,
@@ -146,7 +190,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   }
 
   @override
+  void deactivate() {
+    _hasCheckedActiveDriverBooking = false;
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
   }

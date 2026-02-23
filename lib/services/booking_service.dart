@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_model.dart';
 import 'notification_service.dart';
+import 'booking_status_service.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
 import '../utils/app_constants.dart';
@@ -17,6 +18,12 @@ class BookingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final NotificationService _notificationService = NotificationService();
   static const String _bookingsCollection = 'bookings';
+
+  static const Duration _autoContinueActiveStaleThreshold = Duration(hours: 72);
+  static const Duration _autoContinuePendingStaleThreshold =
+      Duration(hours: 24);
+  static const Duration _scheduledAutoContinueLeadWindow =
+      Duration(minutes: 30);
 
   /// Create a new booking
   /// Uses Firestore transaction to ensure atomic creation of booking and delivery request
@@ -210,6 +217,157 @@ class BookingService {
     });
   }
 
+  bool _isPendingStatusForAutoContinue(String rawStatus) {
+    final status = BookingStatusService.normalizeStatus(rawStatus);
+    return status == BookingStatusService.STATUS_PENDING ||
+        status == BookingStatusService.STATUS_AWAITING_PAYMENT ||
+        status == BookingStatusService.STATUS_PAYMENT_LOCKED;
+  }
+
+  bool _isActiveStatusForAutoContinue(String rawStatus) {
+    final status = BookingStatusService.normalizeStatus(rawStatus);
+    return status == BookingStatusService.STATUS_ACCEPTED ||
+        status == BookingStatusService.STATUS_ARRIVED_PICKUP ||
+        status == BookingStatusService.STATUS_LOADING ||
+        status == BookingStatusService.STATUS_LOADING_COMPLETE ||
+        status == BookingStatusService.STATUS_IN_TRANSIT ||
+        status == BookingStatusService.STATUS_ARRIVED_DROPOFF ||
+        status == BookingStatusService.STATUS_UNLOADING ||
+        status == BookingStatusService.STATUS_UNLOADING_COMPLETE;
+  }
+
+  DateTime _lastActivityAt(BookingModel booking) {
+    return booking.updatedAt ??
+        booking.unloadingCompletedAt ??
+        booking.unloadingStartedAt ??
+        booking.loadingCompletedAt ??
+        booking.loadingStartedAt ??
+        booking.acceptedAt ??
+        booking.createdAt;
+  }
+
+  List<BookingModel> _sortMostRecent(List<BookingModel> bookings) {
+    final sorted = [...bookings];
+    sorted.sort((a, b) => _lastActivityAt(b).compareTo(_lastActivityAt(a)));
+    return sorted;
+  }
+
+  /// Guard for auto-continue navigation.
+  ///
+  /// - Prevents resuming stale bookings.
+  /// - Avoids auto-resuming scheduled trips that are not near their start time.
+  bool isBookingEligibleForAutoContinue(BookingModel booking, {DateTime? now}) {
+    final resolvedNow = now ?? DateTime.now();
+    final normalizedStatus =
+        BookingStatusService.normalizeStatus(booking.status);
+
+    if (!_isPendingStatusForAutoContinue(normalizedStatus) &&
+        !_isActiveStatusForAutoContinue(normalizedStatus)) {
+      return false;
+    }
+
+    // Do not auto-resume scheduled bookings too early.
+    if (booking.bookingType == 'scheduled' &&
+        booking.scheduledDateTime != null) {
+      final shouldResumeBy =
+          booking.scheduledDateTime!.subtract(_scheduledAutoContinueLeadWindow);
+      if (resolvedNow.isBefore(shouldResumeBy)) {
+        return false;
+      }
+    }
+
+    final age = resolvedNow.difference(_lastActivityAt(booking));
+    if (_isPendingStatusForAutoContinue(normalizedStatus)) {
+      return age <= _autoContinuePendingStaleThreshold;
+    }
+
+    return age <= _autoContinueActiveStaleThreshold;
+  }
+
+  /// Active (already accepted/in-progress) bookings for customer.
+  Stream<List<BookingModel>> getActiveUserBookings(String customerId) {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('customerId', isEqualTo: customerId)
+        .snapshots()
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .where((booking) {
+        final normalized = BookingStatusService.normalizeStatus(booking.status);
+        return _isActiveStatusForAutoContinue(normalized) &&
+            isBookingEligibleForAutoContinue(booking);
+      }).toList();
+      return _sortMostRecent(bookings);
+    });
+  }
+
+  /// Pending/searching bookings for customer.
+  Stream<List<BookingModel>> getPendingUserBookings(String customerId) {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('customerId', isEqualTo: customerId)
+        .snapshots()
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .where((booking) {
+        final normalized = BookingStatusService.normalizeStatus(booking.status);
+        return _isPendingStatusForAutoContinue(normalized) &&
+            isBookingEligibleForAutoContinue(booking);
+      }).toList();
+      return _sortMostRecent(bookings);
+    });
+  }
+
+  /// Active bookings for driver.
+  Stream<List<BookingModel>> getActiveDriverBookings(String driverId) {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('driverId', isEqualTo: driverId)
+        .snapshots()
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .where((booking) {
+        final normalized = BookingStatusService.normalizeStatus(booking.status);
+        return _isActiveStatusForAutoContinue(normalized) &&
+            isBookingEligibleForAutoContinue(booking);
+      }).toList();
+      return _sortMostRecent(bookings);
+    });
+  }
+
+  Future<BookingModel?> getMostRecentActiveUserBooking(
+      String customerId) async {
+    final bookings = await getActiveUserBookings(customerId).first;
+    if (bookings.isEmpty) return null;
+    return bookings.first;
+  }
+
+  Future<BookingModel?> getMostRecentPendingUserBooking(
+      String customerId) async {
+    final bookings = await getPendingUserBookings(customerId).first;
+    if (bookings.isEmpty) return null;
+    return bookings.first;
+  }
+
+  Future<BookingModel?> getMostRecentActiveDriverBooking(
+      String driverId) async {
+    final bookings = await getActiveDriverBookings(driverId).first;
+    if (bookings.isEmpty) return null;
+    return bookings.first;
+  }
+
   /// Get booking by ID
   Future<BookingModel?> getBookingById(String bookingId) async {
     try {
@@ -374,7 +532,6 @@ class BookingService {
           await _firestore.collection(_bookingsCollection).doc(bookingId).get();
       final bookingData = bookingDoc.data();
       final customerName = bookingData?['customerName'] as String?;
-      final fare = (bookingData?['estimatedFare'] as num?)?.toDouble() ?? 0.0;
 
       // Create review document
       final reviewData = {
@@ -469,15 +626,11 @@ class BookingService {
     Map<String, dynamic>? deliveryPhotos,
   }) async {
     try {
-      // Get booking details for notification
+      // Get booking details for notification and delivery photos merge
       final bookingDoc =
           await _firestore.collection(_bookingsCollection).doc(bookingId).get();
       final bookingData = bookingDoc.data();
       final customerId = bookingData?['customerId'] as String?;
-      final riderId = bookingData?['driverId'] as String?;
-      final customerName = bookingData?['customerName'] as String?;
-      final riderName = bookingData?['driverName'] as String?;
-      final fare = (bookingData?['estimatedFare'] as num?)?.toDouble() ?? 0.0;
 
       final updateData = <String, dynamic>{
         'status': status,

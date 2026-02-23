@@ -12,8 +12,9 @@ import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
 import '../../rider/models/rider_model.dart';
 import '../../rider/services/rider_location_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/booking_status_service.dart';
 import '../../services/chat_service.dart';
-import '../../services/booking_service.dart';
 import 'delivery_completion_screen.dart';
 import 'crew_profile_screen.dart';
 import '../chat/chat_screen.dart';
@@ -81,6 +82,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   // Firebase Firestore
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final RiderLocationService _riderLocationService = RiderLocationService();
+  final AuthService _authService = AuthService();
 
   // Driver data
   DriverModel? _driver;
@@ -92,6 +94,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
   // Chat service
   final ChatService _chatService = ChatService();
+  String? _lastPersistedBookingStatus;
 
   // Real-time locations from booking
   LatLng? _pickupLocation;
@@ -113,12 +116,13 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     _fetchDriverData();
     _startRealTimeLocationTracking();
     _listenToBookingStatus();
+    _syncActiveBookingState(_booking.status);
   }
 
   // Fetch driver data from Firestore
   Future<void> _fetchDriverData() async {
     final driverId = _booking.driverId;
-    if (driverId != null && driverId!.isNotEmpty) {
+    if (driverId != null && driverId.isNotEmpty) {
       try {
         final doc = await _firestore.collection('riders').doc(driverId).get();
 
@@ -293,6 +297,28 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     });
   }
 
+  void _syncActiveBookingState(String rawStatus) {
+    final bookingId = _booking.bookingId ?? '';
+    if (bookingId.isEmpty) return;
+
+    final normalized = BookingStatusService.normalizeStatus(rawStatus);
+    if (_lastPersistedBookingStatus == normalized) return;
+    _lastPersistedBookingStatus = normalized;
+
+    if (BookingStatusService.isFinalStatus(normalized)) {
+      _authService.clearActiveBookingState();
+      return;
+    }
+
+    if (BookingStatusService.isPending(normalized) ||
+        BookingStatusService.isActive(normalized)) {
+      _authService.saveActiveBookingState(
+        bookingId: bookingId,
+        status: normalized,
+      );
+    }
+  }
+
   double get _baseFare {
     final finalFare = _booking.finalFare;
     if (finalFare != null && finalFare > 0) return finalFare;
@@ -393,6 +419,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       _fetchDriverData();
       _startRealTimeLocationTracking();
     }
+
+    _syncActiveBookingState(booking.status);
   }
 
   /// Update delivery step based on booking status
@@ -1350,7 +1378,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
     // Chat button is always enabled, call button is enabled when driver data is available
     final isLoading = _isLoadingDriver || _isLoadingRider;
-    final hasDriverData = _driver != null || _rider != null;
 
     return Column(
       children: [
@@ -1506,8 +1533,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   /// Show cancel booking dialog
   Future<void> _showCancelBookingDialog() async {
     final result = await showCancelBookingDialog(context, _booking);
-    if (result == true && mounted) {
+    if (!mounted) return;
+    if (result == true) {
+      await _authService.clearActiveBookingState();
       // Booking was cancelled, navigate back
+      if (!mounted) return;
       Navigator.pop(context);
     }
   }
@@ -2068,42 +2098,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  Widget _buildStepIcon(DeliveryStep step, IconData icon, String label) {
-    Color color = AppColors.grey;
-    if (_currentStep.index >= step.index) color = AppColors.primaryRed;
-    if (_currentStep == DeliveryStep.completed) color = AppColors.success;
-
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: color.withOpacity(0.1),
-          child: Icon(icon, size: 16, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontFamily: 'Medium',
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepLine(DeliveryStep nextStep) {
-    bool isActive = _currentStep.index >= nextStep.index;
-    return Expanded(
-      child: Container(
-        height: 2,
-        color: isActive ? AppColors.primaryRed : AppColors.lightGrey,
-        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
       ),
     );
   }

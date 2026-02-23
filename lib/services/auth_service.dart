@@ -125,6 +125,58 @@ class AuthService {
     await _storage.remove('userUpdatedAt');
     await _storage.remove('userWalletBalance');
     await _storage.remove('userFavoriteLocations');
+    await _storage.remove('activeBookingState');
+  }
+
+  /// Save current active booking state for resume after reopen/login.
+  Future<void> saveActiveBookingState({
+    required String bookingId,
+    required String status,
+  }) async {
+    try {
+      final state = {
+        'bookingId': bookingId,
+        'status': status,
+        'savedAt': DateTime.now().millisecondsSinceEpoch,
+      };
+      await _storage.write('activeBookingState', state);
+      debugPrint('Active booking state saved: $bookingId - $status');
+    } catch (e) {
+      debugPrint('Error saving active booking state: $e');
+    }
+  }
+
+  /// Get saved active booking state.
+  Map<String, dynamic>? getActiveBookingState() {
+    try {
+      final state = _storage.read('activeBookingState');
+      if (state is Map && state.isNotEmpty) {
+        final savedAt = state['savedAt'] as int?;
+        if (savedAt != null) {
+          final savedTime = DateTime.fromMillisecondsSinceEpoch(savedAt);
+          final now = DateTime.now();
+          if (now.difference(savedTime).inHours > 24) {
+            clearActiveBookingState();
+            return null;
+          }
+        }
+        return Map<String, dynamic>.from(state);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting active booking state: $e');
+      return null;
+    }
+  }
+
+  /// Clear saved active booking state.
+  Future<void> clearActiveBookingState() async {
+    try {
+      await _storage.remove('activeBookingState');
+      debugPrint('Active booking state cleared');
+    } catch (e) {
+      debugPrint('Error clearing active booking state: $e');
+    }
   }
 
   /// Send OTP to phone number
@@ -266,7 +318,7 @@ class AuthService {
       }
 
       final otpDoc = snapshot.docs.first;
-      final otpData = otpDoc.data() as Map<String, dynamic>;
+      final otpData = otpDoc.data();
 
       // Check if OTP has expired
       final expiresAt = (otpData['expiresAt'] as Timestamp).toDate();
@@ -335,8 +387,6 @@ class AuthService {
 
   /// Generate a temporary password for Firebase Auth user
   String _generateTempPassword() {
-    const chars =
-        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#\$%^&*';
     final random = DateTime.now().millisecondsSinceEpoch;
     final randomStr = random.toRadixString(36).padLeft(8, '0');
     return 'Temp$randomStr!';

@@ -132,7 +132,8 @@ class RiderAuthService {
       final riderData = _storage.read('riderData');
       if (riderData is Map && riderData.isNotEmpty) {
         try {
-          _currentRider = RiderModel.fromMap(Map<String, dynamic>.from(riderData));
+          _currentRider =
+              RiderModel.fromMap(Map<String, dynamic>.from(riderData));
           debugPrint('Rider restored from storage: ${_currentRider?.name}');
           return;
         } catch (e) {
@@ -181,6 +182,7 @@ class RiderAuthService {
 
     // Clean up legacy keys from previous auth implementations
     await _storage.remove('riderData');
+    await _storage.remove('activeDeliveryState');
   }
 
   static const Map<String, String> _documentNameToKey = {
