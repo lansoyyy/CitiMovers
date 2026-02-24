@@ -22,16 +22,44 @@ class _BookingsTabState extends State<BookingsTab>
   final _authService = AuthService();
   final _bookingService = BookingService();
 
+  int _activeBookingsCount = 0;
+  List<BookingModel> _activeBookings = [];
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.index == 0) {
+      // Active tab selected - update badge
+      _updateActiveBookingsCount();
+    }
+  }
+
+  Future<void> _updateActiveBookingsCount() async {
+    final user = _authService.currentUser;
+    if (user == null) return;
+
+    final bookings =
+        await _bookingService.getCustomerBookings(user.userId).first;
+    final activeBookings = _filterBookingsByStatus(bookings, 'active');
+
+    if (mounted) {
+      setState(() {
+        _activeBookingsCount = activeBookings.length;
+        _activeBookings = activeBookings;
+      });
+    }
   }
 
   @override
@@ -63,10 +91,39 @@ class _BookingsTabState extends State<BookingsTab>
             fontFamily: 'Regular',
             fontSize: 16,
           ),
-          tabs: const [
-            Tab(text: 'Active'),
-            Tab(text: 'Completed'),
-            Tab(text: 'Cancelled'),
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Active'),
+                  if (_activeBookingsCount > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        _activeBookingsCount > 9
+                            ? '9+'
+                            : '$_activeBookingsCount',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'Bold',
+                          color: AppColors.white,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Tab(text: 'Completed'),
+            const Tab(text: 'Cancelled'),
           ],
         ),
       ),
@@ -119,20 +176,262 @@ class _BookingsTabState extends State<BookingsTab>
         final bookings = snapshot.data ?? [];
         final filteredBookings = _filterBookingsByStatus(bookings, status);
 
+        // Update active bookings count and list for active tab
+        if (status == 'active') {
+          if (mounted) {
+            setState(() {
+              _activeBookingsCount = filteredBookings.length;
+              _activeBookings = filteredBookings;
+            });
+          }
+        }
+
         if (filteredBookings.isEmpty) {
           return _buildEmptyState(status);
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: filteredBookings.length,
-          itemBuilder: (context, index) {
-            final booking = filteredBookings[index];
-            return _bookingCard(booking);
-          },
+        return Column(
+          children: [
+            // Active Bookings Section (prominent display at top)
+            if (status == 'active' && _activeBookings.isNotEmpty)
+              _buildActiveBookingsSection(),
+            // Bookings List
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: filteredBookings.length,
+                itemBuilder: (context, index) {
+                  final booking = filteredBookings[index];
+                  return _bookingCard(booking);
+                },
+              ),
+            ),
+          ],
         );
       },
     );
+  }
+
+  /// Build prominent active bookings section at top of active tab
+  Widget _buildActiveBookingsSection() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primaryRed.withOpacity(0.05),
+            AppColors.primaryRed.withOpacity(0.02),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border.all(
+          color: AppColors.primaryRed.withOpacity(0.2),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.local_shipping,
+                      size: 18,
+                      color: AppColors.white,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$_activeBookingsCount Active',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'Bold',
+                        color: AppColors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Tap on any booking to continue tracking',
+            style: const TextStyle(
+              fontSize: 13,
+              fontFamily: 'Regular',
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Show up to 3 most recent active bookings
+          ..._activeBookings
+              .take(3)
+              .map((booking) => _buildActiveBookingCard(booking)),
+        ],
+      ),
+    );
+  }
+
+  /// Build compact active booking card for the prominent section
+  Widget _buildActiveBookingCard(BookingModel booking) {
+    final statusColor = _getStatusColor(booking.status);
+    final statusText = _getStatusText(booking.status);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: statusColor.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DeliveryTrackingScreen(booking: booking),
+              ),
+            );
+          },
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'Medium',
+                              color: statusColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            booking.bookingId ?? 'Unknown',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Medium',
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      booking.pickupLocation.address,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Medium',
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.arrow_forward,
+                          size: 14,
+                          color: AppColors.textHint,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            booking.dropoffLocation.address,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Medium',
+                              color: AppColors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: AppColors.textHint,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return AppColors.warning;
+      case 'accepted':
+        return AppColors.primaryBlue;
+      case 'in_progress':
+        return AppColors.primaryBlue;
+      case 'completed':
+        return AppColors.success;
+      case 'cancelled':
+        return AppColors.error;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Pending';
+      case 'accepted':
+        return 'Driver Assigned';
+      case 'in_progress':
+        return 'In Transit';
+      case 'completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return 'Unknown';
+    }
   }
 
   Widget _buildEmptyState(String status) {
