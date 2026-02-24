@@ -848,6 +848,9 @@ class _RiderDeliveryProgressScreenState
         'Warehouse Arrival GPS',
       );
 
+      // Close processing dialog first
+      Navigator.pop(context);
+
       if (photoUrl != null) {
         setState(() {
           _warehouseArrivalPhotoUrl = photoUrl;
@@ -862,11 +865,9 @@ class _RiderDeliveryProgressScreenState
 
         UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
       } else {
-        UIHelpers.showErrorToast('Failed to upload GPS photo');
+        // Show error dialog with retry option
+        _showUploadErrorDialog();
       }
-
-      // Close processing
-      Navigator.pop(context);
 
       // Notify dialog to refresh
       onPhotoTaken?.call();
@@ -877,6 +878,76 @@ class _RiderDeliveryProgressScreenState
       debugPrint('Error taking GPS photo: $e');
       UIHelpers.showErrorToast('Error taking GPS photo: $e');
     }
+  }
+
+  /// Show error dialog when photo upload fails
+  void _showUploadErrorDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Upload Failed',
+          style: TextStyle(
+            fontSize: 18,
+            fontFamily: 'Bold',
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: AppColors.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to upload GPS photo. Please try again.',
+              style: TextStyle(
+                fontSize: 14,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                fontFamily: 'Medium',
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Retry taking photo
+              _takeGpsArrivalPhoto(onPhotoTaken: null);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+              foregroundColor: AppColors.white,
+            ),
+            child: const Text(
+              'Retry',
+              style: TextStyle(
+                fontFamily: 'Medium',
+                color: AppColors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _startLoadingTimer() {
