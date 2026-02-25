@@ -22,6 +22,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:citimovers/config/integrations_config.dart';
 import 'package:citimovers/services/emailjs_service.dart';
+import 'package:citimovers/services/wallet_service.dart';
 import 'package:citimovers/services/gps_map_camera_service.dart';
 import 'package:citimovers/services/chat_service.dart';
 import 'package:citimovers/screens/chat/chat_screen.dart';
@@ -62,6 +63,7 @@ class _RiderDeliveryProgressScreenState
   final StorageService _storageService = StorageService();
   final LocationService _locationService = LocationService();
   final MapsService _mapsService = MapsService();
+  final WalletService _walletService = WalletService();
   final ChatService _chatService = ChatService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -259,10 +261,19 @@ class _RiderDeliveryProgressScreenState
       address: address,
     );
 
-    // Animate map camera to follow driver
-    _activeMapController?.animateCamera(
-      CameraUpdate.newLatLng(newLatLng),
-    );
+    // Animate map camera to follow driver - only if map controller is valid
+    if (_isMapControllerValid && _activeMapController != null) {
+      try {
+        await _activeMapController!.animateCamera(
+          CameraUpdate.newLatLng(newLatLng),
+        );
+      } catch (e) {
+        // If animation fails, mark controller as invalid
+        _isMapControllerValid = false;
+        debugPrint(
+            'Map camera animation error, marking controller as invalid: $e');
+      }
+    }
   }
 
   /// Simple equirectangular distance in metres (good enough for short distances)
@@ -295,6 +306,13 @@ class _RiderDeliveryProgressScreenState
   String? _currentDriverAddress;
   DateTime? _lastAddressUpdate;
   GoogleMapController? _activeMapController;
+
+  // Flag to track if map controller is valid (not disposed)
+  bool _isMapControllerValid = false;
+
+  // In-dialog loading state for GPS photo capture (avoids Navigator.pop race condition)
+  bool _isCapturingArrivalPhoto = false;
+  bool _isCapturingDestinationPhoto = false;
 
   // Actual coordinates from geocoding
   LatLng? _pickupCoordinates;
@@ -504,8 +522,12 @@ class _RiderDeliveryProgressScreenState
                         ),
                       ),
                       IconButton(
-                        onPressed: () =>
-                            Navigator.pop(context, {'confirmed': false}),
+                        onPressed: () {
+                          // Clear map controller reference before closing dialog
+                          _activeMapController = null;
+                          _isMapControllerValid = false;
+                          Navigator.pop(context, {'confirmed': false});
+                        },
                         icon: const Icon(Icons.close),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -601,6 +623,7 @@ class _RiderDeliveryProgressScreenState
                                 tiltGesturesEnabled: true,
                                 onMapCreated: (controller) {
                                   _activeMapController = controller;
+                                  _isMapControllerValid = true;
                                 },
                               ),
                             ),
@@ -629,72 +652,82 @@ class _RiderDeliveryProgressScreenState
                           const SizedBox(height: 8),
 
                           // Photo Preview - No scroll conflicts here
-                          GestureDetector(
-                            onTap: () async {
-                              await _takeGpsArrivalPhoto(onPhotoTaken: () {
-                                setDialogState(() {});
-                              });
-                            },
-                            child: Container(
-                              height: 180,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _warehouseArrivalPhoto != null
-                                      ? AppColors.success
-                                      : AppColors.lightGrey,
-                                  width: 2,
+                          if (_isCapturingArrivalPhoto)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                          if (!_isCapturingArrivalPhoto)
+                            GestureDetector(
+                              onTap: () async {
+                                await _takeGpsArrivalPhoto(
+                                  onPhotoTaken: () => setDialogState(() {}),
+                                  setLoading: (v) => setDialogState(
+                                      () => _isCapturingArrivalPhoto = v),
+                                );
+                              },
+                              child: Container(
+                                height: 180,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: _warehouseArrivalPhoto != null
+                                        ? AppColors.success
+                                        : AppColors.lightGrey,
+                                    width: 2,
+                                  ),
+                                  image: _warehouseArrivalPhoto != null
+                                      ? DecorationImage(
+                                          image: FileImage(
+                                              _warehouseArrivalPhoto!),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
                                 ),
-                                image: _warehouseArrivalPhoto != null
-                                    ? DecorationImage(
-                                        image:
-                                            FileImage(_warehouseArrivalPhoto!),
-                                        fit: BoxFit.cover,
+                                child: _warehouseArrivalPhoto == null
+                                    ? Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.camera_alt,
+                                            size: 48,
+                                            color: Colors.grey[400],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Tap to take GPS photo',
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Location & timestamp will be embedded',
+                                            style: TextStyle(
+                                              color: Colors.grey[500],
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
                                       )
                                     : null,
                               ),
-                              child: _warehouseArrivalPhoto == null
-                                  ? Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.camera_alt,
-                                          size: 48,
-                                          color: Colors.grey[400],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Tap to take GPS photo',
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Location & timestamp will be embedded',
-                                          style: TextStyle(
-                                            color: Colors.grey[500],
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : null,
                             ),
-                          ),
 
                           if (_warehouseArrivalPhoto != null) ...[
                             const SizedBox(height: 8),
                             Center(
                               child: TextButton.icon(
                                 onPressed: () async {
-                                  await _takeGpsArrivalPhoto(onPhotoTaken: () {
-                                    setDialogState(() {});
-                                  });
+                                  await _takeGpsArrivalPhoto(
+                                    onPhotoTaken: () => setDialogState(() {}),
+                                    setLoading: (v) => setDialogState(
+                                        () => _isCapturingArrivalPhoto = v),
+                                  );
                                 },
                                 icon: const Icon(Icons.refresh, size: 18),
                                 label: const Text('Retake Photo'),
@@ -746,8 +779,12 @@ class _RiderDeliveryProgressScreenState
                     children: [
                       Expanded(
                         child: TextButton(
-                          onPressed: () =>
-                              Navigator.pop(context, {'confirmed': false}),
+                          onPressed: () {
+                            // Clear map controller reference before closing dialog
+                            _activeMapController = null;
+                            _isMapControllerValid = false;
+                            Navigator.pop(context, {'confirmed': false});
+                          },
                           child: const Text('Cancel'),
                         ),
                       ),
@@ -757,6 +794,9 @@ class _RiderDeliveryProgressScreenState
                         child: ElevatedButton(
                           onPressed: _warehouseArrivalPhoto != null
                               ? () {
+                                  // Clear map controller reference before closing dialog
+                                  _activeMapController = null;
+                                  _isMapControllerValid = false;
                                   Navigator.pop(context, {
                                     'confirmed': true,
                                     'remarks': _arrivalRemarksController.text,
@@ -791,25 +831,22 @@ class _RiderDeliveryProgressScreenState
     );
   }
 
-  /// Take GPS photo at warehouse arrival
-  Future<void> _takeGpsArrivalPhoto({VoidCallback? onPhotoTaken}) async {
+  /// Take GPS photo at warehouse arrival.
+  /// Uses [setLoading] to show/hide an in-dialog overlay — avoids the
+  /// fragile Navigator.pop(context) race condition that caused the stuck CPI.
+  Future<void> _takeGpsArrivalPhoto({
+    VoidCallback? onPhotoTaken,
+    void Function(bool)? setLoading,
+  }) async {
     try {
       _logActivity('take_gps_photo:warehouse_arrival');
 
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      // Get current location
+      // Show loading while getting GPS location
+      setLoading?.call(true);
       final locationData = await _gpsCameraService.getCurrentLocationData();
 
-      // Close loading
-      Navigator.pop(context);
+      // Hide loading before opening camera (native activity)
+      setLoading?.call(false);
 
       // Take photo
       final XFile? image = await _picker.pickImage(
@@ -821,14 +858,8 @@ class _RiderDeliveryProgressScreenState
 
       if (image == null) return;
 
-      // Show processing
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      // Show processing while adding watermark + uploading
+      setLoading?.call(true);
 
       // Add GPS watermark
       final File originalFile = File(image.path);
@@ -837,9 +868,11 @@ class _RiderDeliveryProgressScreenState
         locationData,
       );
 
-      setState(() {
-        _warehouseArrivalPhoto = watermarkedFile;
-      });
+      if (mounted) {
+        setState(() {
+          _warehouseArrivalPhoto = watermarkedFile;
+        });
+      }
 
       // Upload to Firebase
       final photoUrl = await _storageService.uploadDeliveryPhoto(
@@ -848,13 +881,15 @@ class _RiderDeliveryProgressScreenState
         'Warehouse Arrival GPS',
       );
 
-      // Close processing dialog first
-      Navigator.pop(context);
+      // Hide loading — done processing
+      setLoading?.call(false);
 
       if (photoUrl != null) {
-        setState(() {
-          _warehouseArrivalPhotoUrl = photoUrl;
-        });
+        if (mounted) {
+          setState(() {
+            _warehouseArrivalPhotoUrl = photoUrl;
+          });
+        }
 
         // Add to booking document
         await _bookingService.addDeliveryPhoto(
@@ -863,91 +898,25 @@ class _RiderDeliveryProgressScreenState
           photoUrl: photoUrl,
         );
 
-        UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
+        if (mounted) {
+          UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
+        }
       } else {
-        // Show error dialog with retry option
-        _showUploadErrorDialog();
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Failed to upload GPS photo. Please retake.');
+        }
       }
 
-      // Notify dialog to refresh
+      // Notify dialog to refresh photo preview
       onPhotoTaken?.call();
     } catch (e) {
-      // Close any open dialogs
-      Navigator.of(context).popUntil((route) => route is! DialogRoute);
-
+      setLoading?.call(false);
       debugPrint('Error taking GPS photo: $e');
-      UIHelpers.showErrorToast('Error taking GPS photo: $e');
+      if (mounted) {
+        UIHelpers.showErrorToast('Error taking GPS photo: $e');
+      }
     }
-  }
-
-  /// Show error dialog when photo upload fails
-  void _showUploadErrorDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'Upload Failed',
-          style: TextStyle(
-            fontSize: 18,
-            fontFamily: 'Bold',
-            color: AppColors.textPrimary,
-          ),
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: AppColors.error,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Failed to upload GPS photo. Please try again.',
-              style: TextStyle(
-                fontSize: 14,
-                fontFamily: 'Regular',
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                fontFamily: 'Medium',
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Retry taking photo
-              _takeGpsArrivalPhoto(onPhotoTaken: null);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryRed,
-              foregroundColor: AppColors.white,
-            ),
-            child: const Text(
-              'Retry',
-              style: TextStyle(
-                fontFamily: 'Medium',
-                color: AppColors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   void _startLoadingTimer() {
@@ -1284,8 +1253,11 @@ class _RiderDeliveryProgressScreenState
                         ),
                       ),
                       IconButton(
-                        onPressed: () =>
-                            Navigator.pop(context, {'confirmed': false}),
+                        onPressed: () {
+                          // Clear map controller reference before closing dialog
+                          _activeMapController = null;
+                          Navigator.pop(context, {'confirmed': false});
+                        },
                         icon: const Icon(Icons.close),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -1379,6 +1351,7 @@ class _RiderDeliveryProgressScreenState
                                 tiltGesturesEnabled: true,
                                 onMapCreated: (controller) {
                                   _activeMapController = controller;
+                                  _isMapControllerValid = true;
                                 },
                               ),
                             ),
@@ -1407,73 +1380,83 @@ class _RiderDeliveryProgressScreenState
                           const SizedBox(height: 8),
 
                           // Photo Preview
-                          GestureDetector(
-                            onTap: () async {
-                              await _takeGpsDestinationPhoto(onPhotoTaken: () {
-                                setDialogState(() {});
-                              });
-                            },
-                            child: Container(
-                              height: 180,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _destinationArrivalPhoto != null
-                                      ? AppColors.success
-                                      : AppColors.lightGrey,
-                                  width: 2,
+                          if (_isCapturingDestinationPhoto)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                          if (!_isCapturingDestinationPhoto)
+                            GestureDetector(
+                              onTap: () async {
+                                await _takeGpsDestinationPhoto(
+                                  onPhotoTaken: () => setDialogState(() {}),
+                                  setLoading: (v) => setDialogState(
+                                      () => _isCapturingDestinationPhoto = v),
+                                );
+                              },
+                              child: Container(
+                                height: 180,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: _destinationArrivalPhoto != null
+                                        ? AppColors.success
+                                        : AppColors.lightGrey,
+                                    width: 2,
+                                  ),
+                                  image: _destinationArrivalPhoto != null
+                                      ? DecorationImage(
+                                          image: FileImage(
+                                              _destinationArrivalPhoto!),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
                                 ),
-                                image: _destinationArrivalPhoto != null
-                                    ? DecorationImage(
-                                        image: FileImage(
-                                            _destinationArrivalPhoto!),
-                                        fit: BoxFit.cover,
+                                child: _destinationArrivalPhoto == null
+                                    ? Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.camera_alt,
+                                            size: 48,
+                                            color: Colors.grey[400],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Tap to take GPS photo',
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Location & timestamp will be embedded',
+                                            style: TextStyle(
+                                              color: Colors.grey[500],
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
                                       )
                                     : null,
                               ),
-                              child: _destinationArrivalPhoto == null
-                                  ? Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.camera_alt,
-                                          size: 48,
-                                          color: Colors.grey[400],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Tap to take GPS photo',
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Location & timestamp will be embedded',
-                                          style: TextStyle(
-                                            color: Colors.grey[500],
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : null,
                             ),
-                          ),
 
-                          if (_destinationArrivalPhoto != null) ...[
+                          if (_destinationArrivalPhoto != null &&
+                              !_isCapturingDestinationPhoto) ...[
                             const SizedBox(height: 8),
                             Center(
                               child: TextButton.icon(
                                 onPressed: () async {
                                   await _takeGpsDestinationPhoto(
-                                      onPhotoTaken: () {
-                                    setDialogState(() {});
-                                  });
+                                    onPhotoTaken: () => setDialogState(() {}),
+                                    setLoading: (v) => setDialogState(
+                                        () => _isCapturingDestinationPhoto = v),
+                                  );
                                 },
                                 icon: const Icon(Icons.refresh, size: 18),
                                 label: const Text('Retake Photo'),
@@ -1525,8 +1508,12 @@ class _RiderDeliveryProgressScreenState
                     children: [
                       Expanded(
                         child: TextButton(
-                          onPressed: () =>
-                              Navigator.pop(context, {'confirmed': false}),
+                          onPressed: () {
+                            // Clear map controller reference before closing dialog
+                            _activeMapController = null;
+                            _isMapControllerValid = false;
+                            Navigator.pop(context, {'confirmed': false});
+                          },
                           child: const Text('Cancel'),
                         ),
                       ),
@@ -1536,6 +1523,9 @@ class _RiderDeliveryProgressScreenState
                         child: ElevatedButton(
                           onPressed: _destinationArrivalPhoto != null
                               ? () {
+                                  // Clear map controller reference before closing dialog
+                                  _activeMapController = null;
+                                  _isMapControllerValid = false;
                                   Navigator.pop(context, {
                                     'confirmed': true,
                                     'remarks':
@@ -1572,25 +1562,23 @@ class _RiderDeliveryProgressScreenState
     );
   }
 
-  /// Take GPS photo at destination arrival
-  Future<void> _takeGpsDestinationPhoto({VoidCallback? onPhotoTaken}) async {
+  /// Take GPS photo at destination arrival.
+  /// Uses [setLoading] to show/hide an in-dialog overlay — avoids Navigator.pop race condition.
+  Future<void> _takeGpsDestinationPhoto({
+    VoidCallback? onPhotoTaken,
+    void Function(bool)? setLoading,
+  }) async {
     try {
       _logActivity('take_gps_photo:destination_arrival');
 
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      // Show loading while getting GPS location
+      setLoading?.call(true);
 
       // Get current location
       final locationData = await _gpsCameraService.getCurrentLocationData();
 
-      // Close loading
-      Navigator.pop(context);
+      // Hide loading before opening camera (native activity)
+      setLoading?.call(false);
 
       // Take photo
       final XFile? image = await _picker.pickImage(
@@ -1602,14 +1590,8 @@ class _RiderDeliveryProgressScreenState
 
       if (image == null) return;
 
-      // Show processing
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      // Show processing while adding watermark + uploading
+      setLoading?.call(true);
 
       // Add GPS watermark
       final File originalFile = File(image.path);
@@ -1618,9 +1600,11 @@ class _RiderDeliveryProgressScreenState
         locationData,
       );
 
-      setState(() {
-        _destinationArrivalPhoto = watermarkedFile;
-      });
+      if (mounted) {
+        setState(() {
+          _destinationArrivalPhoto = watermarkedFile;
+        });
+      }
 
       // Upload to Firebase
       final photoUrl = await _storageService.uploadDeliveryPhoto(
@@ -1629,10 +1613,15 @@ class _RiderDeliveryProgressScreenState
         'Destination Arrival GPS',
       );
 
+      // Hide loading — done processing
+      setLoading?.call(false);
+
       if (photoUrl != null) {
-        setState(() {
-          _destinationArrivalPhotoUrl = photoUrl;
-        });
+        if (mounted) {
+          setState(() {
+            _destinationArrivalPhotoUrl = photoUrl;
+          });
+        }
 
         // Add to booking document
         await _bookingService.addDeliveryPhoto(
@@ -1641,22 +1630,24 @@ class _RiderDeliveryProgressScreenState
           photoUrl: photoUrl,
         );
 
-        UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
+        if (mounted) {
+          UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
+        }
       } else {
-        UIHelpers.showErrorToast('Failed to upload GPS photo');
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Failed to upload GPS photo. Please retake.');
+        }
       }
 
-      // Close processing
-      Navigator.pop(context);
-
-      // Notify dialog to refresh
+      // Notify dialog to refresh photo preview
       onPhotoTaken?.call();
     } catch (e) {
-      // Close any open dialogs
-      Navigator.of(context).popUntil((route) => route is! DialogRoute);
-
+      setLoading?.call(false);
       debugPrint('Error taking GPS photo: $e');
-      UIHelpers.showErrorToast('Error taking GPS photo: $e');
+      if (mounted) {
+        UIHelpers.showErrorToast('Error taking GPS photo: $e');
+      }
     }
   }
 
@@ -1769,6 +1760,10 @@ class _RiderDeliveryProgressScreenState
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
     final receivedAt = now;
 
+    // Save demurrage values BEFORE they are reset (used for wallet payout below)
+    final savedLoadingDemurrage = _loadingDemurrageFee;
+    final savedUnloadingDemurrage = _unloadingDemurrageFee;
+
     _unloadingTimer?.cancel();
     _unloadingDemurrageFee = 0.0;
 
@@ -1792,6 +1787,39 @@ class _RiderDeliveryProgressScreenState
         'received_at_pht': receivedAt.toIso8601String(),
       },
     );
+
+    // --- Wallet: add earnings to rider ---
+    final riderId = _riderAuthService.currentRider?.riderId ?? '';
+    if (riderId.isNotEmpty) {
+      final baseFare = double.tryParse(
+              widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+          0.0;
+      final totalEarnings =
+          baseFare + savedLoadingDemurrage + savedUnloadingDemurrage;
+      if (totalEarnings > 0) {
+        await _walletService.addEarnings(
+          riderId: riderId,
+          amount: totalEarnings,
+          description: 'Delivery earnings - ${widget.request.id}',
+          referenceId: widget.request.id,
+        );
+      }
+    }
+
+    // --- Wallet: charge customer for demurrage (if any) ---
+    final totalDemurrage = savedLoadingDemurrage + savedUnloadingDemurrage;
+    if (totalDemurrage > 0) {
+      final bookingDoc = await _getBookingDoc(widget.request.id);
+      final customerId = bookingDoc?['customerId'] as String?;
+      if (customerId != null && customerId.isNotEmpty) {
+        await _walletService.deductFromWallet(
+          userId: customerId,
+          amount: totalDemurrage,
+          description: 'Demurrage fee - ${widget.request.id}',
+          referenceId: widget.request.id,
+        );
+      }
+    }
 
     setState(() {
       _currentStep = DeliveryStep.completed;
@@ -1846,8 +1874,6 @@ class _RiderDeliveryProgressScreenState
           : <String, dynamic>{};
 
       final customerEmail = (customerData?['email'] as String?) ?? '';
-      final customerName =
-          (customerData?['name'] as String?) ?? widget.request.customerName;
 
       final driverName = (riderData?['name'] as String?) ??
           _riderAuthService.currentRider?.name;
@@ -2438,6 +2464,7 @@ class _RiderDeliveryProgressScreenState
               },
               onMapCreated: (controller) {
                 _activeMapController = controller;
+                _isMapControllerValid = true;
               },
               zoomControlsEnabled: true,
               mapToolbarEnabled: false,
@@ -2622,6 +2649,7 @@ class _RiderDeliveryProgressScreenState
               },
               onMapCreated: (controller) {
                 _activeMapController = controller;
+                _isMapControllerValid = true;
               },
               zoomControlsEnabled: true,
               mapToolbarEnabled: false,

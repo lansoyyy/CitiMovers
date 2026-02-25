@@ -31,6 +31,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   DateTime? _lastResumeAt;
 
   bool _isDuplicateResume(String bookingId) {
+    if (!ModalRoute.of(context)!.isCurrent) return true;
     if (_lastResumedBookingId != bookingId) return false;
     if (_lastResumeAt == null) return false;
     return DateTime.now().difference(_lastResumeAt!) <

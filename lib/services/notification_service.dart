@@ -408,7 +408,7 @@ class NotificationService {
     }
 
     // Create notification for customer
-    if (customerId != null && customerMessage != null) {
+    if (customerId != null) {
       await createNotification(
         userId: customerId,
         userType: 'customer',

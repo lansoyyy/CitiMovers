@@ -255,7 +255,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
     _riderLocationSubscription = _riderLocationService
         .listenToRiderLocationDetailed(driverId)
-        .listen((locationData) {
+        .listen((locationData) async {
       if (!mounted) return;
       if (locationData != null) {
         setState(() {
@@ -267,7 +267,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         // Animate camera to follow driver if follow mode is on
         if (_followDriver && _driverLocation != null) {
           try {
-            _mapController.animateCamera(
+            await _mapController.animateCamera(
               CameraUpdate.newLatLng(_driverLocation!),
             );
           } catch (_) {
@@ -460,6 +460,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         break;
       case 'cancelled':
       case 'cancelled_by_rider':
+      case 'cancelled_by_customer':
       case 'rejected':
         _currentStep = DeliveryStep.completed;
         break;
@@ -601,9 +602,13 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       northeast: LatLng(maxLat, maxLng),
     );
 
-    _mapController.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 100.0),
-    );
+    try {
+      _mapController.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, 100.0),
+      );
+    } catch (_) {
+      // Map controller may not be ready yet
+    }
   }
 
   @override

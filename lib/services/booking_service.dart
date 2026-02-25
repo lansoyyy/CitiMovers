@@ -430,14 +430,74 @@ class BookingService {
     }
   }
 
-  /// Cancel booking
+  /// Cancel booking and refund the pre-captured fare to the customer's wallet
   Future<bool> cancelBooking(String bookingId, String reason) async {
     try {
-      await _firestore.collection(_bookingsCollection).doc(bookingId).update({
-        'status': 'cancelled',
-        'cancellationReason': reason,
-        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      final now = DateTime.now();
+
+      // Fetch booking to get captured amount and customerId
+      final bookingRef =
+          _firestore.collection(_bookingsCollection).doc(bookingId);
+      final bookingSnap = await bookingRef.get();
+      if (!bookingSnap.exists) return false;
+
+      final bookingData = bookingSnap.data()!;
+      final currentStatus = bookingData['status'] as String?;
+
+      // Only cancel if still cancellable (pending or accepted)
+      if (currentStatus != 'pending' && currentStatus != 'accepted') {
+        debugPrint('Cannot cancel booking with status: $currentStatus');
+        return false;
+      }
+
+      final customerId = bookingData['customerId'] as String?;
+      final capturedAmount =
+          (bookingData['paymentCapturedAmount'] as num?)?.toDouble() ??
+              (bookingData['estimatedFare'] as num?)?.toDouble() ??
+              0.0;
+
+      // Run wallet refund + status update atomically
+      final userRef = _firestore.collection('users').doc(customerId);
+      final walletTxnRef = _firestore.collection('wallet_transactions').doc();
+
+      await _firestore.runTransaction((txn) async {
+        // Update booking status
+        txn.update(bookingRef, {
+          'status': 'cancelled',
+          'cancellationReason': reason,
+          'updatedAt': now.millisecondsSinceEpoch,
+          'cancelledAt': now.millisecondsSinceEpoch,
+          'paymentStatus': 'refunded',
+        });
+
+        if (customerId != null && customerId.isNotEmpty && capturedAmount > 0) {
+          // Restore wallet balance
+          final userSnap = await txn.get(userRef);
+          final currentBalance =
+              (userSnap.data()?['walletBalance'] as num?)?.toDouble() ?? 0.0;
+          final newBalance = currentBalance + capturedAmount;
+
+          txn.update(userRef, {
+            'walletBalance': newBalance,
+            'updatedAt': now.toIso8601String(),
+          });
+
+          // Record wallet transaction
+          txn.set(walletTxnRef, {
+            'id': walletTxnRef.id,
+            'userId': customerId,
+            'type': 'refund',
+            'amount': capturedAmount,
+            'previousBalance': currentBalance,
+            'newBalance': newBalance,
+            'description': 'Booking refund - cancellation',
+            'referenceId': bookingId,
+            'createdAt': Timestamp.fromDate(now),
+          });
+        }
       });
+
+      debugPrint('Booking $bookingId cancelled and P$capturedAmount refunded.');
       return true;
     } catch (e) {
       debugPrint('Error cancelling booking: $e');

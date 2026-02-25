@@ -273,6 +273,7 @@ class BookingModel {
         return 'Completed';
       case 'cancelled':
       case 'cancelled_by_rider':
+      case 'cancelled_by_customer':
         return 'Cancelled';
       default:
         return status;
