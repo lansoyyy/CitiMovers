@@ -2249,21 +2249,21 @@ class _RiderDeliveryProgressScreenState
       backgroundColor: AppColors.scaffoldBackground,
       appBar: AppBar(
         title: const Text('Delivery Progress'),
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.blueAccent,
         foregroundColor: AppColors.textPrimary,
         elevation: 0.5,
         actions: [
           // Chat button - only show during active delivery
           if (_currentStep != DeliveryStep.completed)
             IconButton(
-              icon: const Icon(Icons.chat, color: AppColors.primaryRed),
+              icon: const Icon(Icons.chat, color: AppColors.white),
               onPressed: () => _openChatWithCustomer(),
               tooltip: 'Chat with Customer',
             ),
           // Call button - only show during active delivery
           if (_currentStep != DeliveryStep.completed)
             IconButton(
-              icon: const Icon(Icons.phone, color: AppColors.primaryRed),
+              icon: const Icon(Icons.phone, color: AppColors.white),
               onPressed: () => _callCustomer(),
               tooltip: 'Call Customer',
             ),
@@ -4105,6 +4105,7 @@ class _RiderDeliveryProgressScreenState
 
   /// Call customer using url_launcher
   Future<void> _callCustomer() async {
+    print(widget.request);
     final customerPhone = widget.request.customerPhone;
     if (customerPhone.isEmpty) {
       UIHelpers.showErrorToast('Customer phone number not available');

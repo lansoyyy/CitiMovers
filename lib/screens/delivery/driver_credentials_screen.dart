@@ -126,7 +126,7 @@ class DriverCredentialsScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                driver.licenseNumber,
+                                driver.licenseNumber ?? 'Not provided',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontFamily: 'Bold',

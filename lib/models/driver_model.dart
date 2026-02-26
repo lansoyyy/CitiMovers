@@ -15,7 +15,7 @@ class DriverModel {
   final List<String>? helpersNames;
   final double rating;
   final int totalDeliveries;
-  final String licenseNumber;
+  final String? licenseNumber;
   final String? licensePhotoUrl;
   final bool isVerified;
   final bool isAvailable;
@@ -36,7 +36,7 @@ class DriverModel {
     this.helpersNames,
     this.rating = 0.0,
     this.totalDeliveries = 0,
-    required this.licenseNumber,
+    this.licenseNumber,
     this.licensePhotoUrl,
     this.isVerified = false,
     this.isAvailable = true,
@@ -46,15 +46,15 @@ class DriverModel {
   /// Create DriverModel from Firestore document
   factory DriverModel.fromMap(Map<String, dynamic> map) {
     return DriverModel(
-      driverId: map['driverId'] as String,
-      name: map['name'] as String,
+      driverId: (map['driverId'] ?? map['id'] ?? '') as String,
+      name: (map['name'] ?? 'Unknown Driver') as String,
       phoneNumber:
           (map['phoneNumber'] ?? map['phone'] ?? map['contactNumber'] ?? '')
               .toString(),
       email: map['email'] as String?,
       photoUrl: map['photoUrl'] as String?,
-      vehicleType: map['vehicleType'] as String,
-      vehiclePlateNumber: map['vehiclePlateNumber'] as String,
+      vehicleType: (map['vehicleType'] ?? 'Unknown') as String,
+      vehiclePlateNumber: (map['vehiclePlateNumber'] ?? 'N/A') as String,
       vehicleModel: map['vehicleModel'] as String?,
       vehicleColor: map['vehicleColor'] as String?,
       vehiclePhotoUrl: map['vehiclePhotoUrl'] as String?,
@@ -62,7 +62,7 @@ class DriverModel {
       helpersNames: (map['helpersNames'] as List<dynamic>?)?.cast<String>(),
       rating: (map['rating'] as num?)?.toDouble() ?? 0.0,
       totalDeliveries: map['totalDeliveries'] as int? ?? 0,
-      licenseNumber: map['licenseNumber'] as String,
+      licenseNumber: map['licenseNumber'] as String?,
       licensePhotoUrl: map['licensePhotoUrl'] as String?,
       isVerified: map['isVerified'] as bool? ?? false,
       isAvailable: map['isAvailable'] as bool? ?? true,

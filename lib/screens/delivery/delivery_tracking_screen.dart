@@ -1429,9 +1429,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                 : () => _makePhoneCall(driverPhone, driverName),
             icon: const Icon(Icons.phone, size: 20),
             label: Text(
-              driverPhone.isNotEmpty
-                  ? 'Call Driver'
-                  : 'Driver phone unavailable',
+              driverPhone.isNotEmpty ? 'Call Driver' : 'Driver Not Available',
               style: const TextStyle(
                 fontSize: 16,
                 fontFamily: 'Bold',

@@ -22,9 +22,6 @@ class _BookingsTabState extends State<BookingsTab>
   final _authService = AuthService();
   final _bookingService = BookingService();
 
-  int _activeBookingsCount = 0;
-  List<BookingModel> _activeBookings = [];
-
   @override
   void initState() {
     super.initState();
@@ -40,26 +37,7 @@ class _BookingsTabState extends State<BookingsTab>
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 0) {
-      // Active tab selected - update badge
-      _updateActiveBookingsCount();
-    }
-  }
-
-  Future<void> _updateActiveBookingsCount() async {
-    final user = _authService.currentUser;
-    if (user == null) return;
-
-    final bookings =
-        await _bookingService.getCustomerBookings(user.userId).first;
-    final activeBookings = _filterBookingsByStatus(bookings, 'active');
-
-    if (mounted) {
-      setState(() {
-        _activeBookingsCount = activeBookings.length;
-        _activeBookings = activeBookings;
-      });
-    }
+    // Tab changed - StreamBuilder will handle badge updates
   }
 
   @override
@@ -93,33 +71,42 @@ class _BookingsTabState extends State<BookingsTab>
           ),
           tabs: [
             Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Active'),
-                  if (_activeBookingsCount > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        _activeBookingsCount > 9
-                            ? '9+'
-                            : '$_activeBookingsCount',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontFamily: 'Bold',
-                          color: AppColors.white,
-                          height: 1.0,
+              child: StreamBuilder<List<BookingModel>>(
+                stream: _authService.currentUser != null
+                    ? _bookingService
+                        .getCustomerBookings(_authService.currentUser!.userId)
+                    : const Stream.empty(),
+                builder: (context, snapshot) {
+                  final activeCount = snapshot.hasData
+                      ? _filterBookingsByStatus(snapshot.data!, 'active').length
+                      : 0;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Active'),
+                      if (activeCount > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            activeCount > 9 ? '9+' : '$activeCount',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'Bold',
+                              color: AppColors.white,
+                              height: 1.0,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
-                ],
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
             const Tab(text: 'Completed'),
@@ -176,16 +163,6 @@ class _BookingsTabState extends State<BookingsTab>
         final bookings = snapshot.data ?? [];
         final filteredBookings = _filterBookingsByStatus(bookings, status);
 
-        // Update active bookings count and list for active tab
-        if (status == 'active') {
-          if (mounted) {
-            setState(() {
-              _activeBookingsCount = filteredBookings.length;
-              _activeBookings = filteredBookings;
-            });
-          }
-        }
-
         if (filteredBookings.isEmpty) {
           return _buildEmptyState(status);
         }
@@ -193,8 +170,8 @@ class _BookingsTabState extends State<BookingsTab>
         return Column(
           children: [
             // Active Bookings Section (prominent display at top)
-            if (status == 'active' && _activeBookings.isNotEmpty)
-              _buildActiveBookingsSection(),
+            if (status == 'active' && filteredBookings.isNotEmpty)
+              _buildActiveBookingsSection(filteredBookings),
             // Bookings List
             Expanded(
               child: ListView.builder(
@@ -213,7 +190,7 @@ class _BookingsTabState extends State<BookingsTab>
   }
 
   /// Build prominent active bookings section at top of active tab
-  Widget _buildActiveBookingsSection() {
+  Widget _buildActiveBookingsSection(List<BookingModel> bookings) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
@@ -253,7 +230,7 @@ class _BookingsTabState extends State<BookingsTab>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '$_activeBookingsCount Active',
+                      '${bookings.length} Active',
                       style: const TextStyle(
                         fontSize: 14,
                         fontFamily: 'Bold',
@@ -276,7 +253,7 @@ class _BookingsTabState extends State<BookingsTab>
           ),
           const SizedBox(height: 12),
           // Show up to 3 most recent active bookings
-          ..._activeBookings
+          ...bookings
               .take(3)
               .map((booking) => _buildActiveBookingCard(booking)),
         ],
@@ -713,86 +690,89 @@ class _BookingCardState extends State<BookingCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header with vehicle type, ID and status
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primaryRed,
-                                AppColors.primaryRed.withOpacity(0.8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primaryRed,
+                                  AppColors.primaryRed.withOpacity(0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryRed.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
                               ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
                             ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.2),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
+                            child: const Icon(
+                              Icons.local_shipping,
+                              color: AppColors.white,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                getVehicleType(),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontFamily: 'Bold',
+                                  color: AppColors.textPrimary,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'ID: ${getBookingId()}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'Medium',
+                                  color: AppColors.textSecondary,
+                                  height: 1.2,
+                                ),
                               ),
                             ],
                           ),
-                          child: const Icon(
-                            Icons.local_shipping,
-                            color: AppColors.white,
-                            size: 26,
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: getStatusColor().withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: getStatusColor().withOpacity(0.2),
+                            width: 1,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              getVehicleType(),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontFamily: 'Bold',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'ID: ${getBookingId()}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Medium',
-                                color: AppColors.textSecondary,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: getStatusColor().withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: getStatusColor().withOpacity(0.2),
-                          width: 1,
+                        child: Text(
+                          getStatusText(),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: getStatusColor(),
+                            height: 1.2,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        getStatusText(),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'Medium',
-                          color: getStatusColor(),
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 20),
 
