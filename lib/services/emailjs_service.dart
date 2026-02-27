@@ -133,14 +133,18 @@ class EmailJsService {
       }
 
       // For non-browser apps (Flutter), use Private Access Token
-      // This requires the accessToken to be set in IntegrationsConfig
+      // The accessToken is optional - if not provided, only public key is used
       final data = <String, dynamic>{
         'service_id': IntegrationsConfig.emailJsServiceId,
         'template_id': IntegrationsConfig.emailJsTemplateId,
         'user_id': IntegrationsConfig.emailJsPublicKey,
-        'accessToken': IntegrationsConfig.emailJsAccessToken,
         'template_params': allTemplateParams,
       };
+
+      // Only include accessToken if it's not empty (for mobile/server apps)
+      if (IntegrationsConfig.emailJsAccessToken.isNotEmpty) {
+        data['accessToken'] = IntegrationsConfig.emailJsAccessToken;
+      }
 
       debugPrint('Sending email to: $effectiveToEmail');
       debugPrint('EmailJS Service ID: ${IntegrationsConfig.emailJsServiceId}');
@@ -153,7 +157,6 @@ class EmailJsService {
         uri,
         headers: const {
           'Content-Type': 'application/json',
-          'Origin': 'http://localhost', // Required for non-browser apps
         },
         body: jsonEncode(data),
       );
