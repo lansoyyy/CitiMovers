@@ -39,6 +39,12 @@ class BookingModel {
   final DateTime? completedAt;
   final String? cancellationReason;
 
+  // Review & Tip fields
+  final String? reviewId;
+  final double? rating;
+  final double? tipAmount;
+  final DateTime? reviewedAt;
+
   BookingModel({
     this.bookingId,
     required this.customerId,
@@ -71,6 +77,10 @@ class BookingModel {
     this.picklistItems,
     this.completedAt,
     this.cancellationReason,
+    this.reviewId,
+    this.rating,
+    this.tipAmount,
+    this.reviewedAt,
   });
 
   static DateTime? _parseFirestoreDate(dynamic value) {
@@ -140,6 +150,10 @@ class BookingModel {
       picklistItems: map['picklistItems'] as List<dynamic>?,
       completedAt: _parseFirestoreDate(map['completedAt']),
       cancellationReason: map['cancellationReason'] as String?,
+      reviewId: map['reviewId'] as String?,
+      rating: (map['rating'] as num?)?.toDouble(),
+      tipAmount: (map['tipAmount'] as num?)?.toDouble(),
+      reviewedAt: _parseFirestoreDate(map['reviewedAt']),
     );
   }
 
@@ -177,6 +191,10 @@ class BookingModel {
       'picklistItems': picklistItems,
       'completedAt': completedAt?.millisecondsSinceEpoch,
       'cancellationReason': cancellationReason,
+      'reviewId': reviewId,
+      'rating': rating,
+      'tipAmount': tipAmount,
+      'reviewedAt': reviewedAt?.millisecondsSinceEpoch,
     };
   }
 
@@ -197,6 +215,10 @@ class BookingModel {
     double? estimatedFare,
     double? finalFare,
     String? status,
+    String? reviewId,
+    double? rating,
+    double? tipAmount,
+    DateTime? reviewedAt,
     String? paymentMethod,
     String? notes,
     DateTime? createdAt,
@@ -247,6 +269,10 @@ class BookingModel {
       picklistItems: picklistItems ?? this.picklistItems,
       completedAt: completedAt ?? this.completedAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
+      reviewId: reviewId ?? this.reviewId,
+      rating: rating ?? this.rating,
+      tipAmount: tipAmount ?? this.tipAmount,
+      reviewedAt: reviewedAt ?? this.reviewedAt,
     );
   }
 

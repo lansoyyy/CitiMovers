@@ -46,6 +46,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   double _walletBalance = 0.0; // Actual rider wallet balance
   int _totalDeliveries = 0;
   double _averageRating = 0.0;
+  double _totalTips = 0.0;
   bool _isLoading = true;
   RiderModel? _riderData;
 
@@ -284,6 +285,31 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                       title: 'Rating',
                                       value: _averageRating.toStringAsFixed(1),
                                       color: Colors.amber,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _StatCard(
+                                      icon: FontAwesomeIcons.handHoldingDollar,
+                                      title: 'Tips Received',
+                                      value:
+                                          'P${_totalTips.toStringAsFixed(0)}',
+                                      color: AppColors.success,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _StatCard(
+                                      icon: FontAwesomeIcons.chartLine,
+                                      title: 'Avg Tip/Delivery',
+                                      value: _totalDeliveries > 0
+                                          ? 'P${(_totalTips / _totalDeliveries).toStringAsFixed(0)}'
+                                          : 'P0',
+                                      color: AppColors.warning,
                                     ),
                                   ),
                                 ],
@@ -701,6 +727,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
 
       double totalEarnings = 0;
       double todayEarnings = 0;
+      double totalTips = 0;
       int totalDeliveries = 0;
 
       // Initialize chart data
@@ -732,6 +759,11 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
 
         totalEarnings += earnings;
         totalDeliveries++;
+
+        // Add tip amount if available
+        if (booking.tipAmount != null && booking.tipAmount! > 0) {
+          totalTips += booking.tipAmount!;
+        }
 
         // Check if today's earnings - fixed to check same day
         final bookingDate = booking.createdAt;

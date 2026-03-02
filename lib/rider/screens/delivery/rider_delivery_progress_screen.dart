@@ -1837,9 +1837,10 @@ class _RiderDeliveryProgressScreenState
     });
   }
 
+  /// Format a DateTime as "M/d/yyyy HH:mm" (Philippine Time).
   String _formatMilitaryTime(DateTime? dateTime) {
     if (dateTime == null) return '';
-    return DateFormat('HH:mm').format(dateTime);
+    return DateFormat('M/d/yyyy HH:mm').format(dateTime);
   }
 
   Future<Map<String, dynamic>?> _getBookingDoc(String bookingId) async {
@@ -1882,6 +1883,23 @@ class _RiderDeliveryProgressScreenState
           widget.request.customerPhone;
 
       final driverEmail = (riderData?['email'] as String?) ?? '';
+
+      // Helper / Crew info – stored as flat strings OR nested helper1/helper2 maps
+      String helperField(String flatKey, String nestedKey, String subField) {
+        final flat = riderData?[flatKey];
+        if (flat is String && flat.trim().isNotEmpty) return flat.trim();
+        final nested = riderData?[nestedKey];
+        if (nested is Map) {
+          final val = nested[subField];
+          if (val is String && val.trim().isNotEmpty) return val.trim();
+        }
+        return '';
+      }
+
+      final helper1Name  = helperField('helper1Name',  'helper1', 'name');
+      final helper1Phone = helperField('helper1Phone', 'helper1', 'phoneNumber');
+      final helper2Name  = helperField('helper2Name',  'helper2', 'name');
+      final helper2Phone = helperField('helper2Phone', 'helper2', 'phoneNumber');
 
       final plate = (riderData?['vehiclePlateNumber'] as String?) ?? '';
 
@@ -2006,49 +2024,87 @@ class _RiderDeliveryProgressScreenState
               extractUploadedAt(deliveryPhotos['finished_unloading']) ??
               extractUploadedAt(deliveryPhotos['finish_unloading_photo']);
 
+      // Arrival GPS photo URLs & timestamps
+      final warehouseArrivalUrl = extractUrl(deliveryPhotos['warehouse_arrival']);
+      final warehouseArrivalAt  = extractUploadedAt(deliveryPhotos['warehouse_arrival']);
+      final destinationArrivalUrl = extractUrl(deliveryPhotos['destination_arrival']);
+      final destinationArrivalAt  = extractUploadedAt(deliveryPhotos['destination_arrival']);
+
+      // Collect all damage photo URLs from Firestore + in-memory list
+      final damagePhotoUrls = <String>[];
+      for (final entry in deliveryPhotos.entries) {
+        final key = entry.key;
+        if (key.startsWith('damaged_boxes') ||
+            key.startsWith('empty_truck') ||
+            key.startsWith('damage')) {
+          final url = extractUrl(entry.value);
+          if (url != null && url.isNotEmpty) damagePhotoUrls.add(url);
+        }
+      }
+      for (final url in _damagePhotoUrls) {
+        if (!damagePhotoUrls.contains(url)) damagePhotoUrls.add(url);
+      }
+
       final rdd = scheduledAt ?? createdAt ?? now;
       final rddStr = DateFormat('yyyyMMdd').format(rdd);
       final subject =
           '${vehicleType.isNotEmpty ? vehicleType : 'TYPE'}_${plate.isNotEmpty ? plate : 'PLATE'}_${rddStr}_Citimovers';
 
+      final phtNow = DateTime.now().toUtc().add(const Duration(hours: 8));
+
       final templateParams = <String, dynamic>{
         'sender': IntegrationsConfig.reportSenderEmail,
         'receiver_name': receiverName,
         'type': vehicleType,
+        // Vehicle
         'plate': plate,
+        // Driver
         'driver_name': driverName ?? '',
         'driver_phone': driverPhone,
+        // Helper 1
+        'helper1_name': helper1Name,
+        'helper1_phone': helper1Phone,
+        // Helper 2
+        'helper2_name': helper2Name,
+        'helper2_phone': helper2Phone,
         'pickup_address': pickupAddress,
         'destination_address': destinationAddress,
         'fo_number': '',
         'trip_number': widget.request.id,
         'rdd': rddStr,
-        'pickup_arrival_time': _formatMilitaryTime(pickupArrival),
+        // Pick-up stage – date + time
+        'pickup_arrival_time': _formatMilitaryTime(warehouseArrivalAt ?? pickupArrival),
         'pickup_loading_start_time': _formatMilitaryTime(startLoadingAt),
-        'pickup_loading_finish_time':
-            _formatMilitaryTime(finishLoadingAt ?? loadingFinish),
-        'dropoff_arrival_time': _formatMilitaryTime(destArrival),
+        'pickup_loading_finish_time': _formatMilitaryTime(finishLoadingAt ?? loadingFinish),
+        // Drop-off stage – date + time
+        'dropoff_arrival_time': _formatMilitaryTime(destinationArrivalAt ?? destArrival),
         'dropoff_unloading_start_time': _formatMilitaryTime(startUnloadingAt),
-        'dropoff_unloading_finish_time':
-            _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
-        'received_date_time': DateFormat('MMM dd, yyyy HH:mm')
-            .format(DateTime.now().toUtc().add(const Duration(hours: 8))),
-        'received_timestamp_pht': DateFormat('yyyy-MM-dd HH:mm:ss')
-            .format(DateTime.now().toUtc().add(const Duration(hours: 8))),
+        'dropoff_unloading_finish_time': _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
+        // RECEIVED – date + time
+        'received_date_time': DateFormat('M/d/yyyy HH:mm').format(phtNow),
+        'received_timestamp_pht': DateFormat('M/d/yyyy HH:mm:ss').format(phtNow),
+        // Arrival GPS photos
+        'warehouse_arrival_photo_url': warehouseArrivalUrl ?? '',
+        'destination_arrival_photo_url': destinationArrivalUrl ?? '',
+        // Loading/Unloading photos
         'loading_photo_url': startLoadingUrl ?? '',
         'unloading_photo_url': finishUnloadingUrl ?? '',
+        'start_loading_photo_url': startLoadingUrl ?? '',
+        'finish_loading_photo_url': finishLoadingUrl ?? '',
+        'start_unloading_photo_url': startUnloadingUrl ?? '',
+        'finish_unloading_photo_url': finishUnloadingUrl ?? '',
+        // Receiver
         'receiver_id_photo_url': receiverIdUrl ?? '',
         'receiver_signature_url': receiverSignatureUrl ?? '',
+        // Damaged items
+        'damage_photo_urls': damagePhotoUrls.join('\n'),
+        'damage_photo_count': '${damagePhotoUrls.length}',
+        // Invoice & picklist
         'service_invoice_urls': invoiceUrls.join('\n'),
         'picklist_items': formatPicklist(
             (picklistFromBooking is List && picklistFromBooking.isNotEmpty)
                 ? picklistFromBooking
                 : _picklistItems),
-        // Additional photos
-        'start_loading_photo_url': startLoadingUrl ?? '',
-        'finish_loading_photo_url': finishLoadingUrl ?? '',
-        'start_unloading_photo_url': startUnloadingUrl ?? '',
-        'finish_unloading_photo_url': finishUnloadingUrl ?? '',
         // Required by EmailJS template
         'bcc_emails': '',
         'cc_emails': '',
@@ -2163,6 +2219,26 @@ class _RiderDeliveryProgressScreenState
           if (attachment != null) attachments.add(attachment);
         }
 
+        // Fetch warehouse arrival GPS photo
+        if (warehouseArrivalUrl != null && warehouseArrivalUrl.isNotEmpty) {
+          final attachment =
+              await EmailJsService.instance.fetchImageAsAttachment(
+            warehouseArrivalUrl,
+            'Pickup_Arrival_GPS.jpg',
+          );
+          if (attachment != null) attachments.add(attachment);
+        }
+
+        // Fetch destination arrival GPS photo
+        if (destinationArrivalUrl != null && destinationArrivalUrl.isNotEmpty) {
+          final attachment =
+              await EmailJsService.instance.fetchImageAsAttachment(
+            destinationArrivalUrl,
+            'Dropoff_Arrival_GPS.jpg',
+          );
+          if (attachment != null) attachments.add(attachment);
+        }
+
         // Fetch service invoice photos (first 3 max to avoid email size limits)
         for (int i = 0; i < invoiceUrls.length && i < 3; i++) {
           final url = invoiceUrls[i];
@@ -2174,6 +2250,16 @@ class _RiderDeliveryProgressScreenState
             );
             if (attachment != null) attachments.add(attachment);
           }
+        }
+
+        // Fetch damaged item photos (max 5 to stay within email size limits)
+        for (int i = 0; i < damagePhotoUrls.length && i < 5; i++) {
+          final attachment =
+              await EmailJsService.instance.fetchImageAsAttachment(
+            damagePhotoUrls[i],
+            'Damaged_Item_${i + 1}.jpg',
+          );
+          if (attachment != null) attachments.add(attachment);
         }
 
         final success = await EmailJsService.instance.sendTemplateEmail(

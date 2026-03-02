@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../services/booking_service.dart';
 import '../../services/driver_service.dart';
@@ -659,6 +660,64 @@ class _BookingCardState extends State<BookingCard> {
     }
   }
 
+  void _showReviewDetails() {
+    // For now, just show a simple dialog with review info
+    // This can be enhanced to navigate to a full review detail screen later
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Your Review'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.booking.rating != null) ...[
+              Row(
+                children: [
+                  const Text('Rating: '),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(
+                      widget.booking.rating!.toInt(),
+                      (index) =>
+                          const Icon(Icons.star, size: 16, color: Colors.amber),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (widget.booking.tipAmount != null &&
+                widget.booking.tipAmount! > 0) ...[
+              Row(
+                children: [
+                  const Icon(FontAwesomeIcons.handHoldingDollar,
+                      size: 16, color: AppColors.success),
+                  const SizedBox(width: 8),
+                  Text('Tip: ₱${widget.booking.tipAmount!.toStringAsFixed(0)}'),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            Text(
+                'Date: ${widget.booking.reviewedAt != null ? _formatReviewDate(widget.booking.reviewedAt!) : 'N/A'}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatReviewDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1036,6 +1095,85 @@ class _BookingCardState extends State<BookingCard> {
                     ),
                   ],
                 ),
+
+                // Review & Tip Status
+                if (widget.booking.reviewId != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.primaryRed.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.rate_review,
+                          color: AppColors.primaryRed,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.booking.rating != null
+                                    ? 'You rated this delivery ${widget.booking.rating!.toStringAsFixed(1)} stars'
+                                    : 'You reviewed this delivery',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontFamily: 'Medium',
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              if (widget.booking.tipAmount != null &&
+                                  widget.booking.tipAmount! > 0) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      FontAwesomeIcons.handHoldingDollar,
+                                      color: AppColors.success,
+                                      size: 14,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Tip: ₱${widget.booking.tipAmount!.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontFamily: 'Bold',
+                                        color: AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _showReviewDetails(),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
+                          child: const Text(
+                            'View',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Medium',
+                              color: AppColors.primaryRed,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

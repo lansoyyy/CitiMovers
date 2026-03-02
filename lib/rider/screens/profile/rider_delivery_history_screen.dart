@@ -58,6 +58,10 @@ class _RiderDeliveryHistoryScreenState
       List<DeliveryHistory> deliveries = [];
       Map<String, String> customerNames = {};
       Map<String, double> ratings = {};
+      Map<String, double?> tipAmounts = {};
+      Map<String, String?> reviewTexts = {};
+      Map<String, List<String>?> tipReasons = {};
+      Map<String, DateTime?> reviewedAts = {};
       Map<String, Map<String, String>> riderInfo = {}; // Cache rider info
 
       final sorted = bookingsQuery.docs.map((doc) {
@@ -124,7 +128,7 @@ class _RiderDeliveryHistoryScreenState
           }
         }
 
-        // Fetch rating from reviews collection if not already cached
+        // Fetch rating, tip, and review from reviews collection if not already cached
         if (!ratings.containsKey(doc.id)) {
           final reviewQuery = await _firestore
               .collection('reviews')
@@ -134,8 +138,28 @@ class _RiderDeliveryHistoryScreenState
           if (reviewQuery.docs.isNotEmpty) {
             final review = reviewQuery.docs.first.data();
             ratings[doc.id] = (review['rating'] as num?)?.toDouble() ?? 0.0;
+            tipAmounts[doc.id] = (review['tipAmount'] as num?)?.toDouble();
+            reviewTexts[doc.id] = review['review'] as String?;
+            tipReasons[doc.id] = (review['tipReasons'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList();
+            if (review['createdAt'] != null) {
+              final createdAtValue = review['createdAt'];
+              if (createdAtValue is Timestamp) {
+                reviewedAts[doc.id] = createdAtValue.toDate();
+              } else if (createdAtValue is int) {
+                reviewedAts[doc.id] =
+                    DateTime.fromMillisecondsSinceEpoch(createdAtValue);
+              } else if (createdAtValue is DateTime) {
+                reviewedAts[doc.id] = createdAtValue;
+              }
+            }
           } else {
             ratings[doc.id] = 0.0;
+            tipAmounts[doc.id] = null;
+            reviewTexts[doc.id] = null;
+            tipReasons[doc.id] = null;
+            reviewedAts[doc.id] = null;
           }
         }
 
@@ -189,6 +213,10 @@ class _RiderDeliveryHistoryScreenState
           rating: ratings[doc.id] ?? 0.0,
           deliveryPhotos: booking.deliveryPhotos,
           receiverName: booking.receiverName,
+          tipAmount: tipAmounts[doc.id],
+          reviewText: reviewTexts[doc.id],
+          tipReasons: tipReasons[doc.id],
+          reviewedAt: reviewedAts[doc.id],
           driverName: info['name'] ?? '',
           driverPhone: info['phone'] ?? '',
           vehiclePlate: info['plate'] ?? '',
@@ -442,6 +470,12 @@ class DeliveryHistory {
   final Map<String, dynamic>? deliveryPhotos;
   final String? receiverName;
 
+  // Review & Tip fields
+  final double? tipAmount;
+  final String? reviewText;
+  final List<String>? tipReasons;
+  final DateTime? reviewedAt;
+
   // Driver info
   final String driverName;
   final String driverPhone;
@@ -475,6 +509,10 @@ class DeliveryHistory {
     required this.rating,
     this.deliveryPhotos,
     this.receiverName,
+    this.tipAmount,
+    this.reviewText,
+    this.tipReasons,
+    this.reviewedAt,
     this.driverName = '',
     this.driverPhone = '',
     this.vehiclePlate = '',
@@ -771,6 +809,15 @@ class _DeliveryHistoryCard extends StatelessWidget {
     return DateFormat('MMM d, yyyy h:mm a').format(dt);
   }
 
+  DateTime? _parseReviewDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final photoCount = _getAllPhotoUrls().length;
@@ -951,6 +998,113 @@ class _DeliveryHistoryCard extends StatelessWidget {
               ],
             ),
           ),
+
+          const SizedBox(height: 12),
+
+          // === RATING & TIP SECTION ===
+          if (delivery.rating > 0 || delivery.tipAmount != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (delivery.rating > 0) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.star, color: Colors.amber, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${delivery.rating.toStringAsFixed(1)} Rating',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Medium',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (delivery.tipAmount != null &&
+                      delivery.tipAmount! > 0) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            FontAwesomeIcons.handHoldingDollar,
+                            color: AppColors.success,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '+₱${delivery.tipAmount!.toStringAsFixed(0)} Tip',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Bold',
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (delivery.reviewText != null &&
+                delivery.reviewText!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.scaffoldBackground,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.rate_review,
+                          size: 16,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Customer Review',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Medium',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      delivery.reviewText!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Regular',
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
 
           const SizedBox(height: 12),
 
