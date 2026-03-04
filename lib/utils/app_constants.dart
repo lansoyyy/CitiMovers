@@ -69,9 +69,10 @@ class AppConstants {
   static const int mediumAnimationDuration = 300;
   static const int longAnimationDuration = 500;
 
-  // Image Settings
-  static const int maxImageSizeKB = 2048; // 2MB
-  static const int imageQuality = 85;
+  // Image Settings - Optimized for faster uploads
+  static const int maxImageSizeKB = 1024; // 1MB (reduced from 2MB)
+  static const int imageQuality =
+      75; // Slightly higher compression for faster uploads
 
   static const double minimumCustomerWalletBalanceToBook = 12000.0;
 

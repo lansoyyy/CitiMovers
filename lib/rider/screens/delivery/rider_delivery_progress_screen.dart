@@ -27,6 +27,7 @@ import 'package:citimovers/services/gps_map_camera_service.dart';
 import 'package:citimovers/services/chat_service.dart';
 import 'package:citimovers/screens/chat/chat_screen.dart';
 import 'package:citimovers/models/location_model.dart';
+import 'package:citimovers/services/delivery_queue_service.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -98,6 +99,12 @@ class _RiderDeliveryProgressScreenState
       TextEditingController();
   final GpsMapCameraService _gpsCameraService = GpsMapCameraService();
 
+  /// Offline-first photo-upload queue with 10-minute retry.
+  final DeliveryQueueService _deliveryQueue = DeliveryQueueService.instance;
+
+  /// Resolved receiver-signature URL (set via queue callback after upload).
+  String? _signatureUrl;
+
   // Destination Arrival GPS Photo
   File? _destinationArrivalPhoto;
   String? _destinationArrivalPhotoUrl;
@@ -129,11 +136,42 @@ class _RiderDeliveryProgressScreenState
   @override
   void initState() {
     super.initState();
-    // Geocode addresses to get coordinates
     _geocodeAddresses();
-
-    // Start location tracking
     _startLocationTracking();
+    // Start the offline-first upload queue (10-min retry + connectivity trigger)
+    _deliveryQueue.start();
+    // Register URL-resolved callbacks so in-memory state stays up-to-date
+    _registerQueueCallbacks();
+  }
+
+  /// Register callbacks that fire whenever the queue successfully uploads a
+  /// queued photo.  This keeps all `_xxxPhotoUrl` state variables current.
+  void _registerQueueCallbacks() {
+    final id = widget.request.id;
+    _deliveryQueue.onUrlResolved(id, 'start_loading', (url) {
+      if (mounted) setState(() => _startLoadingPhotoUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'finished_loading', (url) {
+      if (mounted) setState(() => _finishLoadingPhotoUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'start_unloading', (url) {
+      if (mounted) setState(() => _startUnloadingPhotoUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'finished_unloading', (url) {
+      if (mounted) setState(() => _finishUnloadingPhotoUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'receiver_id', (url) {
+      if (mounted) setState(() => _idPhotoUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'receiver_signature', (url) {
+      if (mounted) setState(() => _signatureUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'warehouse_arrival', (url) {
+      if (mounted) setState(() => _warehouseArrivalPhotoUrl = url);
+    });
+    _deliveryQueue.onUrlResolved(id, 'destination_arrival', (url) {
+      if (mounted) setState(() => _destinationArrivalPhotoUrl = url);
+    });
   }
 
   Widget _buildTotalDemurrageHoursCard() {
@@ -189,6 +227,22 @@ class _RiderDeliveryProgressScreenState
 
     // Save current delivery state before disposing
     _saveDeliveryState();
+
+    // Stop the offline queue and remove URL callbacks
+    _deliveryQueue.stop();
+    final id = widget.request.id;
+    for (final stage in [
+      'start_loading',
+      'finished_loading',
+      'start_unloading',
+      'finished_unloading',
+      'receiver_id',
+      'receiver_signature',
+      'warehouse_arrival',
+      'destination_arrival',
+    ]) {
+      _deliveryQueue.removeUrlCallback(id, stage);
+    }
 
     super.dispose();
   }
@@ -926,38 +980,19 @@ class _RiderDeliveryProgressScreenState
         });
       }
 
-      // Upload to Firebase
-      final photoUrl = await _storageService.uploadDeliveryPhoto(
-        watermarkedFile,
-        widget.request.id,
-        'Warehouse Arrival GPS',
-      );
-
-      // Hide loading — done processing
+      // ── Upload queued in background; hide loading and let driver proceed ──
       setLoading?.call(false);
 
-      if (photoUrl != null) {
-        if (mounted) {
-          setState(() {
-            _warehouseArrivalPhotoUrl = photoUrl;
-          });
-        }
+      await _deliveryQueue.enqueuePhotoUpload(
+        bookingId: widget.request.id,
+        storageStage: 'Warehouse Arrival GPS',
+        firestoreStage: 'warehouse_arrival',
+        localFilePath: watermarkedFile.path,
+      );
 
-        // Add to booking document
-        await _bookingService.addDeliveryPhoto(
-          bookingId: widget.request.id,
-          stage: 'warehouse_arrival',
-          photoUrl: photoUrl,
-        );
-
-        if (mounted) {
-          UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
-        }
-      } else {
-        if (mounted) {
-          UIHelpers.showErrorToast(
-              'Failed to upload GPS photo. Please retake.');
-        }
+      if (mounted) {
+        UIHelpers.showSuccessToast(
+            'Arrival photo saved! Uploading to cloud in background.');
       }
 
       // Notify dialog to refresh photo preview
@@ -996,69 +1031,45 @@ class _RiderDeliveryProgressScreenState
       {Function(File)? onRemove}) async {
     _logActivity('take_photo:$photoType');
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
-    if (image != null) {
-      final file = File(image.path);
-      setState(() {
-        onPicked(file);
-      });
+    if (image == null) return;
 
-      // Upload photo to Firebase Storage
-      final photoUrl = await _storageService.uploadDeliveryPhoto(
-        file,
-        widget.request.id,
-        photoType,
-      );
+    final file = File(image.path);
 
-      if (photoUrl != null) {
-        // Store the URL based on photo type
-        if (photoType == 'Start Loading') {
-          setState(() {
-            _startLoadingPhotoUrl = photoUrl;
-          });
-          _startLoadingPhotoProcess();
-        } else if (photoType == 'Finished Loading') {
-          setState(() {
-            _finishLoadingPhotoUrl = photoUrl;
-          });
-          _finishLoadingPhotoProcess();
-        } else if (photoType == 'Start Unloading') {
-          setState(() {
-            _startUnloadingPhotoUrl = photoUrl;
-          });
-          _startUnloadingPhotoProcess();
-        } else if (photoType == 'Finished Unloading') {
-          setState(() {
-            _finishUnloadingPhotoUrl = photoUrl;
-          });
-          _finishUnloadingPhotoProcess();
-        } else if (photoType == 'Receiver ID') {
-          setState(() {
-            _idPhotoUrl = photoUrl;
-          });
-        } else if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
-          setState(() {
-            _damagePhotoUrls.add(photoUrl);
-          });
-        }
+    // ── Set file in local state immediately so the driver can proceed ──
+    setState(() {
+      onPicked(file);
+    });
 
-        // Add photo URL to booking document
-        await _bookingService.addDeliveryPhoto(
-          bookingId: widget.request.id,
-          stage: photoType.toLowerCase().replaceAll(' ', '_'),
-          photoUrl: photoUrl,
-        );
-
-        UIHelpers.showSuccessToast('$photoType photo captured and uploaded!');
-      } else {
-        // Remove the photo from the list if upload failed
-        if (onRemove != null) {
-          setState(() {
-            onRemove(file);
-          });
-        }
-        UIHelpers.showErrorToast('Failed to upload $photoType photo');
-      }
+    // ── Advance the UI sub-step right away; no need to wait for upload ──
+    if (photoType == 'Start Loading') {
+      _startLoadingPhotoProcess();
+    } else if (photoType == 'Finished Loading') {
+      _finishLoadingPhotoProcess();
+    } else if (photoType == 'Start Unloading') {
+      _startUnloadingPhotoProcess();
+    } else if (photoType == 'Finished Unloading') {
+      _finishUnloadingPhotoProcess();
     }
+    // Damage/truck photos — URL added to list by the queue callback
+
+    // ── Queue upload; retried every 10 min until it succeeds ──
+    final firestoreStage = photoType.toLowerCase().replaceAll(' ', '_');
+    await _deliveryQueue.enqueuePhotoUpload(
+      bookingId: widget.request.id,
+      storageStage: photoType,
+      firestoreStage: firestoreStage,
+      localFilePath: file.path,
+    );
+
+    // For damage photos, register a callback that appends the URL to the list
+    if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
+      _deliveryQueue.onUrlResolved(widget.request.id, firestoreStage, (url) {
+        if (mounted) setState(() => _damagePhotoUrls.add(url));
+      });
+    }
+
+    UIHelpers.showSuccessToast(
+        '$photoType photo saved! Uploading in background.');
   }
 
   Future<void> _persistPicklistItems() async {
@@ -1149,28 +1160,21 @@ class _RiderDeliveryProgressScreenState
     final index = _serviceInvoicePhotos.length;
     final stage = 'service_invoice_$index';
 
-    final url = await _storageService.uploadDeliveryPhoto(
-      file,
-      widget.request.id,
-      stage,
+    // ── Queue upload; retried every 10 min until success ──
+    await _deliveryQueue.enqueuePhotoUpload(
+      bookingId: widget.request.id,
+      storageStage: stage,
+      firestoreStage: stage,
+      localFilePath: file.path,
     );
 
-    if (url == null) {
-      UIHelpers.showErrorToast('Failed to upload Service Invoice photo');
-      return;
-    }
-
-    setState(() {
-      _serviceInvoicePhotoUrls.add(url);
+    // When the upload completes, append the URL to the in-memory list
+    _deliveryQueue.onUrlResolved(widget.request.id, stage, (url) {
+      if (mounted) setState(() => _serviceInvoicePhotoUrls.add(url));
     });
 
-    await _bookingService.addDeliveryPhoto(
-      bookingId: widget.request.id,
-      stage: stage,
-      photoUrl: url,
-    );
-
-    UIHelpers.showSuccessToast('Service Invoice photo captured and uploaded!');
+    UIHelpers.showSuccessToast(
+        'Service Invoice photo saved! Uploading in background.');
   }
 
   void _finishLoading() async {
@@ -1180,11 +1184,8 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
-    // Ensure photos are uploaded
-    if (_startLoadingPhotoUrl == null || _finishLoadingPhotoUrl == null) {
-      UIHelpers.showInfoToast('Please wait for photos to upload.');
-      return;
-    }
+    // Note: URL gate removed — photos are saved locally and queued for upload.
+    // Driver can proceed as soon as both photos are taken.
 
     // Require Service Invoice photo after finish loading
     if (_serviceInvoicePhotos.isEmpty) {
@@ -1658,38 +1659,19 @@ class _RiderDeliveryProgressScreenState
         });
       }
 
-      // Upload to Firebase
-      final photoUrl = await _storageService.uploadDeliveryPhoto(
-        watermarkedFile,
-        widget.request.id,
-        'Destination Arrival GPS',
-      );
-
-      // Hide loading — done processing
+      // ── Upload queued in background; hide loading and let driver proceed ──
       setLoading?.call(false);
 
-      if (photoUrl != null) {
-        if (mounted) {
-          setState(() {
-            _destinationArrivalPhotoUrl = photoUrl;
-          });
-        }
+      await _deliveryQueue.enqueuePhotoUpload(
+        bookingId: widget.request.id,
+        storageStage: 'Destination Arrival GPS',
+        firestoreStage: 'destination_arrival',
+        localFilePath: watermarkedFile.path,
+      );
 
-        // Add to booking document
-        await _bookingService.addDeliveryPhoto(
-          bookingId: widget.request.id,
-          stage: 'destination_arrival',
-          photoUrl: photoUrl,
-        );
-
-        if (mounted) {
-          UIHelpers.showSuccessToast('GPS photo captured and uploaded!');
-        }
-      } else {
-        if (mounted) {
-          UIHelpers.showErrorToast(
-              'Failed to upload GPS photo. Please retake.');
-        }
+      if (mounted) {
+        UIHelpers.showSuccessToast(
+            'Arrival photo saved! Uploading to cloud in background.');
       }
 
       // Notify dialog to refresh photo preview
@@ -1749,11 +1731,8 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
-    // Ensure photos are uploaded
-    if (_startUnloadingPhotoUrl == null || _finishUnloadingPhotoUrl == null) {
-      UIHelpers.showInfoToast('Please wait for photos to upload.');
-      return;
-    }
+    // Note: URL gate removed — photos are saved locally and queued for upload.
+    // Driver can proceed as soon as both photos are taken.
 
     _unloadingDemurrageFee = 0.0;
 
@@ -1796,17 +1775,11 @@ class _RiderDeliveryProgressScreenState
       return;
     }
 
-    // Ensure ID photo is uploaded
-    if (_idPhotoUrl == null) {
-      UIHelpers.showInfoToast('Please wait for ID photo to upload.');
-      return;
-    }
+    // Note: _idPhotoUrl gate removed — URL is queued and may arrive after completion.
+    // The queue callback (_registerQueueCallbacks) will update Firestore when it resolves.
 
-    final signatureUrl = await _captureAndUploadSignature();
-    if (signatureUrl == null) {
-      UIHelpers.showInfoToast('Please wait for signature to upload.');
-      return;
-    }
+    // ── Capture + attempt immediate signature upload ──
+    String? signatureUrl = await _captureAndUploadSignature();
 
     // Capture Philippine Time (UTC+8) timestamp for receiver signature
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
@@ -1834,7 +1807,8 @@ class _RiderDeliveryProgressScreenState
       picklistItems: _picklistItems,
       deliveryPhotos: {
         'receiver_id': _idPhotoUrl,
-        'receiver_signature': signatureUrl,
+        // Use immediately-uploaded URL, or callback-resolved URL from queue
+        'receiver_signature': signatureUrl ?? _signatureUrl,
         'receiver_signature_timestamp': receivedAt.toIso8601String(),
         'received_at_pht': receivedAt.toIso8601String(),
       },
@@ -1876,6 +1850,15 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _currentStep = DeliveryStep.completed;
     });
+
+    // ── Flush pending uploads before sending the email report ──
+    // This gives the queue 30 s to upload any remaining photos (GPS, loading,
+    // unloading, ID, signature) so the report includes all attachments.
+    UIHelpers.showInfoToast('Syncing delivery data… sending report shortly.');
+    await _deliveryQueue.forceSyncForBooking(
+      widget.request.id,
+      timeout: const Duration(seconds: 30),
+    );
 
     await _sendCompletionEmails();
     UIHelpers.showSuccessToast(
@@ -2361,29 +2344,49 @@ class _RiderDeliveryProgressScreenState
 
       final bytes = byteData.buffer.asUint8List();
 
+      // Save to PERSISTENT directory so the queue can retry after app-restart.
+      final deliveryDir = await DeliveryQueueService.getLocalDeliveryDir();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final tempPath =
-          '${Directory.systemTemp.path}/receiver_signature_${widget.request.id}_$timestamp.png';
-      final file = File(tempPath);
+      final filePath =
+          '${deliveryDir.path}/signature_${widget.request.id}_$timestamp.png';
+      final file = File(filePath);
       await file.writeAsBytes(bytes);
 
+      // ── Try immediate upload ──
       final url = await _storageService.uploadDeliveryPhoto(
         file,
         widget.request.id,
         'Receiver Signature',
       );
 
-      if (url == null) {
-        return null;
+      if (url != null) {
+        // Immediate success — record in Firestore and return the URL
+        await _bookingService.addDeliveryPhoto(
+          bookingId: widget.request.id,
+          stage: 'receiver_signature',
+          photoUrl: url,
+        );
+        return url;
       }
 
-      await _bookingService.addDeliveryPhoto(
+      // ── Upload failed (poor signal) — queue for automatic retry ──
+      await _deliveryQueue.enqueuePhotoUpload(
         bookingId: widget.request.id,
-        stage: 'receiver_signature',
-        photoUrl: url,
+        storageStage: 'Receiver Signature',
+        firestoreStage: 'receiver_signature',
+        localFilePath: filePath,
       );
 
-      return url;
+      // Ensure the callback is registered so _signatureUrl is set on success
+      _deliveryQueue.onUrlResolved(
+        widget.request.id,
+        'receiver_signature',
+        (resolvedUrl) {
+          if (mounted) setState(() => _signatureUrl = resolvedUrl);
+        },
+      );
+
+      return null; // caller will use forceSyncForBooking if needed
     } catch (e) {
       debugPrint('Error uploading signature: $e');
       return null;
@@ -2422,6 +2425,7 @@ class _RiderDeliveryProgressScreenState
         child: Column(
           children: [
             _buildProgressHeader(),
+            _buildSyncBanner(),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
@@ -2432,6 +2436,62 @@ class _RiderDeliveryProgressScreenState
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSyncBanner() {
+    return ValueListenableBuilder<int>(
+      valueListenable: _deliveryQueue.pendingCountNotifier,
+      builder: (context, pending, _) {
+        return ValueListenableBuilder<DeliverySyncStatus>(
+          valueListenable: _deliveryQueue.statusNotifier,
+          builder: (context, status, _) {
+            // Hide when everything is synced
+            if (status == DeliverySyncStatus.idle && pending == 0) {
+              return const SizedBox.shrink();
+            }
+            final isSyncing = status == DeliverySyncStatus.syncing;
+            const bannerColor = Color(0xFFFFF3CD);
+            const textColor = Color(0xFF856404);
+            final text = isSyncing
+                ? 'Uploading $pending photo${pending == 1 ? '' : 's'} to cloud…'
+                : '$pending photo${pending == 1 ? '' : 's'} queued · auto-retry every ${DeliveryQueueService.syncIntervalMinutes} min';
+
+            return Container(
+              width: double.infinity,
+              color: bannerColor,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  isSyncing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(textColor),
+                          ),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined,
+                          size: 16, color: textColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: textColor,
+                        fontFamily: 'Medium',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
