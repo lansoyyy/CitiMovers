@@ -90,7 +90,7 @@ class BookingService {
           throw Exception('Booking already exists: $bookingId');
         }
 
-        // Validate & capture wallet balance
+        // Validate wallet balance (no minimum requirement - removed since no payment gateway)
         final userSnap = await transaction.get(userRef);
         if (!userSnap.exists) {
           throw Exception('Customer not found: $customerId');
@@ -99,11 +99,6 @@ class BookingService {
         final userData = userSnap.data();
         final currentBalance =
             (userData?['walletBalance'] as num?)?.toDouble() ?? 0.0;
-
-        if (currentBalance < AppConstants.minimumCustomerWalletBalanceToBook) {
-          throw Exception(
-              'Insufficient wallet balance. Minimum required is ${AppConstants.minimumCustomerWalletBalanceToBook}');
-        }
 
         if (currentBalance < estimatedFare) {
           throw Exception('Insufficient wallet balance for this booking');

@@ -9,6 +9,7 @@ import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/wallet_service.dart';
+import '../../services/language_service.dart';
 import '../../utils/app_constants.dart';
 import '../auth/otp_verification_screen.dart';
 import '../terms_conditions_screen.dart';
@@ -37,13 +38,15 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       TextEditingController();
   final BookingService _bookingService = BookingService();
   final MapsService _mapsService = MapsService();
+  final LanguageService _languageService = LanguageService();
 
-  String _bookingType = 'now'; // 'now' or 'scheduled'
-  DateTime? _scheduledDateTime;
+  String _bookingType = 'now'; // 'now' only - scheduled option removed
+  DateTime? _scheduledDateTime; // Not used since scheduled is removed
   String _selectedPaymentMethod = 'Wallet'; // Default payment method
   bool _isLoading = false;
   int? _travelDurationMinutes; // Store travel duration
   bool _termsAccepted = false; // Terms & Conditions checkbox state
+  bool _showAmounts = true; // Toggle for showing/hiding amounts
 
   double get _estimatedFare => _mapsService.calculateFare(
         distanceKm: widget.distance,
@@ -53,6 +56,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    _showAmounts = _languageService.showAmounts;
     _calculateTravelTime();
   }
 
@@ -114,12 +118,6 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     if (!confirmed) return;
 
     final walletBalance = await WalletService().getWalletBalance(user.userId);
-    if (walletBalance < AppConstants.minimumCustomerWalletBalanceToBook) {
-      UIHelpers.showErrorToast(
-          'Minimum wallet balance required is P${AppConstants.minimumCustomerWalletBalanceToBook.toStringAsFixed(0)}');
-      return;
-    }
-
     if (walletBalance < _estimatedFare) {
       UIHelpers.showErrorToast('Insufficient wallet balance for this booking');
       return;
@@ -645,76 +643,48 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _BookingTypeCard(
-                          icon: Icons.bolt,
-                          title: 'Book Now',
-                          subtitle: 'Immediate pickup',
-                          isSelected: _bookingType == 'now',
-                          onTap: () {
-                            setState(() {
-                              _bookingType = 'now';
-                              _scheduledDateTime = null;
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _BookingTypeCard(
-                          icon: Icons.schedule,
-                          title: 'Schedule',
-                          subtitle: 'Pick a time',
-                          isSelected: _bookingType == 'scheduled',
-                          onTap: () {
-                            setState(() => _bookingType = 'scheduled');
-                            if (_scheduledDateTime == null) {
-                              _selectScheduledTime();
-                            }
-                          },
-                        ),
-                      ),
-                    ],
+                  _BookingTypeCard(
+                    icon: Icons.bolt,
+                    title: 'Book Now',
+                    subtitle: 'Immediate pickup',
+                    isSelected: true, // Always selected - only option available
+                    onTap: () {
+                      setState(() {
+                        _bookingType = 'now';
+                        _scheduledDateTime = null;
+                      });
+                    },
                   ),
 
-                  if (_bookingType == 'scheduled') ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                  // Amount Display Toggle
+                  if (_showAmounts)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.calendar_today,
-                            color: AppColors.primaryBlue,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _scheduledDateTime != null
-                                  ? '${_scheduledDateTime!.day}/${_scheduledDateTime!.month}/${_scheduledDateTime!.year} at ${_scheduledDateTime!.hour}:${_scheduledDateTime!.minute.toString().padLeft(2, '0')}'
-                                  : 'Select date and time',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                              ),
+                          const Text(
+                            'Show Amounts',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Medium',
+                              color: AppColors.textPrimary,
                             ),
                           ),
-                          TextButton(
-                            onPressed: _selectScheduledTime,
-                            child: const Text('Change'),
+                          const Spacer(),
+                          Switch(
+                            value: _showAmounts,
+                            onChanged: (value) {
+                              _languageService.toggleShowAmounts(value);
+                              setState(() {
+                                _showAmounts = value;
+                              });
+                            },
+                            activeColor: AppColors.primaryBlue,
                           ),
                         ],
                       ),
                     ),
-                  ],
 
                   const SizedBox(height: 24),
 

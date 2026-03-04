@@ -75,6 +75,23 @@ class AppConstants {
 
   static const double minimumCustomerWalletBalanceToBook = 12000.0;
 
+  // Language Settings
+  static const String defaultLanguage = 'en';
+  static const List<String> supportedLanguages = [
+    'en',
+    'tl',
+    'ceb',
+    'hil',
+    'ilo',
+    'waray',
+    'bikol',
+    'pangasinan'
+  ];
+
+  // Feature Flags
+  static const bool showAmounts =
+      true; // Can be toggled to disable amount display
+
   // Support Contact
   static const String supportPhone = '09090104355';
   static const String supportEmail = 'support@citimovers.com';
