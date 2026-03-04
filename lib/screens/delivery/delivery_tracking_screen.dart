@@ -10,11 +10,13 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
+import '../../models/location_model.dart';
 import '../../rider/models/rider_model.dart';
 import '../../rider/services/rider_location_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/booking_status_service.dart';
 import '../../services/chat_service.dart';
+import '../../services/maps_service.dart';
 import 'delivery_completion_screen.dart';
 import 'crew_profile_screen.dart';
 import '../chat/chat_screen.dart';
@@ -83,6 +85,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final RiderLocationService _riderLocationService = RiderLocationService();
   final AuthService _authService = AuthService();
+  final MapsService _mapsService = MapsService();
 
   // Driver data
   DriverModel? _driver;
@@ -179,7 +182,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   /// Initialize locations from booking data
-  void _initializeLocations() {
+  Future<void> _initializeLocations() async {
     _pickupLocation = LatLng(
       widget.booking.pickupLocation.latitude,
       widget.booking.pickupLocation.longitude,
@@ -188,12 +191,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       widget.booking.dropoffLocation.latitude,
       widget.booking.dropoffLocation.longitude,
     );
-
-    // Initialize route points
-    _routePoints = [
-      _pickupLocation!,
-      _dropoffLocation!,
-    ];
 
     // Initialize markers
     _markers.add(
@@ -216,15 +213,65 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       ),
     );
 
+    // Fetch actual route from Google Maps Directions API
+    await _fetchRouteAndDrawPolyline();
+  }
+
+  /// Fetch route from Google Maps Directions API and draw polyline
+  Future<void> _fetchRouteAndDrawPolyline() async {
+    if (_pickupLocation == null || _dropoffLocation == null) return;
+
+    try {
+      final routeInfo = await _mapsService.calculateRoute(
+        LocationModel(
+          address: widget.booking.pickupLocation.address,
+          latitude: _pickupLocation!.latitude,
+          longitude: _pickupLocation!.longitude,
+        ),
+        LocationModel(
+          address: widget.booking.dropoffLocation.address,
+          latitude: _dropoffLocation!.latitude,
+          longitude: _dropoffLocation!.longitude,
+        ),
+      );
+
+      if (routeInfo != null && routeInfo.polylinePoints.isNotEmpty) {
+        setState(() {
+          _routePoints = routeInfo.polylinePoints
+              .map((point) => LatLng(point['latitude']!, point['longitude']!))
+              .toList();
+        });
+      } else {
+        // Fallback to straight line if route API fails
+        setState(() {
+          _routePoints = [
+            _pickupLocation!,
+            _dropoffLocation!,
+          ];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching route: $e');
+      // Fallback to straight line on error
+      setState(() {
+        _routePoints = [
+          _pickupLocation!,
+          _dropoffLocation!,
+        ];
+      });
+    }
+
     // Initialize polyline from pickup to dropoff
-    _polylines.add(
-      Polyline(
-        polylineId: const PolylineId('route'),
-        color: AppColors.primaryRed,
-        width: 4,
-        points: _routePoints,
-      ),
-    );
+    setState(() {
+      _polylines.add(
+        Polyline(
+          polylineId: const PolylineId('route'),
+          color: AppColors.primaryRed,
+          width: 4,
+          points: _routePoints,
+        ),
+      );
+    });
   }
 
   Future<BitmapDescriptor> _getVehicleIcon() async {

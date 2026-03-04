@@ -26,6 +26,7 @@ import 'package:citimovers/services/wallet_service.dart';
 import 'package:citimovers/services/gps_map_camera_service.dart';
 import 'package:citimovers/services/chat_service.dart';
 import 'package:citimovers/screens/chat/chat_screen.dart';
+import 'package:citimovers/models/location_model.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -318,6 +319,9 @@ class _RiderDeliveryProgressScreenState
   LatLng? _pickupCoordinates;
   LatLng? _dropoffCoordinates;
 
+  // Route points for polyline (from Google Maps Directions API)
+  List<LatLng> _routePoints = [];
+
   Set<Marker> _createMarkersWithDriver(
       LatLng position, String id, String title) {
     final markers = <Marker>{
@@ -415,12 +419,60 @@ class _RiderDeliveryProgressScreenState
           );
         });
       }
+
+      // Fetch route from Google Maps Directions API after coordinates are set
+      await _fetchRouteAndDrawPolyline();
     } catch (e) {
       debugPrint('Error geocoding addresses: $e');
       // Fallback to Manila coordinates if geocoding fails
       setState(() {
         _pickupCoordinates = const LatLng(14.5995, 120.9842);
         _dropoffCoordinates = const LatLng(14.5995, 120.9842);
+      });
+    }
+  }
+
+  /// Fetch route from Google Maps Directions API and draw polyline
+  Future<void> _fetchRouteAndDrawPolyline() async {
+    if (_pickupCoordinates == null || _dropoffCoordinates == null) return;
+
+    try {
+      final routeInfo = await _mapsService.calculateRoute(
+        LocationModel(
+          address: widget.request.pickupLocation,
+          latitude: _pickupCoordinates!.latitude,
+          longitude: _pickupCoordinates!.longitude,
+        ),
+        LocationModel(
+          address: widget.request.deliveryLocation,
+          latitude: _dropoffCoordinates!.latitude,
+          longitude: _dropoffCoordinates!.longitude,
+        ),
+      );
+
+      if (routeInfo != null && routeInfo.polylinePoints.isNotEmpty) {
+        setState(() {
+          _routePoints = routeInfo.polylinePoints
+              .map((point) => LatLng(point['latitude']!, point['longitude']!))
+              .toList();
+        });
+      } else {
+        // Fallback to straight line if route API fails
+        setState(() {
+          _routePoints = [
+            _pickupCoordinates!,
+            _dropoffCoordinates!,
+          ];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching route: $e');
+      // Fallback to straight line on error
+      setState(() {
+        _routePoints = [
+          _pickupCoordinates!,
+          _dropoffCoordinates!,
+        ];
       });
     }
   }
@@ -1896,10 +1948,12 @@ class _RiderDeliveryProgressScreenState
         return '';
       }
 
-      final helper1Name  = helperField('helper1Name',  'helper1', 'name');
-      final helper1Phone = helperField('helper1Phone', 'helper1', 'phoneNumber');
-      final helper2Name  = helperField('helper2Name',  'helper2', 'name');
-      final helper2Phone = helperField('helper2Phone', 'helper2', 'phoneNumber');
+      final helper1Name = helperField('helper1Name', 'helper1', 'name');
+      final helper1Phone =
+          helperField('helper1Phone', 'helper1', 'phoneNumber');
+      final helper2Name = helperField('helper2Name', 'helper2', 'name');
+      final helper2Phone =
+          helperField('helper2Phone', 'helper2', 'phoneNumber');
 
       final plate = (riderData?['vehiclePlateNumber'] as String?) ?? '';
 
@@ -2025,10 +2079,14 @@ class _RiderDeliveryProgressScreenState
               extractUploadedAt(deliveryPhotos['finish_unloading_photo']);
 
       // Arrival GPS photo URLs & timestamps
-      final warehouseArrivalUrl = extractUrl(deliveryPhotos['warehouse_arrival']);
-      final warehouseArrivalAt  = extractUploadedAt(deliveryPhotos['warehouse_arrival']);
-      final destinationArrivalUrl = extractUrl(deliveryPhotos['destination_arrival']);
-      final destinationArrivalAt  = extractUploadedAt(deliveryPhotos['destination_arrival']);
+      final warehouseArrivalUrl =
+          extractUrl(deliveryPhotos['warehouse_arrival']);
+      final warehouseArrivalAt =
+          extractUploadedAt(deliveryPhotos['warehouse_arrival']);
+      final destinationArrivalUrl =
+          extractUrl(deliveryPhotos['destination_arrival']);
+      final destinationArrivalAt =
+          extractUploadedAt(deliveryPhotos['destination_arrival']);
 
       // Collect all damage photo URLs from Firestore + in-memory list
       final damagePhotoUrls = <String>[];
@@ -2073,16 +2131,21 @@ class _RiderDeliveryProgressScreenState
         'trip_number': widget.request.id,
         'rdd': rddStr,
         // Pick-up stage – date + time
-        'pickup_arrival_time': _formatMilitaryTime(warehouseArrivalAt ?? pickupArrival),
+        'pickup_arrival_time':
+            _formatMilitaryTime(warehouseArrivalAt ?? pickupArrival),
         'pickup_loading_start_time': _formatMilitaryTime(startLoadingAt),
-        'pickup_loading_finish_time': _formatMilitaryTime(finishLoadingAt ?? loadingFinish),
+        'pickup_loading_finish_time':
+            _formatMilitaryTime(finishLoadingAt ?? loadingFinish),
         // Drop-off stage – date + time
-        'dropoff_arrival_time': _formatMilitaryTime(destinationArrivalAt ?? destArrival),
+        'dropoff_arrival_time':
+            _formatMilitaryTime(destinationArrivalAt ?? destArrival),
         'dropoff_unloading_start_time': _formatMilitaryTime(startUnloadingAt),
-        'dropoff_unloading_finish_time': _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
+        'dropoff_unloading_finish_time':
+            _formatMilitaryTime(finishUnloadingAt ?? unloadingFinish),
         // RECEIVED – date + time
         'received_date_time': DateFormat('M/d/yyyy HH:mm').format(phtNow),
-        'received_timestamp_pht': DateFormat('M/d/yyyy HH:mm:ss').format(phtNow),
+        'received_timestamp_pht':
+            DateFormat('M/d/yyyy HH:mm:ss').format(phtNow),
         // Arrival GPS photos
         'warehouse_arrival_photo_url': warehouseArrivalUrl ?? '',
         'destination_arrival_photo_url': destinationArrivalUrl ?? '',
@@ -2716,15 +2779,10 @@ class _RiderDeliveryProgressScreenState
               ),
               markers: _createRouteMarkers(),
               polylines: {
-                if (_pickupCoordinates != null && _dropoffCoordinates != null)
+                if (_routePoints.isNotEmpty)
                   Polyline(
                     polylineId: const PolylineId('route'),
-                    points: [
-                      _pickupCoordinates!,
-                      if (_currentDriverLocation != null)
-                        _currentDriverLocation!,
-                      _dropoffCoordinates!,
-                    ],
+                    points: _routePoints,
                     color: AppColors.primaryBlue,
                     width: 5,
                   ),
