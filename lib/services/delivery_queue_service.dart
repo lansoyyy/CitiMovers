@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_storage/get_storage.dart';
@@ -103,6 +104,7 @@ class DeliveryQueueService {
   final StorageService _storageService = StorageService();
   final BookingService _bookingService = BookingService();
   final Connectivity _connectivity = Connectivity();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // ─── state ───
   Timer? _syncTimer;
@@ -219,6 +221,28 @@ class DeliveryQueueService {
     );
     await _enqueue(entry);
     _flush();
+  }
+
+  /// Queue a booking status update for offline-first sync.
+  Future<void> enqueueStatusUpdate({
+    required String bookingId,
+    required String status,
+    String? driverId,
+    String? subStep,
+  }) async {
+    final entry = DeliveryQueueEntry(
+      id: '${bookingId}__status_${status}_${DateTime.now().millisecondsSinceEpoch}',
+      type: DeliveryQueueOpType.statusUpdate,
+      bookingId: bookingId,
+      payload: {
+        'status': status,
+        'driverId': driverId,
+        'subStep': subStep,
+      },
+      createdAt: DateTime.now(),
+    );
+    await _enqueue(entry);
+    _flush(); // best-effort immediate attempt
   }
 
   // ─────────────────────────── force sync ───────────────────────────
@@ -379,9 +403,46 @@ class DeliveryQueueService {
   }
 
   Future<bool> _executeStatusUpdate(DeliveryQueueEntry entry) async {
-    // Status updates are handled by Firestore offline persistence, so this
-    // entry type is a no-op safety net.  Always succeeds.
-    return true;
+    try {
+      final p = entry.payload;
+      final bookingId = entry.bookingId;
+      final status = p['status'] as String?;
+      final driverId = p['driverId'] as String?;
+      final subStep = p['subStep'] as String?;
+
+      if (status == null) {
+        debugPrint('[DeliveryQueue] Status update missing status field');
+        return true; // Remove from queue - invalid data
+      }
+
+      // Update booking status via BookingService
+      final success = await _bookingService.updateBookingStatus(
+        bookingId,
+        status,
+        driverId: driverId,
+      );
+
+      if (success) {
+        debugPrint('[DeliveryQueue] ✅ Status updated: $bookingId -> $status');
+
+        // If there's a subStep, update that as well (for loading/unloading steps)
+        if (subStep != null) {
+          await _firestore.collection('bookings').doc(bookingId).update({
+            'currentSubStep': subStep,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        return true;
+      } else {
+        debugPrint(
+            '[DeliveryQueue] ❌ Status update failed: $bookingId -> $status');
+        return false; // Keep in queue for retry
+      }
+    } catch (e) {
+      debugPrint('[DeliveryQueue] ❌ Status update error: $e');
+      return false; // Keep in queue for retry
+    }
   }
 
   // ─────────────────────────── storage helpers ───────────────────────────

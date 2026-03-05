@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get_storage/get_storage.dart';
 import 'services/firestore_schema_seeder.dart';
+import 'services/offline_service.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_constants.dart';
 import 'screens/splash_screen.dart';
@@ -34,6 +35,9 @@ void main() async {
 
   await GetStorage.init();
 
+  // Initialize OfflineService globally for app-wide offline support
+  await OfflineService().initialize();
+
   runApp(const CitiMoversApp());
 }
 
@@ -48,7 +52,7 @@ class CitiMoversApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const SplashScreen(),
+      home: const RiderSplashScreen(),
     );
   }
 }

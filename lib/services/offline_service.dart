@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'booking_service.dart';
+import 'storage_service.dart';
 
 /// Offline Service for CitiMovers
 /// Provides offline support with connectivity monitoring, local caching, and operation queuing
@@ -25,6 +29,11 @@ class OfflineService {
   late final GetStorage _storage;
   late final Connectivity _connectivity;
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+
+  // Service dependencies
+  final BookingService _bookingService = BookingService();
+  final StorageService _storageService = StorageService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   bool _isOnline = true;
   bool _isInitialized = false;
@@ -252,23 +261,162 @@ class OfflineService {
   Future<bool> _executeOperation(OfflineOperation operation) async {
     debugPrint('OfflineService: Executing operation: ${operation.type}');
 
-    // This is a placeholder - actual implementation would depend on operation type
-    // Each operation type would have its own execution logic
-    switch (operation.type) {
-      case OfflineOperationType.createBooking:
-        // TODO: Implement booking creation
+    try {
+      switch (operation.type) {
+        case OfflineOperationType.createBooking:
+          return await _executeCreateBooking(operation);
+        case OfflineOperationType.updateBookingStatus:
+          return await _executeUpdateBookingStatus(operation);
+        case OfflineOperationType.uploadImage:
+          return await _executeUploadImage(operation);
+        case OfflineOperationType.updateProfile:
+          return await _executeUpdateProfile(operation);
+        default:
+          debugPrint(
+              'OfflineService: Unknown operation type: ${operation.type}');
+          return false;
+      }
+    } catch (e) {
+      debugPrint('OfflineService: Error executing operation: ${e}');
+      return false;
+    }
+  }
+
+  /// Execute booking creation operation
+  Future<bool> _executeCreateBooking(OfflineOperation operation) async {
+    try {
+      final data = operation.data;
+      final bookingData = data['booking'] as Map<String, dynamic>;
+
+      // Create booking in Firestore
+      final bookingRef = _firestore.collection('bookings').doc();
+      await bookingRef.set({
+        ...bookingData,
+        'bookingId': bookingRef.id,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint(
+          'OfflineService: Booking created successfully: ${bookingRef.id}');
+      return true;
+    } catch (e) {
+      debugPrint('OfflineService: Failed to create booking: $e');
+      return false;
+    }
+  }
+
+  /// Execute booking status update operation
+  Future<bool> _executeUpdateBookingStatus(OfflineOperation operation) async {
+    try {
+      final data = operation.data;
+      final bookingId = data['bookingId'] as String;
+      final status = data['status'] as String;
+      final driverId = data['driverId'] as String?;
+
+      // Update booking status in Firestore
+      await _bookingService.updateBookingStatus(
+        bookingId,
+        status,
+        driverId: driverId,
+      );
+
+      debugPrint(
+          'OfflineService: Booking status updated: $bookingId -> $status');
+      return true;
+    } catch (e) {
+      debugPrint('OfflineService: Failed to update booking status: $e');
+      return false;
+    }
+  }
+
+  /// Execute image upload operation
+  Future<bool> _executeUploadImage(OfflineOperation operation) async {
+    try {
+      final data = operation.data;
+      final localPath = data['localPath'] as String;
+      final uploadType =
+          data['uploadType'] as String; // 'profile', 'delivery', 'document'
+      final bookingId = data['bookingId'] as String?;
+      final stage = data['stage'] as String?;
+
+      final file = File(localPath);
+      if (!file.existsSync()) {
+        debugPrint('OfflineService: Local file not found: $localPath');
+        return true; // Remove from queue since file doesn't exist
+      }
+
+      String? uploadUrl;
+
+      switch (uploadType) {
+        case 'profile':
+          final userId = data['userId'] as String;
+          uploadUrl = await _storageService.uploadProfilePhoto(file, userId);
+          break;
+        case 'delivery':
+          if (bookingId != null && stage != null) {
+            uploadUrl = await _storageService.uploadDeliveryPhoto(
+              file,
+              bookingId,
+              stage,
+            );
+          }
+          break;
+        case 'document':
+          final userId = data['userId'] as String;
+          final documentType = data['documentType'] as String;
+          uploadUrl = await _storageService.uploadRiderDocument(
+            file,
+            userId,
+            documentType,
+          );
+          break;
+        default:
+          debugPrint('OfflineService: Unknown upload type: $uploadType');
+          return false;
+      }
+
+      if (uploadUrl != null) {
+        debugPrint('OfflineService: Image uploaded successfully: $uploadUrl');
+
+        // If it's a delivery photo, also save to Firestore
+        if (uploadType == 'delivery' && bookingId != null && stage != null) {
+          await _bookingService.addDeliveryPhoto(
+            bookingId: bookingId,
+            stage: stage,
+            photoUrl: uploadUrl,
+          );
+        }
+
         return true;
-      case OfflineOperationType.updateBookingStatus:
-        // TODO: Implement booking status update
-        return true;
-      case OfflineOperationType.uploadImage:
-        // TODO: Implement image upload
-        return true;
-      case OfflineOperationType.updateProfile:
-        // TODO: Implement profile update
-        return true;
-      default:
+      } else {
+        debugPrint('OfflineService: Image upload failed');
         return false;
+      }
+    } catch (e) {
+      debugPrint('OfflineService: Failed to upload image: $e');
+      return false;
+    }
+  }
+
+  /// Execute profile update operation
+  Future<bool> _executeUpdateProfile(OfflineOperation operation) async {
+    try {
+      final data = operation.data;
+      final userId = data['userId'] as String;
+      final updates = data['updates'] as Map<String, dynamic>;
+
+      // Update user profile in Firestore
+      await _firestore.collection('users').doc(userId).update({
+        ...updates,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('OfflineService: Profile updated successfully: $userId');
+      return true;
+    } catch (e) {
+      debugPrint('OfflineService: Failed to update profile: $e');
+      return false;
     }
   }
 
