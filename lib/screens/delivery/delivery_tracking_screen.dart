@@ -3,7 +3,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
+import 'package:cloud_firestore/cloud_firestore.dart' hide Timestamp;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
@@ -1393,6 +1395,32 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     }
   }
 
+  /// Returns the `uploadedAt` DateTime for a delivery photo stage, or null.
+  DateTime? _getPhotoUploadedAt(String key) {
+    final photos = _booking.deliveryPhotos;
+    if (photos == null) return null;
+    for (final candidate in _photoKeyCandidates(key)) {
+      final entry = photos[candidate];
+      if (entry is! Map) continue;
+      final raw = entry['uploadedAt'];
+      if (raw == null) continue;
+      if (raw is Timestamp) return raw.toDate();
+      if (raw is int) return DateTime.fromMillisecondsSinceEpoch(raw);
+      if (raw is num) return DateTime.fromMillisecondsSinceEpoch(raw.toInt());
+      if (raw is String && raw.isNotEmpty) {
+        final parsed = DateTime.tryParse(raw);
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  }
+
+  /// Formats a DateTime as `h:mm a` in 12-hour time (e.g. "2:32 PM"), or null.
+  String? _formatStepTime(DateTime? dt) {
+    if (dt == null) return null;
+    return DateFormat('h:mm a').format(dt);
+  }
+
   String _getPhotoUrl(String key) {
     final photos = _booking.deliveryPhotos;
     if (photos == null) return '';
@@ -1802,19 +1830,25 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   _currentStep.index >= DeliveryStep.loading.index,
                   _getPhotoUrl('warehouse_arrival').isNotEmpty
                       ? _getPhotoUrl('warehouse_arrival')
-                      : null),
+                      : null,
+                  timestamp: _formatStepTime(
+                      _getPhotoUploadedAt('warehouse_arrival'))),
               _buildSubStep(
                   'Start Loading Photo',
                   _getPhotoUrl('start_loading').isNotEmpty,
                   _getPhotoUrl('start_loading').isNotEmpty
                       ? _getPhotoUrl('start_loading')
-                      : null),
+                      : null,
+                  timestamp:
+                      _formatStepTime(_getPhotoUploadedAt('start_loading'))),
               _buildSubStep(
                   'Finish Loading Photo',
                   _getPhotoUrl('finish_loading').isNotEmpty,
                   _getPhotoUrl('finish_loading').isNotEmpty
                       ? _getPhotoUrl('finish_loading')
-                      : null),
+                      : null,
+                  timestamp:
+                      _formatStepTime(_getPhotoUploadedAt('finish_loading'))),
             ],
           ),
 
@@ -1845,7 +1879,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                       ? (_getPhotoUrl('destination_arrival').isNotEmpty
                           ? _getPhotoUrl('destination_arrival')
                           : _getPhotoUrl('dropoff_arrival'))
-                      : null),
+                      : null,
+                  timestamp: _formatStepTime(
+                      _getPhotoUploadedAt('destination_arrival'))),
               _buildSubStep(
                   'Arrival Remarks',
                   _getDeliveryMetadataText('destination_arrival_remarks')
@@ -1858,13 +1894,17 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   _getPhotoUrl('start_unloading').isNotEmpty,
                   _getPhotoUrl('start_unloading').isNotEmpty
                       ? _getPhotoUrl('start_unloading')
-                      : null),
+                      : null,
+                  timestamp: _formatStepTime(
+                      _getPhotoUploadedAt('start_unloading'))),
               _buildSubStep(
                   'Finish Unloading Photo',
                   _getPhotoUrl('finish_unloading').isNotEmpty,
                   _getPhotoUrl('finish_unloading').isNotEmpty
                       ? _getPhotoUrl('finish_unloading')
-                      : null),
+                      : null,
+                  timestamp: _formatStepTime(
+                      _getPhotoUploadedAt('finish_unloading'))),
             ],
           ),
 
@@ -1887,7 +1927,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                       ? (_getPhotoUrl('receiver_id').isNotEmpty
                           ? _getPhotoUrl('receiver_id')
                           : _getPhotoUrl('receiver_id_photo'))
-                      : null),
+                      : null,
+                  timestamp:
+                      _formatStepTime(_getPhotoUploadedAt('receiver_id'))),
               _buildSubStep(
                   'Digital Signature',
                   _getPhotoUrl('receiver_signature').isNotEmpty,
@@ -1895,7 +1937,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                       ? (_getPhotoUrl('receiver_signature').isNotEmpty
                           ? _getPhotoUrl('receiver_signature')
                           : _getPhotoUrl('signature'))
-                      : null),
+                      : null,
+                  timestamp: _formatStepTime(
+                      _getPhotoUploadedAt('receiver_signature'))),
             ],
           ),
 
@@ -2067,14 +2111,32 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   Widget _buildSubStep(String label, bool completed, String? photoUrl,
-      {String? remark}) {
+      {String? remark, String? timestamp}) {
     return Padding(
-      padding: const EdgeInsets.only(left: 28, top: 4, bottom: 4),
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Timestamp column — sits in the left gap (same width as step circle)
+              SizedBox(
+                width: 50,
+                child: completed && timestamp != null
+                    ? Text(
+                        timestamp,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          color: AppColors.textSecondary,
+                          fontFamily: 'Regular',
+                          height: 1.2,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(width: 6),
               Icon(
                 completed ? Icons.check_circle : Icons.radio_button_unchecked,
                 size: 14,

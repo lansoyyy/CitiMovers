@@ -2202,6 +2202,9 @@ class _RiderDeliveryProgressScreenState
       }
 
       for (final to in allRecipients) {
+        // Override to_email for this recipient so EmailJS routes to the right address
+        templateParams['to_email'] = to;
+
         // Fetch images and create attachments
         final attachments = <EmailJsAttachment>[];
 
