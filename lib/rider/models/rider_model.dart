@@ -35,6 +35,43 @@ class HelperModel {
 
 /// Model class for Rider/Driver in CitiMovers
 class RiderModel {
+  static const Map<String, String> documentLabels = {
+    'drivers_license': "Driver's License",
+    'vehicle_registration': 'Vehicle Registration (OR/CR)',
+    'vehicle_registration_or': 'Vehicle Registration (OR)',
+    'vehicle_registration_cr': 'Vehicle Registration (CR)',
+    'ltfrb': 'LTFRB',
+    'marine_insurance': 'Marine Insurance',
+    'nbi_clearance': 'NBI Clearance',
+    'drug_test': 'Drug Test',
+    'national_police_clearance': 'Police Clearance',
+    'fit_to_work': 'Fit to Work',
+    'resume': 'Biodata / Resume',
+    'valid_id': 'Valid ID',
+    'unit_photo_front_plate_visible': 'Picture of Unit',
+    'insurance': 'Insurance',
+    'helper_1_drug_test': 'Helper 1 - Drug Test',
+    'helper_1_national_police_clearance': 'Helper 1 - Police Clearance',
+    'helper_1_fit_to_work': 'Helper 1 - Fit to Work',
+    'helper_1_resume': 'Helper 1 - Biodata / Resume',
+    'helper_1_valid_id': 'Helper 1 - Valid ID',
+    'helper_2_drug_test': 'Helper 2 - Drug Test',
+    'helper_2_national_police_clearance': 'Helper 2 - Police Clearance',
+    'helper_2_fit_to_work': 'Helper 2 - Fit to Work',
+    'helper_2_resume': 'Helper 2 - Biodata / Resume',
+    'helper_2_valid_id': 'Helper 2 - Valid ID',
+  };
+
+  static const Set<String> _unitDocumentKeys = {
+    'unit_photo_front_plate_visible',
+    'vehicle_registration',
+    'vehicle_registration_or',
+    'vehicle_registration_cr',
+    'insurance',
+    'ltfrb',
+    'marine_insurance',
+  };
+
   final String riderId;
   final String name;
   final String phoneNumber;
@@ -138,6 +175,43 @@ class RiderModel {
     );
   }
 
+  Map<String, dynamic> _filterDocuments(bool Function(String key) test) {
+    final source = documents;
+    if (source == null || source.isEmpty) return const {};
+
+    final filtered = <String, dynamic>{};
+    for (final entry in source.entries) {
+      if (test(entry.key)) {
+        filtered[entry.key] = entry.value;
+      }
+    }
+    return filtered;
+  }
+
+  static String labelForDocumentKey(String key) {
+    return documentLabels[key] ??
+        key.replaceAll('_', ' ').split(' ').map((word) {
+          if (word.isEmpty) return '';
+          return word[0].toUpperCase() + word.substring(1);
+        }).join(' ');
+  }
+
+  Map<String, dynamic> get unitDocuments =>
+      _filterDocuments((key) => _unitDocumentKeys.contains(key));
+
+  Map<String, dynamic> get driverDocuments => _filterDocuments((key) {
+        if (key.startsWith('helper_1_') || key.startsWith('helper_2_')) {
+          return false;
+        }
+        return !_unitDocumentKeys.contains(key);
+      });
+
+  Map<String, dynamic> get helper1Documents =>
+      _filterDocuments((key) => key.startsWith('helper_1_'));
+
+  Map<String, dynamic> get helper2Documents =>
+      _filterDocuments((key) => key.startsWith('helper_2_'));
+
   // Convert to Map for Firestore (standardized naming)
   Map<String, dynamic> toMap() {
     return {
@@ -195,10 +269,51 @@ class RiderModel {
       return fallback;
     }
 
-    // Parse helpers from Firestore
-    HelperModel? parseHelper(Map<String, dynamic>? helperData) {
-      if (helperData == null) return null;
-      return HelperModel.fromMap(helperData);
+    Map<String, dynamic>? parseMap(dynamic value) {
+      if (value is Map) {
+        return value.map((key, value) => MapEntry(key.toString(), value));
+      }
+      return null;
+    }
+
+    final allDocuments = parseMap(json['documents']) ?? <String, dynamic>{};
+
+    Map<String, dynamic>? extractHelperDocuments(String prefix) {
+      final extracted = <String, dynamic>{};
+      for (final entry in allDocuments.entries) {
+        if (!entry.key.startsWith(prefix)) continue;
+        extracted[entry.key.substring(prefix.length)] = entry.value;
+      }
+      return extracted.isEmpty ? null : extracted;
+    }
+
+    HelperModel? buildHelper({
+      Map<String, dynamic>? helperData,
+      required String prefix,
+      String? fallbackName,
+      String? fallbackPhone,
+      String? fallbackPhotoUrl,
+    }) {
+      final parsed = helperData ?? <String, dynamic>{};
+      final name = (parsed['name'] ?? fallbackName ?? '').toString().trim();
+      final phone = (parsed['phoneNumber'] ?? fallbackPhone)?.toString();
+      final photoUrl = (parsed['photoUrl'] ?? fallbackPhotoUrl)?.toString();
+      final helperDocuments =
+          parseMap(parsed['documents']) ?? extractHelperDocuments(prefix);
+
+      final hasIdentity = name.isNotEmpty ||
+          (phone != null && phone.isNotEmpty) ||
+          (photoUrl != null && photoUrl.isNotEmpty) ||
+          (helperDocuments != null && helperDocuments.isNotEmpty);
+
+      if (!hasIdentity) return null;
+
+      return HelperModel(
+        name: name.isEmpty ? 'Unassigned' : name,
+        phoneNumber: phone,
+        photoUrl: photoUrl,
+        documents: helperDocuments,
+      );
     }
 
     // Get helpers from either 'helpers' array or individual helper1/helper2 fields
@@ -208,27 +323,41 @@ class RiderModel {
     // Check for 'helpers' array first (newer format)
     final helpersList = json['helpers'] as List<dynamic>?;
     if (helpersList != null && helpersList.isNotEmpty) {
-      h1 = parseHelper(helpersList[0] as Map<String, dynamic>?);
+      h1 = buildHelper(
+        helperData: parseMap(helpersList[0]),
+        prefix: 'helper_1_',
+        fallbackName: json['helper1Name']?.toString(),
+        fallbackPhone: json['helper1Phone']?.toString(),
+        fallbackPhotoUrl: json['helper1PhotoUrl']?.toString(),
+      );
       if (helpersList.length > 1) {
-        h2 = parseHelper(helpersList[1] as Map<String, dynamic>?);
+        h2 = buildHelper(
+          helperData: parseMap(helpersList[1]),
+          prefix: 'helper_2_',
+          fallbackName: json['helper2Name']?.toString(),
+          fallbackPhone: json['helper2Phone']?.toString(),
+          fallbackPhotoUrl: json['helper2PhotoUrl']?.toString(),
+        );
       }
     }
 
     // Also check individual helper fields (alternative format)
     if (h1 == null && json['helper1Name'] != null) {
-      h1 = HelperModel(
-        name: (json['helper1Name'] ?? '').toString(),
-        phoneNumber: json['helper1Phone'] as String?,
-        photoUrl: json['helper1PhotoUrl'] as String?,
-        documents: json['helper1Documents'] as Map<String, dynamic>?,
+      h1 = buildHelper(
+        helperData: parseMap(json['helper1']),
+        prefix: 'helper_1_',
+        fallbackName: json['helper1Name']?.toString(),
+        fallbackPhone: json['helper1Phone']?.toString(),
+        fallbackPhotoUrl: json['helper1PhotoUrl']?.toString(),
       );
     }
     if (h2 == null && json['helper2Name'] != null) {
-      h2 = HelperModel(
-        name: (json['helper2Name'] ?? '').toString(),
-        phoneNumber: json['helper2Phone'] as String?,
-        photoUrl: json['helper2PhotoUrl'] as String?,
-        documents: json['helper2Documents'] as Map<String, dynamic>?,
+      h2 = buildHelper(
+        helperData: parseMap(json['helper2']),
+        prefix: 'helper_2_',
+        fallbackName: json['helper2Name']?.toString(),
+        fallbackPhone: json['helper2Phone']?.toString(),
+        fallbackPhotoUrl: json['helper2PhotoUrl']?.toString(),
       );
     }
 
@@ -256,7 +385,7 @@ class RiderModel {
       updatedAt: parseDateTime(json['updatedAt']),
       helper1: h1,
       helper2: h2,
-      documents: json['documents'] as Map<String, dynamic>?,
+      documents: allDocuments,
     );
   }
 

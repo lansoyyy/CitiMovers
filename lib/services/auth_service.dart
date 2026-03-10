@@ -90,6 +90,17 @@ class AuthService {
       final userId = _storage.read('userId') as String?;
       final phoneNumber = _storage.read('userPhoneNumber') as String?;
 
+      final userData = _storage.read('userData');
+      if (userData is Map && userData.isNotEmpty) {
+        try {
+          _currentUser = UserModel.fromMap(Map<String, dynamic>.from(userData));
+          debugPrint('User restored from storage: ${_currentUser?.name}');
+          return;
+        } catch (e) {
+          debugPrint('Error parsing stored user data: $e');
+        }
+      }
+
       if (userId != null &&
           userId.isNotEmpty &&
           phoneNumber != null &&
@@ -113,11 +124,13 @@ class AuthService {
   Future<void> _saveUserToStorage(UserModel user) async {
     await _storage.write('userId', user.userId);
     await _storage.write('userPhoneNumber', user.phoneNumber);
+    await _storage.write('userData', user.toMap());
   }
 
   Future<void> _clearUserFromStorage() async {
     await _storage.remove('userId');
     await _storage.remove('userPhoneNumber');
+    await _storage.remove('userData');
 
     await _storage.remove('userName');
     await _storage.remove('userEmail');
@@ -383,13 +396,6 @@ class AuthService {
       debugPrint('Error verifying email code: $e');
       return false;
     }
-  }
-
-  /// Generate a temporary password for Firebase Auth user
-  String _generateTempPassword() {
-    final random = DateTime.now().millisecondsSinceEpoch;
-    final randomStr = random.toRadixString(36).padLeft(8, '0');
-    return 'Temp$randomStr!';
   }
 
   /// Check if user's email is verified

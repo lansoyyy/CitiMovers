@@ -20,21 +20,13 @@ class CrewProfileScreen extends StatefulWidget {
 
 class _CrewProfileScreenState extends State<CrewProfileScreen>
     with SingleTickerProviderStateMixin {
+  static const int _tabCount = 4;
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    // Calculate number of tabs based on available crew
-    final tabCount = _calculateTabCount();
-    _tabController = TabController(length: tabCount, vsync: this);
-  }
-
-  int _calculateTabCount() {
-    int count = 1; // Always have driver
-    if (widget.rider.helper1 != null) count++;
-    if (widget.rider.helper2 != null) count++;
-    return count;
+    _tabController = TabController(length: _tabCount, vsync: this);
   }
 
   @override
@@ -130,50 +122,68 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
   }
 
   List<Tab> _buildTabs() {
-    final tabs = <Tab>[];
-
-    // Driver tab
-    tabs.add(const Tab(
-      icon: Icon(Icons.drive_eta, size: 20),
-      text: 'Driver',
-    ));
-
-    // Helper 1 tab
-    if (widget.rider.helper1 != null) {
-      tabs.add(const Tab(
-        icon: Icon(Icons.person, size: 20),
+    return const [
+      Tab(
+        icon: Icon(Icons.local_shipping_outlined, size: 20),
+        text: 'Unit Docs',
+      ),
+      Tab(
+        icon: Icon(Icons.drive_eta, size: 20),
+        text: 'Driver',
+      ),
+      Tab(
+        icon: Icon(Icons.person_outline, size: 20),
         text: 'Helper 1',
-      ));
-    }
-
-    // Helper 2 tab
-    if (widget.rider.helper2 != null) {
-      tabs.add(const Tab(
-        icon: Icon(Icons.person, size: 20),
+      ),
+      Tab(
+        icon: Icon(Icons.person_outline, size: 20),
         text: 'Helper 2',
-      ));
-    }
-
-    return tabs;
+      ),
+    ];
   }
 
   List<Widget> _buildTabViews() {
-    final views = <Widget>[];
+    return [
+      _buildUnitView(),
+      _buildDriverView(),
+      _buildHelperView(widget.rider.helper1, 'Helper 1'),
+      _buildHelperView(widget.rider.helper2, 'Helper 2'),
+    ];
+  }
 
-    // Driver view
-    views.add(_buildDriverView());
-
-    // Helper 1 view
-    if (widget.rider.helper1 != null) {
-      views.add(_buildHelperView(widget.rider.helper1!, 'Helper 1'));
+  String get _unitOwnerName {
+    final plate = widget.rider.vehiclePlateNumber?.trim();
+    if (plate != null && plate.isNotEmpty) {
+      return '${widget.rider.vehicleType} - $plate';
     }
+    return widget.rider.vehicleType;
+  }
 
-    // Helper 2 view
-    if (widget.rider.helper2 != null) {
-      views.add(_buildHelperView(widget.rider.helper2!, 'Helper 2'));
-    }
-
-    return views;
+  Widget _buildUnitView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildProfileCard(
+            name: widget.rider.vehicleType,
+            photoUrl: widget.rider.vehiclePhotoUrl,
+            role: 'Unit',
+            phone: widget.rider.vehiclePlateNumber,
+          ),
+          const SizedBox(height: 16),
+          _buildVehicleCard(),
+          const SizedBox(height: 16),
+          _buildDocumentsSection(
+            widget.rider.unitDocuments,
+            'Unit Docs',
+            ownerName: _unitOwnerName,
+            emptyMessage: 'No unit documents available yet.',
+          ),
+          const SizedBox(height: 16),
+          _buildPrivacyNotice(),
+        ],
+      ),
+    );
   }
 
   Widget _buildDriverView() {
@@ -197,7 +207,12 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
           const SizedBox(height: 16),
 
           // Documents Section
-          _buildDocumentsSection(widget.rider.documents, 'Driver'),
+          _buildDocumentsSection(
+            widget.rider.driverDocuments,
+            'Driver',
+            ownerName: widget.rider.name,
+            emptyMessage: 'No driver documents available.',
+          ),
 
           const SizedBox(height: 16),
 
@@ -208,7 +223,27 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
     );
   }
 
-  Widget _buildHelperView(HelperModel helper, String role) {
+  Widget _buildHelperView(HelperModel? helper, String role) {
+    if (helper == null) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildUnassignedHelperCard(role),
+            const SizedBox(height: 16),
+            _buildDocumentsSection(
+              const {},
+              role,
+              ownerName: role,
+              emptyMessage: 'No helper assigned. No uploaded requirements yet.',
+            ),
+            const SizedBox(height: 16),
+            _buildPrivacyNotice(),
+          ],
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -224,12 +259,67 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
           const SizedBox(height: 16),
 
           // Documents Section
-          _buildDocumentsSection(helper.documents, role),
+          _buildDocumentsSection(
+            helper.documents,
+            role,
+            ownerName: helper.name,
+            emptyMessage: 'No uploaded requirements available for $role.',
+          ),
 
           const SizedBox(height: 16),
 
           // Privacy Notice
           _buildPrivacyNotice(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnassignedHelperCard(String role) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 36,
+            backgroundColor: AppColors.lightGrey,
+            child: const Icon(
+              Icons.person_off_outlined,
+              size: 36,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '$role Not Assigned',
+            style: const TextStyle(
+              fontSize: 18,
+              fontFamily: 'Bold',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'No helper information has been assigned to this unit yet.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontFamily: 'Regular',
+              color: AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
@@ -344,13 +434,15 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.phone_outlined,
+                  role == 'Unit'
+                      ? Icons.confirmation_number_outlined
+                      : Icons.phone_outlined,
                   size: 16,
                   color: AppColors.textSecondary,
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  phone,
+                  role == 'Unit' ? 'Plate: $phone' : phone,
                   style: const TextStyle(
                     fontSize: 14,
                     fontFamily: 'Medium',
@@ -497,7 +589,12 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
     );
   }
 
-  Widget _buildDocumentsSection(Map<String, dynamic>? documents, String role) {
+  Widget _buildDocumentsSection(
+    Map<String, dynamic>? documents,
+    String role, {
+    required String ownerName,
+    required String emptyMessage,
+  }) {
     if (documents == null || documents.isEmpty) {
       return Container(
         width: double.infinity,
@@ -522,7 +619,7 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              'No documents available for $role',
+              emptyMessage,
               style: const TextStyle(
                 fontSize: 14,
                 fontFamily: 'Regular',
@@ -583,7 +680,11 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
             spacing: 8,
             runSpacing: 8,
             children: documents.entries.map((entry) {
-              return _buildDocumentChip(entry.key, entry.value);
+              return _buildDocumentChip(
+                entry.key,
+                entry.value,
+                ownerName: ownerName,
+              );
             }).toList(),
           ),
         ],
@@ -591,12 +692,9 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
     );
   }
 
-  Widget _buildDocumentChip(String key, dynamic value) {
-    String docName = key.replaceAll('_', ' ').split(' ').map((word) {
-      if (word.isEmpty) return '';
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
-
+  Widget _buildDocumentChip(String key, dynamic value,
+      {required String ownerName}) {
+    final docName = RiderModel.labelForDocumentKey(key);
     String? docUrl;
     if (value is String) {
       docUrl = value;
@@ -619,19 +717,20 @@ class _CrewProfileScreenState extends State<CrewProfileScreen>
       ),
       backgroundColor: AppColors.primaryRed.withOpacity(0.1),
       side: BorderSide.none,
-      onPressed:
-          docUrl != null ? () => _showDocumentViewer(docName, docUrl!) : null,
+      onPressed: docUrl != null
+          ? () => _showDocumentViewer(docName, docUrl!, ownerName)
+          : null,
     );
   }
 
-  void _showDocumentViewer(String docName, String docUrl) {
+  void _showDocumentViewer(String docName, String docUrl, String ownerName) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => _DocumentViewerScreen(
           docName: docName,
           docUrl: docUrl,
-          crewName: widget.rider.name,
+          crewName: ownerName,
         ),
       ),
     );

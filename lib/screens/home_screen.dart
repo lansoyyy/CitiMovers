@@ -49,6 +49,8 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+      if (!isCurrentRoute) return;
       _hasCheckedActiveBooking = false;
       _checkAndResumeActiveBooking(force: true);
     }

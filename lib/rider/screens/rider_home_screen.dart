@@ -57,6 +57,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+      if (!isCurrentRoute) return;
       _hasCheckedActiveDriverBooking = false;
       _checkAndResumeActiveDelivery(force: true);
     }

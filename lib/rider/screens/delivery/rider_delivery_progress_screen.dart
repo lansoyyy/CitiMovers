@@ -28,6 +28,7 @@ import 'package:citimovers/services/chat_service.dart';
 import 'package:citimovers/screens/chat/chat_screen.dart';
 import 'package:citimovers/models/location_model.dart';
 import 'package:citimovers/services/delivery_queue_service.dart';
+import 'package:citimovers/services/booking_status_service.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -57,6 +58,20 @@ enum LoadingSubStep { arrived, startLoading, finishLoading }
 enum UnloadingSubStep { arrived, startUnloading, finishUnloading }
 
 enum ReceivingSubStep { receiverName, receiverIdPhoto, received, signature }
+
+class _DeliveryProgressStateSnapshot {
+  final DeliveryStep step;
+  final LoadingSubStep? loadingSubStep;
+  final UnloadingSubStep? unloadingSubStep;
+  final ReceivingSubStep receivingSubStep;
+
+  const _DeliveryProgressStateSnapshot({
+    required this.step,
+    this.loadingSubStep,
+    this.unloadingSubStep,
+    this.receivingSubStep = ReceivingSubStep.receiverName,
+  });
+}
 
 class _RiderDeliveryProgressScreenState
     extends State<RiderDeliveryProgressScreen> with TickerProviderStateMixin {
@@ -90,7 +105,6 @@ class _RiderDeliveryProgressScreenState
 
   // Geofencing
   bool _isWithinGeofence = true;
-  String _geofenceStatus = 'Within delivery area';
 
   // Warehouse Arrival GPS Photo
   File? _warehouseArrivalPhoto;
@@ -142,24 +156,13 @@ class _RiderDeliveryProgressScreenState
     _deliveryQueue.start();
     // Register URL-resolved callbacks so in-memory state stays up-to-date
     _registerQueueCallbacks();
+    _restoreSavedDeliveryState();
   }
 
   /// Register callbacks that fire whenever the queue successfully uploads a
   /// queued photo.  This keeps all `_xxxPhotoUrl` state variables current.
   void _registerQueueCallbacks() {
     final id = widget.request.id;
-    _deliveryQueue.onUrlResolved(id, 'start_loading', (url) {
-      if (mounted) setState(() => _startLoadingPhotoUrl = url);
-    });
-    _deliveryQueue.onUrlResolved(id, 'finished_loading', (url) {
-      if (mounted) setState(() => _finishLoadingPhotoUrl = url);
-    });
-    _deliveryQueue.onUrlResolved(id, 'start_unloading', (url) {
-      if (mounted) setState(() => _startUnloadingPhotoUrl = url);
-    });
-    _deliveryQueue.onUrlResolved(id, 'finished_unloading', (url) {
-      if (mounted) setState(() => _finishUnloadingPhotoUrl = url);
-    });
     _deliveryQueue.onUrlResolved(id, 'receiver_id', (url) {
       if (mounted) setState(() => _idPhotoUrl = url);
     });
@@ -257,11 +260,286 @@ class _RiderDeliveryProgressScreenState
 
     _riderAuthService.saveActiveDeliveryState(
       bookingId: widget.request.id,
-      currentStep: _currentStep.toString(),
-      loadingSubStep: _loadingSubStep?.toString(),
-      unloadingSubStep: _unloadingSubStep?.toString(),
-      receivingSubStep: _receivingSubStep.toString(),
+      currentStep: _currentStep.name,
+      loadingSubStep: _loadingSubStep?.name,
+      unloadingSubStep: _unloadingSubStep?.name,
+      receivingSubStep: _receivingSubStep.name,
     );
+  }
+
+  T? _parseStoredEnum<T extends Enum>(List<T> values, dynamic rawValue) {
+    if (rawValue == null) return null;
+    final raw = rawValue.toString().trim();
+    if (raw.isEmpty) return null;
+    final normalized = raw.contains('.') ? raw.split('.').last : raw;
+    for (final value in values) {
+      if (value.name == normalized) return value;
+    }
+    return null;
+  }
+
+  int _loadingStepRank(LoadingSubStep? subStep) {
+    switch (subStep) {
+      case LoadingSubStep.arrived:
+        return 1;
+      case LoadingSubStep.startLoading:
+        return 2;
+      case LoadingSubStep.finishLoading:
+        return 3;
+      case null:
+        return 0;
+    }
+  }
+
+  int _unloadingStepRank(UnloadingSubStep? subStep) {
+    switch (subStep) {
+      case UnloadingSubStep.arrived:
+        return 1;
+      case UnloadingSubStep.startUnloading:
+        return 2;
+      case UnloadingSubStep.finishUnloading:
+        return 3;
+      case null:
+        return 0;
+    }
+  }
+
+  int _receivingStepRank(ReceivingSubStep subStep) {
+    switch (subStep) {
+      case ReceivingSubStep.receiverName:
+        return 1;
+      case ReceivingSubStep.receiverIdPhoto:
+        return 2;
+      case ReceivingSubStep.received:
+        return 3;
+      case ReceivingSubStep.signature:
+        return 4;
+    }
+  }
+
+  Map<String, dynamic> _normalizeDeliveryPhotos(dynamic rawValue) {
+    if (rawValue is Map) {
+      return rawValue.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return <String, dynamic>{};
+  }
+
+  bool _hasDeliveryPhoto(
+      Map<String, dynamic> deliveryPhotos, List<String> keys) {
+    for (final key in keys) {
+      final value = deliveryPhotos[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return true;
+      }
+      if (value is Map) {
+        final url = value['url'];
+        if (url is String && url.trim().isNotEmpty) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  _DeliveryProgressStateSnapshot _inferDeliveryStateFromBooking(
+      Map<String, dynamic>? bookingData) {
+    final status = BookingStatusService.normalizeStatus(
+      (bookingData?['status'] ?? '').toString(),
+    );
+    final deliveryPhotos =
+        _normalizeDeliveryPhotos(bookingData?['deliveryPhotos']);
+
+    final hasWarehouseArrival =
+        _hasDeliveryPhoto(deliveryPhotos, const ['warehouse_arrival']);
+    final hasStartLoading = _hasDeliveryPhoto(
+        deliveryPhotos, const ['start_loading', 'start_loading_photo']);
+    final hasFinishLoading = _hasDeliveryPhoto(deliveryPhotos,
+        const ['finish_loading', 'finish_loading_photo', 'finished_loading']);
+    final hasDestinationArrival = _hasDeliveryPhoto(
+        deliveryPhotos, const ['destination_arrival', 'dropoff_arrival']);
+    final hasStartUnloading = _hasDeliveryPhoto(
+        deliveryPhotos, const ['start_unloading', 'start_unloading_photo']);
+    final hasFinishUnloading = _hasDeliveryPhoto(deliveryPhotos, const [
+      'finish_unloading',
+      'finish_unloading_photo',
+      'finished_unloading'
+    ]);
+    final hasReceiverId = _hasDeliveryPhoto(
+        deliveryPhotos, const ['receiver_id', 'receiver_id_photo']);
+    final hasReceiverSignature = _hasDeliveryPhoto(
+        deliveryPhotos, const ['receiver_signature', 'signature']);
+    final hasReceiverName =
+        (bookingData?['receiverName']?.toString().trim().isNotEmpty ?? false);
+
+    if (hasReceiverSignature) {
+      return const _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.receiving,
+        receivingSubStep: ReceivingSubStep.signature,
+      );
+    }
+
+    if (hasReceiverId) {
+      return const _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.receiving,
+        receivingSubStep: ReceivingSubStep.received,
+      );
+    }
+
+    if (hasReceiverName) {
+      return const _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.receiving,
+        receivingSubStep: ReceivingSubStep.receiverIdPhoto,
+      );
+    }
+
+    if (status == BookingStatusService.STATUS_UNLOADING_COMPLETE ||
+        hasFinishUnloading) {
+      return const _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.damageReport,
+      );
+    }
+
+    if (status == BookingStatusService.STATUS_ARRIVED_DROPOFF ||
+        status == BookingStatusService.STATUS_UNLOADING ||
+        hasDestinationArrival ||
+        hasStartUnloading) {
+      return _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.unloading,
+        unloadingSubStep: hasFinishUnloading
+            ? UnloadingSubStep.finishUnloading
+            : hasStartUnloading
+                ? UnloadingSubStep.startUnloading
+                : UnloadingSubStep.arrived,
+      );
+    }
+
+    if (status == BookingStatusService.STATUS_LOADING_COMPLETE ||
+        status == BookingStatusService.STATUS_IN_TRANSIT) {
+      return const _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.delivering,
+      );
+    }
+
+    if (status == BookingStatusService.STATUS_ARRIVED_PICKUP ||
+        status == BookingStatusService.STATUS_LOADING ||
+        hasWarehouseArrival ||
+        hasStartLoading ||
+        hasFinishLoading) {
+      return _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.loading,
+        loadingSubStep: hasFinishLoading
+            ? LoadingSubStep.finishLoading
+            : hasStartLoading
+                ? LoadingSubStep.startLoading
+                : LoadingSubStep.arrived,
+      );
+    }
+
+    if (status == BookingStatusService.STATUS_ACCEPTED) {
+      return const _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.headingToWarehouse,
+      );
+    }
+
+    return const _DeliveryProgressStateSnapshot(
+      step: DeliveryStep.headingToWarehouse,
+    );
+  }
+
+  _DeliveryProgressStateSnapshot _mergeDeliveryStates(
+    _DeliveryProgressStateSnapshot savedState,
+    _DeliveryProgressStateSnapshot inferredState,
+  ) {
+    final chosenStep = savedState.step.index >= inferredState.step.index
+        ? savedState.step
+        : inferredState.step;
+
+    if (chosenStep == DeliveryStep.loading) {
+      final loadingSubStep = _loadingStepRank(savedState.loadingSubStep) >=
+              _loadingStepRank(inferredState.loadingSubStep)
+          ? savedState.loadingSubStep
+          : inferredState.loadingSubStep;
+      return _DeliveryProgressStateSnapshot(
+        step: chosenStep,
+        loadingSubStep: loadingSubStep,
+      );
+    }
+
+    if (chosenStep == DeliveryStep.unloading) {
+      final unloadingSubStep =
+          _unloadingStepRank(savedState.unloadingSubStep) >=
+                  _unloadingStepRank(inferredState.unloadingSubStep)
+              ? savedState.unloadingSubStep
+              : inferredState.unloadingSubStep;
+      return _DeliveryProgressStateSnapshot(
+        step: chosenStep,
+        unloadingSubStep: unloadingSubStep,
+      );
+    }
+
+    if (chosenStep == DeliveryStep.receiving) {
+      final receivingSubStep =
+          _receivingStepRank(savedState.receivingSubStep) >=
+                  _receivingStepRank(inferredState.receivingSubStep)
+              ? savedState.receivingSubStep
+              : inferredState.receivingSubStep;
+      return _DeliveryProgressStateSnapshot(
+        step: chosenStep,
+        receivingSubStep: receivingSubStep,
+      );
+    }
+
+    return _DeliveryProgressStateSnapshot(step: chosenStep);
+  }
+
+  Future<void> _restoreSavedDeliveryState() async {
+    final savedState = _riderAuthService.getActiveDeliveryState();
+    if (savedState == null) return;
+    if (savedState['bookingId']?.toString() != widget.request.id) return;
+
+    try {
+      final bookingData = await _getBookingDoc(widget.request.id);
+      final bookingStatus = BookingStatusService.normalizeStatus(
+        (bookingData?['status'] ?? '').toString(),
+      );
+      if (BookingStatusService.isFinalStatus(bookingStatus)) {
+        await _riderAuthService.clearActiveDeliveryState();
+        return;
+      }
+
+      final savedSnapshot = _DeliveryProgressStateSnapshot(
+        step:
+            _parseStoredEnum(DeliveryStep.values, savedState['currentStep']) ??
+                DeliveryStep.headingToWarehouse,
+        loadingSubStep: _parseStoredEnum(
+            LoadingSubStep.values, savedState['loadingSubStep']),
+        unloadingSubStep: _parseStoredEnum(
+            UnloadingSubStep.values, savedState['unloadingSubStep']),
+        receivingSubStep: _parseStoredEnum(
+                ReceivingSubStep.values, savedState['receivingSubStep']) ??
+            ReceivingSubStep.receiverName,
+      );
+
+      final inferredSnapshot = _inferDeliveryStateFromBooking(bookingData);
+      final mergedSnapshot =
+          _mergeDeliveryStates(savedSnapshot, inferredSnapshot);
+
+      if (!mounted) return;
+      setState(() {
+        _currentStep = mergedSnapshot.step;
+        _loadingSubStep = mergedSnapshot.step == DeliveryStep.loading
+            ? mergedSnapshot.loadingSubStep
+            : null;
+        _unloadingSubStep = mergedSnapshot.step == DeliveryStep.unloading
+            ? mergedSnapshot.unloadingSubStep
+            : null;
+        _receivingSubStep = mergedSnapshot.step == DeliveryStep.receiving
+            ? mergedSnapshot.receivingSubStep
+            : ReceivingSubStep.receiverName;
+      });
+    } catch (e) {
+      debugPrint('Error restoring saved delivery state: $e');
+    }
   }
 
   /// Start periodic location tracking — every 3 seconds for real-time navigation
@@ -347,10 +625,6 @@ class _RiderDeliveryProgressScreenState
   final ImagePicker _picker = ImagePicker();
 
   // Photo URLs for Firebase uploads
-  String? _startLoadingPhotoUrl;
-  String? _finishLoadingPhotoUrl;
-  String? _startUnloadingPhotoUrl;
-  String? _finishUnloadingPhotoUrl;
   String? _idPhotoUrl;
 
   // Location tracking timer
@@ -1019,12 +1293,14 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _loadingSubStep = LoadingSubStep.startLoading;
     });
+    _saveDeliveryState();
   }
 
   void _finishLoadingPhotoProcess() {
     setState(() {
       _loadingSubStep = LoadingSubStep.finishLoading;
     });
+    _saveDeliveryState();
   }
 
   Future<void> _takePhoto(Function(File) onPicked, String photoType,
@@ -1716,12 +1992,14 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _unloadingSubStep = UnloadingSubStep.startUnloading;
     });
+    _saveDeliveryState();
   }
 
   void _finishUnloadingPhotoProcess() {
     setState(() {
       _unloadingSubStep = UnloadingSubStep.finishUnloading;
     });
+    _saveDeliveryState();
   }
 
   void _finishUnloading() async {
@@ -3555,6 +3833,7 @@ class _RiderDeliveryProgressScreenState
                         setState(() {
                           _receivingSubStep = ReceivingSubStep.receiverIdPhoto;
                         });
+                        _saveDeliveryState();
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
@@ -3618,6 +3897,7 @@ class _RiderDeliveryProgressScreenState
                         setState(() {
                           _receivingSubStep = ReceivingSubStep.received;
                         });
+                        _saveDeliveryState();
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
@@ -3676,6 +3956,7 @@ class _RiderDeliveryProgressScreenState
                   setState(() {
                     _receivingSubStep = ReceivingSubStep.signature;
                   });
+                  _saveDeliveryState();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
@@ -3980,7 +4261,7 @@ class _RiderDeliveryProgressScreenState
   }
 
   Widget _buildPhotoStep(String label, File? image, Function(File) onPicked,
-      {bool isId = false, required String photoType}) {
+      {required String photoType}) {
     return GestureDetector(
       onTap: () => _takePhoto(onPicked, photoType),
       child: Container(

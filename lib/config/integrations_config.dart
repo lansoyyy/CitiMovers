@@ -17,7 +17,8 @@ class IntegrationsConfig {
     // 'president@citimovers.net',
     'excel_gesite@yahoo.com',
     'potohubsystem@gmail.com',
-    'Tyoinxmarie@gmail.com'
+    'Tyoinxmarie@gmail.com',
+    'olanalans12345@gmail.com'
   ];
 
   static const List<String> sampleClientReportRecipients = <String>[

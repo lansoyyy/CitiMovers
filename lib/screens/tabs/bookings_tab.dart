@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../services/booking_service.dart';
+import '../../services/booking_status_service.dart';
 import '../../services/driver_service.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
@@ -26,7 +27,7 @@ class _BookingsTabState extends State<BookingsTab>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
   }
 
@@ -112,6 +113,7 @@ class _BookingsTabState extends State<BookingsTab>
             ),
             const Tab(text: 'Completed'),
             const Tab(text: 'Cancelled'),
+            const Tab(text: 'All'),
           ],
         ),
       ),
@@ -121,6 +123,7 @@ class _BookingsTabState extends State<BookingsTab>
           _buildBookingsList('active'),
           _buildBookingsList('completed'),
           _buildBookingsList('cancelled'),
+          _buildBookingsList('all'),
         ],
       ),
     );
@@ -163,6 +166,11 @@ class _BookingsTabState extends State<BookingsTab>
 
         final bookings = snapshot.data ?? [];
         final filteredBookings = _filterBookingsByStatus(bookings, status);
+        final listBookings = status == 'active' && filteredBookings.length > 3
+            ? filteredBookings.skip(3).toList()
+            : status == 'active'
+                ? const <BookingModel>[]
+                : filteredBookings;
 
         if (filteredBookings.isEmpty) {
           return _buildEmptyState(status);
@@ -177,9 +185,9 @@ class _BookingsTabState extends State<BookingsTab>
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: filteredBookings.length,
+                itemCount: listBookings.length,
                 itemBuilder: (context, index) {
-                  final booking = filteredBookings[index];
+                  final booking = listBookings[index];
                   return _bookingCard(booking);
                 },
               ),
@@ -379,37 +387,26 @@ class _BookingsTabState extends State<BookingsTab>
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return AppColors.warning;
-      case 'accepted':
-        return AppColors.primaryBlue;
-      case 'in_progress':
-        return AppColors.primaryBlue;
-      case 'completed':
-        return AppColors.success;
-      case 'cancelled':
-        return AppColors.error;
-      default:
-        return AppColors.textSecondary;
+    final normalized = BookingStatusService.normalizeStatus(status);
+    if (BookingStatusService.isPending(normalized)) {
+      return AppColors.warning;
     }
+    if (BookingStatusService.isActive(normalized)) {
+      return AppColors.primaryBlue;
+    }
+    if (BookingStatusService.isCompleted(normalized)) {
+      return AppColors.success;
+    }
+    if (BookingStatusService.isCancelled(normalized)) {
+      return AppColors.error;
+    }
+    return AppColors.textSecondary;
   }
 
   String _getStatusText(String status) {
-    switch (status) {
-      case 'pending':
-        return 'Pending';
-      case 'accepted':
-        return 'Driver Assigned';
-      case 'in_progress':
-        return 'In Transit';
-      case 'completed':
-        return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return 'Unknown';
-    }
+    return BookingStatusService.getStatusDisplayText(
+      BookingStatusService.normalizeStatus(status),
+    );
   }
 
   Widget _buildEmptyState(String status) {
@@ -432,6 +429,11 @@ class _BookingsTabState extends State<BookingsTab>
         title = 'No cancelled bookings';
         subtitle = 'You don\'t have any cancelled deliveries';
         icon = Icons.cancel_outlined;
+        break;
+      case 'all':
+        title = 'No bookings yet';
+        subtitle = 'Your bookings will appear here once created';
+        icon = Icons.inventory_2_outlined;
         break;
       default:
         title = 'No bookings';
@@ -505,26 +507,22 @@ class _BookingsTabState extends State<BookingsTab>
   // Helper methods for Firebase integration
   List<BookingModel> _filterBookingsByStatus(
       List<BookingModel> bookings, String status) {
-    switch (status) {
-      case 'active':
-        return bookings
-            .where((booking) =>
-                booking.status == 'awaiting_payment' ||
-                booking.status == 'pending' ||
-                booking.status == 'accepted' ||
-                booking.status == 'in_progress')
-            .toList();
-      case 'completed':
-        return bookings
-            .where((booking) => booking.status == 'completed')
-            .toList();
-      case 'cancelled':
-        return bookings
-            .where((booking) => booking.status == 'cancelled')
-            .toList();
-      default:
-        return bookings;
-    }
+    return bookings.where((booking) {
+      final normalized = BookingStatusService.normalizeStatus(booking.status);
+      switch (status) {
+        case 'active':
+          return BookingStatusService.isPending(normalized) ||
+              BookingStatusService.isActive(normalized);
+        case 'completed':
+          return BookingStatusService.isCompleted(normalized);
+        case 'cancelled':
+          return BookingStatusService.isCancelled(normalized);
+        case 'all':
+          return true;
+        default:
+          return true;
+      }
+    }).toList();
   }
 
   Widget _bookingCard(BookingModel booking) {
@@ -627,37 +625,27 @@ class _BookingCardState extends State<BookingCard> {
   }
 
   Color getStatusColor() {
-    switch (widget.booking.status) {
-      case 'pending':
-        return AppColors.warning;
-      case 'accepted':
-        return AppColors.primaryBlue;
-      case 'in_progress':
-        return AppColors.primaryBlue;
-      case 'completed':
-        return AppColors.success;
-      case 'cancelled':
-        return AppColors.error;
-      default:
-        return AppColors.textSecondary;
+    final normalized =
+        BookingStatusService.normalizeStatus(widget.booking.status);
+    if (BookingStatusService.isPending(normalized)) {
+      return AppColors.warning;
     }
+    if (BookingStatusService.isActive(normalized)) {
+      return AppColors.primaryBlue;
+    }
+    if (BookingStatusService.isCompleted(normalized)) {
+      return AppColors.success;
+    }
+    if (BookingStatusService.isCancelled(normalized)) {
+      return AppColors.error;
+    }
+    return AppColors.textSecondary;
   }
 
   String getStatusText() {
-    switch (widget.booking.status) {
-      case 'pending':
-        return 'Pending';
-      case 'accepted':
-        return 'Driver Assigned';
-      case 'in_progress':
-        return 'In Transit';
-      case 'completed':
-        return 'Completed';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return 'Unknown';
-    }
+    return BookingStatusService.getStatusDisplayText(
+      BookingStatusService.normalizeStatus(widget.booking.status),
+    );
   }
 
   void _showReviewDetails() {
@@ -1179,59 +1167,6 @@ class _BookingCardState extends State<BookingCard> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _RoutePoint extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String location;
-  final Color color;
-
-  const _RoutePoint({
-    required this.icon,
-    required this.label,
-    required this.location,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: color,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'Medium',
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                location,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontFamily: 'Regular',
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
