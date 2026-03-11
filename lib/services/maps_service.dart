@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/location_model.dart';
@@ -24,6 +25,27 @@ class MapsService {
 
   // Session token for Places API - reused within a search session
   String? _currentSessionToken;
+
+  // Fuel price per liter from Firestore configs/app (default matches Firestore seed value)
+  double _fuelPricePerLiter = 85.0;
+
+  /// Fetches the current fuel price per litre from Firestore `configs/app`
+  /// and caches it in the singleton.  Safe to call multiple times.
+  Future<void> fetchFuelPrice() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('configs')
+          .doc('app')
+          .get();
+      final price = doc.data()?['fuel'];
+      if (price != null) {
+        _fuelPricePerLiter = (price as num).toDouble();
+        debugPrint('Fuel price loaded: ₱$_fuelPricePerLiter / litre');
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch fuel price, using default: $e');
+    }
+  }
 
   /// Check if Google Maps API is properly configured
   static bool get isConfigured => _apiKey.isNotEmpty;
@@ -276,9 +298,9 @@ class MapsService {
 
     switch (vehicleType) {
       case '10-Wheeler Wingvan':
-        // Formula: Distance x 3 / 2 x 60 (Km/Liter % 2, Fuel x 60/liter)
+        // Formula: Distance x 3 / 2 x fuelPricePerLiter (Km/Liter ÷ 2, Fuel price/litre from Firestore)
         // Minimum distance: 133.33km = ₱12,000
-        calculatedFare = (distanceKm * 3 / 2) * 60;
+        calculatedFare = (distanceKm * 3 / 2) * _fuelPricePerLiter;
         // Apply minimum rate of ₱12,000
         if (calculatedFare < 12000) {
           calculatedFare = 12000;

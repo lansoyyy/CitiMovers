@@ -164,6 +164,8 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
       );
 
       if (routeInfo != null) {
+        // Refresh fuel price from Firestore before calculating the fare
+        await _mapsService.fetchFuelPrice();
         setState(() {
           _distance = routeInfo.distanceKm;
           _durationMinutes = routeInfo.durationMinutes;

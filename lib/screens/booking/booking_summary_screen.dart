@@ -47,11 +47,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   int? _travelDurationMinutes; // Store travel duration
   bool _termsAccepted = false; // Terms & Conditions checkbox state
   bool _showAmounts = true; // Toggle for showing/hiding amounts
-
-  double get _estimatedFare => _mapsService.calculateFare(
-        distanceKm: widget.distance,
-        vehicleType: widget.vehicle.name,
-      );
+  double _estimatedFare = 0.0;
 
   @override
   void initState() {
@@ -61,13 +57,21 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   }
 
   Future<void> _calculateTravelTime() async {
+    // Fetch live fuel price first so the fare uses the current Firestore value
+    await _mapsService.fetchFuelPrice();
     final routeInfo = await _mapsService.calculateRoute(
       widget.pickupLocation,
       widget.dropoffLocation,
     );
-    if (routeInfo != null && mounted) {
+    if (mounted) {
       setState(() {
-        _travelDurationMinutes = routeInfo.durationMinutes;
+        if (routeInfo != null) {
+          _travelDurationMinutes = routeInfo.durationMinutes;
+        }
+        _estimatedFare = _mapsService.calculateFare(
+          distanceKm: widget.distance,
+          vehicleType: widget.vehicle.name,
+        );
       });
     }
   }
