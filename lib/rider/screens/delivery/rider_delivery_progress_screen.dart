@@ -2387,6 +2387,7 @@ class _RiderDeliveryProgressScreenState
         'helper2_name': helper2Name,
         'helper2_phone': helper2Phone,
         'pickup_address': pickupAddress,
+        'dropoff_address': destinationAddress,
         'destination_address': destinationAddress,
         'fo_number': '',
         'trip_number': widget.request.id,
@@ -2483,120 +2484,14 @@ class _RiderDeliveryProgressScreenState
         // Override to_email for this recipient so EmailJS routes to the right address
         templateParams['to_email'] = to;
 
-        // Fetch images and create attachments
-        final attachments = <EmailJsAttachment>[];
-
-        // Fetch loading photo
-        if (startLoadingUrl != null && startLoadingUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            startLoadingUrl,
-            'Start_Loading.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch finish loading photo
-        if (finishLoadingUrl != null && finishLoadingUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            finishLoadingUrl,
-            'Finish_Loading.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch start unloading photo
-        if (startUnloadingUrl != null && startUnloadingUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            startUnloadingUrl,
-            'Start_Unloading.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch finish unloading photo
-        if (finishUnloadingUrl != null && finishUnloadingUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            finishUnloadingUrl,
-            'Finish_Unloading.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch receiver ID photo
-        if (receiverIdUrl != null && receiverIdUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            receiverIdUrl,
-            'Receiver_ID.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch receiver signature
-        if (receiverSignatureUrl != null && receiverSignatureUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            receiverSignatureUrl,
-            'Receiver_Signature.png',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch warehouse arrival GPS photo
-        if (warehouseArrivalUrl != null && warehouseArrivalUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            warehouseArrivalUrl,
-            'Pickup_Arrival_GPS.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch destination arrival GPS photo
-        if (destinationArrivalUrl != null && destinationArrivalUrl.isNotEmpty) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            destinationArrivalUrl,
-            'Dropoff_Arrival_GPS.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
-        // Fetch service invoice photos (first 3 max to avoid email size limits)
-        for (int i = 0; i < invoiceUrls.length && i < 3; i++) {
-          final url = invoiceUrls[i];
-          if (url.isNotEmpty) {
-            final attachment =
-                await EmailJsService.instance.fetchImageAsAttachment(
-              url,
-              'Service_Invoice_${i + 1}.jpg',
-            );
-            if (attachment != null) attachments.add(attachment);
-          }
-        }
-
-        // Fetch damaged item photos (max 5 to stay within email size limits)
-        for (int i = 0; i < damagePhotoUrls.length && i < 5; i++) {
-          final attachment =
-              await EmailJsService.instance.fetchImageAsAttachment(
-            damagePhotoUrls[i],
-            'Damaged_Item_${i + 1}.jpg',
-          );
-          if (attachment != null) attachments.add(attachment);
-        }
-
+        // Photos are sent as URL links inside template_params (no base64 attachments).
+        // This keeps the request payload small and avoids EmailJS size-limit rejections.
         final success = await EmailJsService.instance.sendTemplateEmail(
           toEmail: to,
           subject: subject,
           templateParams: templateParams,
-          attachments: attachments,
         );
         debugPrint('Email sent to $to: ${success ? "SUCCESS" : "FAILED"}');
-        debugPrint('Attachments included: ${attachments.length}');
 
         await Future.delayed(const Duration(milliseconds: 1100));
       }
