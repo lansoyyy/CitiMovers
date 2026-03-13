@@ -45,17 +45,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   void initState() {
     super.initState();
     _startResendTimer();
-    _autoPopulateOTP();
-  }
-
-  /// Auto-populate OTP fields with test OTP (for development/testing)
-  void _autoPopulateOTP() {
-    // Test OTP for development - no SMS required
-    const testOTP = '123456';
-    for (int i = 0; i < testOTP.length; i++) {
-      _otpControllers[i].text = testOTP[i];
-    }
-    setState(() {});
   }
 
   @override
@@ -277,40 +266,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     color: AppColors.textSecondary,
                   ),
                   textAlign: TextAlign.center,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Dev Mode Indicator
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: Colors.amber.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.developer_mode,
-                      color: Colors.amber.shade700,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Dev Mode: OTP auto-populated (123456)',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'Medium',
-                          color: Colors.amber.shade900,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
 

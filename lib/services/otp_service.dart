@@ -4,42 +4,81 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../utils/keys.dart';
-
 class OtpService {
   static const int _otpExpiryMinutes = 5; // OTP expires after 5 minutes
   static const int _maxAttempts = 3; // Maximum failed attempts before blocking
 
-  /// Generate a 6-digit OTP (fixed to 123456 for testing/dev mode)
-  static String _generateOtp() {
-    // Fixed OTP for development/testing - no SMS required
-    return '123456';
+  // Semaphore SMS API credentials
+  static const String _semaphoreApiKey = 'ebe19a2c821d7173336e61d2cac1ebb5';
+  static const String _semaphoreSenderName = 'Victory';
+  static const String _semaphoreEndpoint =
+      'https://api.semaphore.co/api/v4/messages';
 
-    // Uncomment this for production to use random OTPs:
-    // final random = Random();
-    // return (100000 + random.nextInt(900000)).toString();
+  /// Generate a random 6-digit OTP
+  static String _generateOtp() {
+    final random = Random();
+    return (100000 + random.nextInt(900000)).toString();
   }
 
-  /// Normalize phone number to +63 format
+  /// Normalize phone number to +63 format (used as Firestore key)
   static String _normalizePhoneNumber(String phoneNumber) {
-    String normalizedPhoneNumber = phoneNumber.replaceAll(RegExp(r'[\s-]'), '');
+    String normalized = phoneNumber.replaceAll(RegExp(r'[\s-]'), '');
 
-    if (!normalizedPhoneNumber.startsWith('+')) {
-      if (normalizedPhoneNumber.startsWith('0')) {
-        normalizedPhoneNumber = normalizedPhoneNumber.substring(1);
+    if (!normalized.startsWith('+')) {
+      if (normalized.startsWith('0')) {
+        normalized = normalized.substring(1);
       }
-      normalizedPhoneNumber = '+63$normalizedPhoneNumber';
+      normalized = '+63$normalized';
     }
 
-    return normalizedPhoneNumber;
+    return normalized;
+  }
+
+  /// Convert +63XXXXXXXXX to 09XXXXXXXXX for Semaphore
+  static String _toSemaphoreFormat(String e164Number) {
+    if (e164Number.startsWith('+63')) {
+      return '0${e164Number.substring(3)}';
+    }
+    if (e164Number.startsWith('63') && e164Number.length == 12) {
+      return '0${e164Number.substring(2)}';
+    }
+    return e164Number;
+  }
+
+  /// Send OTP SMS via Semaphore
+  static Future<bool> _sendSmsSemaphore(
+      String semaphoreNumber, String otp) async {
+    try {
+      final message =
+          '$otp is your CitiMovers OTP. Valid for $_otpExpiryMinutes minutes. Do not share it.';
+
+      final response = await http.post(
+        Uri.parse(_semaphoreEndpoint),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'apikey': _semaphoreApiKey,
+          'number': semaphoreNumber,
+          'message': message,
+          'sendername': _semaphoreSenderName,
+        },
+      );
+
+      debugPrint('[OTP SMS] Status: ${response.statusCode}');
+      debugPrint('[OTP SMS] Body: ${response.body}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('[OTP SMS] Error: $e');
+      return false;
+    }
   }
 
   /// Send OTP to phone number and store in Firestore with expiration
-  /// NOTE: txtbox SMS integration disabled - OTP is now generated locally for testing
   static Future<bool> sendOtp(String phoneNumber) async {
     try {
       final otp = _generateOtp();
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+      final semaphoreNumber = _toSemaphoreFormat(normalizedPhoneNumber);
       final firestore = FirebaseFirestore.instance;
 
       // Check if user is rate-limited (too many OTP requests)
@@ -70,21 +109,14 @@ class OtpService {
         }
       }
 
-      // Send OTP via SMS - DISABLED FOR TESTING
-      // const String url = 'https://ws-v2.txtbox.com/messaging/v1/sms/push';
-      // final response = await http.post(
-      //   Uri.parse(url),
-      //   headers: {
-      //     'X-TXTBOX-Auth': ApiKeys.txtBoxApiKey,
-      //   },
-      //   body: {
-      //     'message':
-      //           '$otp is your OTP from CitiMovers. Valid for 5 minutes. Do not share it.',
-      //     'number': normalizedPhoneNumber,
-      //   },
-      // );
+      // Send OTP via Semaphore SMS
+      final smsSent = await _sendSmsSemaphore(semaphoreNumber, otp);
+      if (!smsSent) {
+        debugPrint('[OTP] Semaphore SMS failed for $semaphoreNumber');
+        // Still store in Firestore so the user can retry on the OTP screen
+        // but return false so the caller can surface an error if desired
+      }
 
-      // if (response.statusCode >= 200 && response.statusCode < 300) {
       // Store OTP in Firestore with expiration
       final otpDocRef = firestore.collection('otps').doc();
       final expiresAt =
@@ -108,12 +140,8 @@ class OtpService {
       }, SetOptions(merge: true));
 
       debugPrint(
-          'OTP generated for $normalizedPhoneNumber (not sent via SMS): $otp, expires at $expiresAt');
-      return true;
-      // }
-
-      // debugPrint('Failed to send OTP: ${response.statusCode}');
-      // return false;
+          '[OTP] Sent to $semaphoreNumber (stored as $normalizedPhoneNumber), expires at $expiresAt');
+      return smsSent;
     } catch (e) {
       debugPrint('Error sending OTP: $e');
       return false;
