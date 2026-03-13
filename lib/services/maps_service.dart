@@ -301,9 +301,9 @@ class MapsService {
         // Formula: Distance x 3 / 2 x fuelPricePerLiter (Km/Liter ÷ 2, Fuel price/litre from Firestore)
         // Minimum distance: 133.33km = ₱12,000
         calculatedFare = (distanceKm * 3 / 2) * _fuelPricePerLiter;
-        // Apply minimum rate of ₱12,000
-        if (calculatedFare < 12000) {
-          calculatedFare = 12000;
+        // Apply minimum rate of ₱12,750 (first 100km × 3 ÷ 2 × 85)
+        if (calculatedFare < 12750) {
+          calculatedFare = 12750;
         }
         break;
       case 'AUV':

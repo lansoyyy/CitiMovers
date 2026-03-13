@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../../services/auth_service.dart';
-import '../../../services/wallet_service.dart';
 import '../../../models/booking_model.dart';
 import '../../models/rider_model.dart';
 
@@ -20,7 +19,6 @@ class RiderEarningsTab extends StatefulWidget {
 class _RiderEarningsTabState extends State<RiderEarningsTab> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthService _authService = AuthService();
-  final WalletService _walletService = WalletService();
 
   DateTime? _parseDateTime(dynamic value) {
     if (value == null) return null;
@@ -41,12 +39,9 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   ];
 
   // Data from Firebase
-  double _totalEarnings = 0.0;
-  double _todayEarnings = 0.0;
   double _walletBalance = 0.0; // Actual rider wallet balance
   int _totalDeliveries = 0;
   double _averageRating = 0.0;
-  double _totalTips = 0.0;
   bool _isLoading = true;
   RiderModel? _riderData;
 
@@ -67,7 +62,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   // Load wallet form controllers
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _recipientController = TextEditingController();
-  String _selectedPaymentMethod = 'gcash';
   String _selectedLoadMethod = 'gcash';
   bool _isProcessingTransaction = false;
 
@@ -150,7 +144,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'P${_totalEarnings.toStringAsFixed(2)}',
+                                      '---',
                                       style: const TextStyle(
                                         fontSize: 36,
                                         fontFamily: 'Bold',
@@ -296,8 +290,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     child: _StatCard(
                                       icon: FontAwesomeIcons.handHoldingDollar,
                                       title: 'Tips Received',
-                                      value:
-                                          'P${_totalTips.toStringAsFixed(0)}',
+                                      value: '---',
                                       color: AppColors.success,
                                     ),
                                   ),
@@ -306,9 +299,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     child: _StatCard(
                                       icon: FontAwesomeIcons.chartLine,
                                       title: 'Avg Tip/Delivery',
-                                      value: _totalDeliveries > 0
-                                          ? 'P${(_totalTips / _totalDeliveries).toStringAsFixed(0)}'
-                                          : 'P0',
+                                      value: '---',
                                       color: AppColors.warning,
                                     ),
                                   ),
@@ -321,8 +312,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     child: _StatCard(
                                       icon: FontAwesomeIcons.pesoSign,
                                       title: 'Today',
-                                      value:
-                                          'P${_todayEarnings.toStringAsFixed(0)}',
+                                      value: '---',
                                       color: AppColors.success,
                                     ),
                                   ),
@@ -331,8 +321,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     child: _StatCard(
                                       icon: FontAwesomeIcons.chartLine,
                                       title: 'Average',
-                                      value:
-                                          'P${(_totalEarnings / _totalDeliveries).toStringAsFixed(0)}',
+                                      value: '---',
                                       color: AppColors.warning,
                                     ),
                                   ),
@@ -387,24 +376,21 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                 const SizedBox(height: 16),
                                 _DistributionRow(
                                   title: 'Operator (80%)',
-                                  amount:
-                                      'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}',
+                                  amount: '---',
                                   color: AppColors.success,
                                   icon: Icons.account_balance,
                                 ),
                                 const SizedBox(height: 12),
                                 _DistributionRow(
                                   title: 'Admin (18%)',
-                                  amount:
-                                      'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}',
+                                  amount: '---',
                                   color: AppColors.primaryBlue,
                                   icon: Icons.admin_panel_settings,
                                 ),
                                 const SizedBox(height: 12),
                                 _DistributionRow(
                                   title: 'BIR (2%)',
-                                  amount:
-                                      'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}',
+                                  amount: '---',
                                   color: AppColors.warning,
                                   icon: Icons.receipt_long,
                                 ),
@@ -583,17 +569,17 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     _buildLegendItem(
                                         'Operator (80%)',
                                         AppColors.success,
-                                        'P${(_totalEarnings * _operatorPercentage).toStringAsFixed(2)}'),
+                                        '---'),
                                     const SizedBox(height: 8),
                                     _buildLegendItem(
                                         'Admin (18%)',
                                         AppColors.primaryBlue,
-                                        'P${(_totalEarnings * _adminPercentage).toStringAsFixed(2)}'),
+                                        '---'),
                                     const SizedBox(height: 8),
                                     _buildLegendItem(
                                         'BIR (2%)',
                                         AppColors.warning,
-                                        'P${(_totalEarnings * _birPercentage).toStringAsFixed(2)}'),
+                                        '---'),
                                   ],
                                 ),
                               ),
@@ -649,8 +635,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                   final isPositive =
                                       transaction['type'] == 'earning' ||
                                           transaction['type'] == 'topup';
-                                  final amount =
-                                      (transaction['amount'] as num).toDouble();
                                   final createdAt = transaction['createdAt'];
                                   String dateStr = 'Unknown';
 
@@ -665,16 +649,12 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
                                     title: _getTransactionTitle(
                                         transaction['type']),
                                     date: dateStr,
-                                    amount: isPositive
-                                        ? '+P${amount.toStringAsFixed(2)}'
-                                        : '-P${amount.toStringAsFixed(2)}',
+                                    amount: '---',
                                     isPositive: isPositive,
                                     onTap: () => _showTransactionDetails(
                                       _getTransactionTitle(transaction['type']),
                                       dateStr,
-                                      isPositive
-                                          ? '+P${amount.toStringAsFixed(2)}'
-                                          : '-P${amount.toStringAsFixed(2)}',
+                                      '---',
                                       transaction['id'] ?? '',
                                       transaction['description'] ??
                                           'No description available',
@@ -718,16 +698,12 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
       // Load completed bookings for earnings
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final tomorrow = today.add(const Duration(days: 1));
 
       final bookingsQuery = await _firestore
           .collection('bookings')
           .where('driverId', isEqualTo: riderId)
           .where('status', whereIn: ['completed', 'delivered']).get();
 
-      double totalEarnings = 0;
-      double todayEarnings = 0;
-      double totalTips = 0;
       int totalDeliveries = 0;
 
       // Initialize chart data
@@ -757,21 +733,15 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
         final unloading = booking.unloadingDemurrageFee ?? 0.0;
         final earnings = baseFare + loading + unloading;
 
-        totalEarnings += earnings;
         totalDeliveries++;
 
-        // Add tip amount if available
+        // Add tip amount counted for delivery total only
         if (booking.tipAmount != null && booking.tipAmount! > 0) {
-          totalTips += booking.tipAmount!;
-        }
-
-        // Check if today's earnings - fixed to check same day
-        final bookingDate = booking.createdAt;
-        if (bookingDate.isAfter(today) && bookingDate.isBefore(tomorrow)) {
-          todayEarnings += earnings;
+          // tip tracking removed from display
         }
 
         // Weekly data
+        final bookingDate = booking.createdAt;
         if (bookingDate.isAfter(startOfWeek)) {
           final dayIndex = bookingDate.weekday - 1; // 0 = Monday
           if (dayIndex >= 0 && dayIndex < 7) {
@@ -814,8 +784,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
       }
 
       setState(() {
-        _totalEarnings = totalEarnings;
-        _todayEarnings = todayEarnings;
         _walletBalance = walletBalance;
         _totalDeliveries = totalDeliveries;
         _weeklyEarnings = weeklyEarnings;
@@ -834,281 +802,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   Future<void> _refreshData() async {
     setState(() => _isLoading = true);
     await _loadEarningsData();
-  }
-
-  void _showTopUpDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.6,
-        maxChildSize: 0.95,
-        builder: (_, controller) => Container(
-          padding: const EdgeInsets.all(20),
-          decoration: const BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_wallet,
-                      color: AppColors.success,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Top Up Wallet',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontFamily: 'Bold',
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Current Balance
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.success.withValues(alpha: 0.1),
-                      AppColors.success.withValues(alpha: 0.05),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.2),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Current Balance',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Regular',
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'P${_totalEarnings.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontFamily: 'Bold',
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Quick Amount Buttons
-              const Text(
-                'Quick Amount',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontFamily: 'Bold',
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _QuickAmountButton(
-                    amount: '500',
-                    onTap: () => _amountController.text = '500',
-                  ),
-                  const SizedBox(width: 12),
-                  _QuickAmountButton(
-                    amount: '1000',
-                    onTap: () => _amountController.text = '1000',
-                  ),
-                  const SizedBox(width: 12),
-                  _QuickAmountButton(
-                    amount: '2000',
-                    onTap: () => _amountController.text = '2000',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Amount Input
-              const Text(
-                'Enter Amount',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontFamily: 'Bold',
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _amountController,
-                decoration: InputDecoration(
-                  labelText: 'Amount (P)',
-                  prefixText: 'P ',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                  fillColor: AppColors.scaffoldBackground,
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 24),
-
-              // Payment Methods
-              const Text(
-                'Payment Method',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontFamily: 'Bold',
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _PaymentMethodCard(
-                icon: FontAwesomeIcons.g,
-                title: 'GCash',
-                subtitle: 'Fast and secure payment',
-                isSelected: _selectedPaymentMethod == 'gcash',
-                onTap: () => setState(() => _selectedPaymentMethod = 'gcash'),
-              ),
-              const SizedBox(height: 12),
-              _PaymentMethodCard(
-                icon: FontAwesomeIcons.creditCard,
-                title: 'PayMaya',
-                subtitle: 'Digital wallet payment',
-                isSelected: _selectedPaymentMethod == 'paymaya',
-                onTap: () => setState(() => _selectedPaymentMethod = 'paymaya'),
-              ),
-              const SizedBox(height: 12),
-              _PaymentMethodCard(
-                icon: FontAwesomeIcons.university,
-                title: 'Bank Transfer',
-                subtitle: 'Direct bank deposit',
-                isSelected: _selectedPaymentMethod == 'bank',
-                onTap: () => setState(() => _selectedPaymentMethod = 'bank'),
-              ),
-              const Spacer(),
-
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isProcessingTransaction
-                          ? null
-                          : () async {
-                              if (_amountController.text.isNotEmpty) {
-                                final amount =
-                                    double.tryParse(_amountController.text);
-                                if (amount != null && amount > 0) {
-                                  setState(
-                                      () => _isProcessingTransaction = true);
-
-                                  final riderId =
-                                      _authService.currentUser?.userId;
-                                  if (riderId != null) {
-                                    final success =
-                                        await _walletService.topUpWallet(
-                                      userId: riderId,
-                                      amount: amount,
-                                      description:
-                                          'Top up wallet via ${_selectedPaymentMethod.toUpperCase()}',
-                                      referenceId: _selectedPaymentMethod,
-                                    );
-
-                                    if (success) {
-                                      Navigator.of(context).pop();
-                                      UIHelpers.showSuccessToast(
-                                          'Top-up of P${amount.toStringAsFixed(2)} successful');
-                                      _amountController.clear();
-                                      _refreshData();
-                                    } else {
-                                      UIHelpers.showErrorToast(
-                                          'Top-up failed. Please try again.');
-                                    }
-                                  } else {
-                                    UIHelpers.showErrorToast(
-                                        'User not logged in');
-                                  }
-
-                                  setState(
-                                      () => _isProcessingTransaction = false);
-                                } else {
-                                  UIHelpers.showErrorToast(
-                                      'Please enter a valid amount');
-                                }
-                              } else {
-                                UIHelpers.showErrorToast(
-                                    'Please enter an amount');
-                              }
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Proceed',
-                        style: TextStyle(color: AppColors.white),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   void _showLoadWalletDialog() {
@@ -2023,132 +1716,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
   }
 }
 
-class _QuickAmountButton extends StatelessWidget {
-  final String amount;
-  final VoidCallback onTap;
-
-  const _QuickAmountButton({
-    required this.amount,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.primaryRed.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: AppColors.primaryRed.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Text(
-            'P$amount',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14,
-              fontFamily: 'Bold',
-              color: AppColors.primaryRed,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PaymentMethodCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _PaymentMethodCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primaryRed.withValues(alpha: 0.1)
-              : AppColors.scaffoldBackground,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? AppColors.primaryRed
-                : AppColors.textSecondary.withValues(alpha: 0.2),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppColors.primaryRed
-                    : AppColors.textSecondary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? AppColors.white : AppColors.textSecondary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontFamily: 'Bold',
-                      color: isSelected
-                          ? AppColors.primaryRed
-                          : AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontFamily: 'Regular',
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              isSelected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              color:
-                  isSelected ? AppColors.primaryRed : AppColors.textSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _StatCard extends StatelessWidget {
   final IconData icon;

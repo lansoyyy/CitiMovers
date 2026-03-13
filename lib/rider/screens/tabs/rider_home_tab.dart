@@ -10,7 +10,6 @@ import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import '../profile/rider_settings_screen.dart';
 import '../../models/delivery_request_model.dart';
-import '../../../models/booking_model.dart';
 import '../delivery/rider_delivery_progress_screen.dart';
 
 class RiderHomeTab extends StatefulWidget {

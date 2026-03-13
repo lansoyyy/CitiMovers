@@ -8,8 +8,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../delivery/rider_delivery_progress_screen.dart';
-import '../../../models/location_model.dart';
-import '../../../models/vehicle_model.dart';
 import '../../models/delivery_request_model.dart';
 import '../../services/rider_auth_service.dart';
 

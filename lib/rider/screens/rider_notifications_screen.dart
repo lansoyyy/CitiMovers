@@ -517,17 +517,7 @@ class RiderNotificationCard extends StatelessWidget {
                               color: AppColors.textHint,
                             ),
                           ),
-                          if (notification.amount != null) ...[
-                            const Spacer(),
-                            Text(
-                              '₱${notification.amount!.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Medium',
-                                color: AppColors.success,
-                              ),
-                            ),
-                          ],
+                          // Amount intentionally hidden from driver view
                         ],
                       ),
                     ],

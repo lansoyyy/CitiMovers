@@ -33,7 +33,8 @@ class _RiderDeliveryHistoryScreenState
   List<DeliveryHistory> _deliveries = [];
   List<DeliveryHistory> _filteredDeliveries = [];
   bool _isLoading = true;
-  Map<String, String> _customerNames = {}; // Cache for customer names
+  // ignore: unused_field
+  Map<String, String> _customerNames = {};
 
   @override
   void initState() {
@@ -809,15 +810,6 @@ class _DeliveryHistoryCard extends StatelessWidget {
     return DateFormat('MMM d, yyyy h:mm a').format(dt);
   }
 
-  DateTime? _parseReviewDate(dynamic value) {
-    if (value == null) return null;
-    if (value is DateTime) return value;
-    if (value is Timestamp) return value.toDate();
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final photoCount = _getAllPhotoUrls().length;
@@ -1127,7 +1119,7 @@ class _DeliveryHistoryCard extends StatelessWidget {
                         'Distance', delivery.distance, Icons.straighten),
                     _buildSummaryItem(
                         'Amount',
-                        '₱${delivery.fare.toStringAsFixed(0)}',
+                        '---',
                         Icons.payments_outlined),
                     _buildSummaryItem(
                         'Payment',
