@@ -9,8 +9,8 @@ class OtpService {
   static const int _maxAttempts = 3; // Maximum failed attempts before blocking
 
   // Semaphore SMS API credentials
-  static const String _semaphoreApiKey = 'ebe19a2c821d7173336e61d2cac1ebb5';
-  static const String _semaphoreSenderName = 'Victory';
+  static const String _semaphoreApiKey = '82fc33050497dd752b5d0ea2a94ed123';
+  static const String _semaphoreSenderName = 'Citimovers';
   static const String _semaphoreEndpoint =
       'https://api.semaphore.co/api/v4/messages';
 
@@ -52,9 +52,12 @@ class OtpService {
       final message =
           '$otp is your CitiMovers OTP. Valid for $_otpExpiryMinutes minutes. Do not share it.';
 
+      // Pass body as a Map — the http package automatically encodes it as
+      // application/x-www-form-urlencoded and sets the Content-Type header.
+      // Do NOT set Content-Type manually; doing so alongside a Map body can
+      // cause the package to skip form-encoding in http 1.x.
       final response = await http.post(
         Uri.parse(_semaphoreEndpoint),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {
           'apikey': _semaphoreApiKey,
           'number': semaphoreNumber,
