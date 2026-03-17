@@ -117,14 +117,17 @@ class BookingService {
             'estimatedDuration': estimatedDurationMinutes,
           if (reportRecipients != null && reportRecipients.trim().isNotEmpty)
             'reportRecipients': reportRecipients.trim(),
-          'paymentCapturedAt': now.millisecondsSinceEpoch,
+          'paymentHeldAt': now.millisecondsSinceEpoch,
           'paymentCapturedAmount': estimatedFare,
           'paymentCapturedFromBalance': currentBalance,
           'paymentCapturedToBalance': newBalance,
-          'paymentStatus': 'captured',
+          // Payment is ON HOLD — deducted from wallet now, but only finalised
+          // once delivery is completed. If the customer cancels, the held
+          // amount is captured as a cancellation fee (not refunded).
+          'paymentStatus': 'held',
         });
 
-        // Deduct from wallet
+        // Deduct from wallet (hold)
         transaction.update(userRef, {
           'walletBalance': newBalance,
           'updatedAt': now.toIso8601String(),
@@ -134,11 +137,11 @@ class BookingService {
         transaction.set(walletTxnRef, {
           'id': walletTxnRef.id,
           'userId': customerId,
-          'type': 'payment',
+          'type': 'payment_hold',
           'amount': -estimatedFare,
           'previousBalance': currentBalance,
           'newBalance': newBalance,
-          'description': 'Booking payment',
+          'description': 'Booking payment (on hold — captured on completion)',
           'referenceId': bookingId,
           'createdAt': Timestamp.fromDate(now),
         });
@@ -425,12 +428,13 @@ class BookingService {
     }
   }
 
-  /// Cancel booking and refund the pre-captured fare to the customer's wallet
+  /// Cancel booking by customer — the held fare is captured as a cancellation
+  /// fee and is NOT refunded to the customer's wallet.
   Future<bool> cancelBooking(String bookingId, String reason) async {
     try {
       final now = DateTime.now();
 
-      // Fetch booking to get captured amount and customerId
+      // Fetch booking
       final bookingRef =
           _firestore.collection(_bookingsCollection).doc(bookingId);
       final bookingSnap = await bookingRef.get();
@@ -445,20 +449,56 @@ class BookingService {
         return false;
       }
 
+      final capturedAmount =
+          (bookingData['paymentCapturedAmount'] as num?)?.toDouble() ??
+              (bookingData['estimatedFare'] as num?)?.toDouble() ??
+              0.0;
+
+      // Capture the held amount as a cancellation fee — no wallet refund.
+      await bookingRef.update({
+        'status': 'cancelled',
+        'cancellationReason': reason,
+        'updatedAt': now.millisecondsSinceEpoch,
+        'cancelledAt': now.millisecondsSinceEpoch,
+        'paymentStatus': 'captured',
+        'paymentCapturedAt': now.millisecondsSinceEpoch,
+      });
+
+      debugPrint(
+          'Booking $bookingId cancelled by customer — '
+          'P$capturedAmount held amount captured as cancellation fee.');
+      return true;
+    } catch (e) {
+      debugPrint('Error cancelling booking: $e');
+      return false;
+    }
+  }
+
+  /// Cancel booking by rider — the held fare is refunded to the customer's
+  /// wallet because the cancellation was not the customer's fault.
+  Future<bool> cancelBookingByRider(
+      String bookingId, String riderId, String reason) async {
+    try {
+      final now = DateTime.now();
+
+      final bookingRef =
+          _firestore.collection(_bookingsCollection).doc(bookingId);
+      final bookingSnap = await bookingRef.get();
+      if (!bookingSnap.exists) return false;
+
+      final bookingData = bookingSnap.data()!;
       final customerId = bookingData['customerId'] as String?;
       final capturedAmount =
           (bookingData['paymentCapturedAmount'] as num?)?.toDouble() ??
               (bookingData['estimatedFare'] as num?)?.toDouble() ??
               0.0;
 
-      // Run wallet refund + status update atomically
       final userRef = _firestore.collection('users').doc(customerId);
       final walletTxnRef = _firestore.collection('wallet_transactions').doc();
 
       await _firestore.runTransaction((txn) async {
-        // Update booking status
         txn.update(bookingRef, {
-          'status': 'cancelled',
+          'status': 'cancelled_by_rider',
           'cancellationReason': reason,
           'updatedAt': now.millisecondsSinceEpoch,
           'cancelledAt': now.millisecondsSinceEpoch,
@@ -466,7 +506,6 @@ class BookingService {
         });
 
         if (customerId != null && customerId.isNotEmpty && capturedAmount > 0) {
-          // Restore wallet balance
           final userSnap = await txn.get(userRef);
           final currentBalance =
               (userSnap.data()?['walletBalance'] as num?)?.toDouble() ?? 0.0;
@@ -477,7 +516,6 @@ class BookingService {
             'updatedAt': now.toIso8601String(),
           });
 
-          // Record wallet transaction
           txn.set(walletTxnRef, {
             'id': walletTxnRef.id,
             'userId': customerId,
@@ -485,17 +523,19 @@ class BookingService {
             'amount': capturedAmount,
             'previousBalance': currentBalance,
             'newBalance': newBalance,
-            'description': 'Booking refund - cancellation',
+            'description': 'Booking refund — cancelled by rider',
             'referenceId': bookingId,
             'createdAt': Timestamp.fromDate(now),
           });
         }
       });
 
-      debugPrint('Booking $bookingId cancelled and P$capturedAmount refunded.');
+      debugPrint(
+          'Booking $bookingId cancelled by rider $riderId — '
+          'P$capturedAmount refunded to customer.');
       return true;
     } catch (e) {
-      debugPrint('Error cancelling booking: $e');
+      debugPrint('Error cancelling booking by rider: $e');
       return false;
     }
   }
@@ -783,6 +823,13 @@ class BookingService {
         }
 
         updateData['deliveryPhotos'] = merged;
+      }
+
+      // Finalise payment when delivery is completed
+      if (status == 'completed') {
+        updateData['paymentStatus'] = 'captured';
+        updateData['paymentCapturedAt'] =
+            DateTime.now().millisecondsSinceEpoch;
       }
 
       await _firestore

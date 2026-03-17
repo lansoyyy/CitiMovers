@@ -183,7 +183,9 @@ class _CancelBookingDialogState extends State<CancelBookingDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Cancelling this booking may affect your delivery schedule.',
+                      'Cancelling this booking will forfeit your payment. '
+                      'The booking fare will be charged as a cancellation fee '
+                      'and will not be refunded.',
                       style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Regular',
