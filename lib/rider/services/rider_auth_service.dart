@@ -497,7 +497,13 @@ class RiderAuthService {
   /// Login existing rider
   Future<RiderModel?> loginRider(String phoneNumber) async {
     try {
-      final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+      // Demo driver account: the reviewer logs in with 09090104355 but we
+      // fetch details from the real account 09560288513.
+      const _demoLoginPhone = '+639090104355';
+      const _demoRealPhone  = '+639560288513';
+      final normalizedInput = _normalizePhoneNumber(phoneNumber);
+      final normalizedPhoneNumber =
+          normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
 
       final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
       final docSnap = await riderDocRef.get();
@@ -540,7 +546,12 @@ class RiderAuthService {
   /// Check if phone number is registered
   Future<bool> isPhoneRegistered(String phoneNumber) async {
     try {
-      final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+      const _demoLoginPhone = '+639090104355';
+      const _demoRealPhone  = '+639560288513';
+      final normalizedInput = _normalizePhoneNumber(phoneNumber);
+      // Demo driver: remap to the real account for the Firestore lookup
+      final normalizedPhoneNumber =
+          normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
 
       final doc = await _riderDocByPhone(normalizedPhoneNumber).get();
       if (doc.exists) return true;

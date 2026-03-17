@@ -14,6 +14,23 @@ class OtpService {
   static const String _semaphoreEndpoint =
       'https://api.semaphore.co/api/v4/messages';
 
+  // ---------------------------------------------------------------------------
+  // Demo / Play Store review accounts
+  // These accounts bypass real SMS sending and OTP validation so that app
+  // store reviewers can log in without receiving a real SMS.
+  // ---------------------------------------------------------------------------
+  static const String _demoCustomerPhone = '+639639530422';
+  // Demo driver login number (Play Store reviewer uses this to log in)
+  static const String _demoDriverPhone = '+639090104355';
+  static const String _demoOtp = '123456';
+
+  static bool _isDemoAccount(String normalizedPhone) {
+    return normalizedPhone == _demoCustomerPhone ||
+        normalizedPhone == _demoDriverPhone;
+  }
+
+  // ---------------------------------------------------------------------------
+
   /// Generate a random 6-digit OTP
   static String _generateOtp() {
     final random = Random();
@@ -79,8 +96,15 @@ class OtpService {
   /// Send OTP to phone number and store in Firestore with expiration
   static Future<bool> sendOtp(String phoneNumber) async {
     try {
-      final otp = _generateOtp();
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+
+      // Demo accounts: skip SMS and rate-limiting entirely
+      if (_isDemoAccount(normalizedPhoneNumber)) {
+        debugPrint('[OTP] Demo account — skipping SMS for $normalizedPhoneNumber');
+        return true;
+      }
+
+      final otp = _generateOtp();
       final semaphoreNumber = _toSemaphoreFormat(normalizedPhoneNumber);
       final firestore = FirebaseFirestore.instance;
 
@@ -155,6 +179,14 @@ class OtpService {
   static Future<bool> verifyOtp(String phoneNumber, String userOtp) async {
     try {
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
+
+      // Demo accounts: accept the hardcoded OTP without any Firestore lookup
+      if (_isDemoAccount(normalizedPhoneNumber)) {
+        final valid = userOtp == _demoOtp;
+        debugPrint('[OTP] Demo account — verification ${valid ? 'passed' : 'failed'} for $normalizedPhoneNumber');
+        return valid;
+      }
+
       final firestore = FirebaseFirestore.instance;
 
       // Find the latest unverified OTP for this phone number
