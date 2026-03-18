@@ -20,7 +20,7 @@
     </intent>
     </queries>
     <application
-        android:label="Customers"
+        android:label="Drivers"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
