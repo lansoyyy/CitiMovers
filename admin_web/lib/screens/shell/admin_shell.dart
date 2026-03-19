@@ -8,8 +8,7 @@ class AdminShell extends StatelessWidget {
   final Widget child;
   final String currentPath;
 
-  const AdminShell(
-      {super.key, required this.child, required this.currentPath});
+  const AdminShell({super.key, required this.child, required this.currentPath});
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +20,7 @@ class AdminShell extends StatelessWidget {
             child: Column(
               children: [
                 _TopBar(currentPath: currentPath),
-                Expanded(
-                  child: child,
-                ),
+                Expanded(child: child),
               ],
             ),
           ),
@@ -76,21 +73,31 @@ class _Sidebar extends StatelessWidget {
                     color: AdminTheme.accent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.local_shipping,
-                      color: Colors.white, size: 20),
+                  child: const Icon(
+                    Icons.local_shipping,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('CitiMovers',
-                        style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700)),
-                    Text('Admin Panel',
-                        style: GoogleFonts.inter(
-                            color: Colors.white54, fontSize: 11)),
+                    Text(
+                      'CitiMovers',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Admin Panel',
+                      style: GoogleFonts.inter(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -109,8 +116,7 @@ class _Sidebar extends StatelessWidget {
               itemBuilder: (context, index) {
                 final item = _navItems[index];
                 final isActive = currentPath.startsWith(item.route);
-                return _NavTile(
-                    item: item, isActive: isActive);
+                return _NavTile(item: item, isActive: isActive);
               },
             ),
           ),
@@ -182,16 +188,26 @@ class _TopBar extends StatelessWidget {
     if (currentPath.startsWith('/riders/')) return 'Rider Detail';
     if (currentPath.startsWith('/bookings/')) return 'Booking Detail';
     switch (currentPath) {
-      case '/dashboard': return 'Dashboard';
-      case '/customers': return 'Customers';
-      case '/riders': return 'Riders';
-      case '/bookings': return 'Bookings';
-      case '/finance': return 'Finance & Reconciliation';
-      case '/notifications': return 'Notifications';
-      case '/promos': return 'Promo Banners';
-      case '/audit-logs': return 'Audit Logs';
-      case '/maintenance': return 'Maintenance';
-      default: return 'Admin Panel';
+      case '/dashboard':
+        return 'Dashboard';
+      case '/customers':
+        return 'Customers';
+      case '/riders':
+        return 'Riders';
+      case '/bookings':
+        return 'Bookings';
+      case '/finance':
+        return 'Finance & Reconciliation';
+      case '/notifications':
+        return 'Notifications';
+      case '/promos':
+        return 'Promo Banners';
+      case '/audit-logs':
+        return 'Audit Logs';
+      case '/maintenance':
+        return 'Maintenance';
+      default:
+        return 'Admin Panel';
     }
   }
 
@@ -206,11 +222,14 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text(_title,
-              style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AdminTheme.textPrimary)),
+          Text(
+            _title,
+            style: GoogleFonts.inter(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AdminTheme.textPrimary,
+            ),
+          ),
           const Spacer(),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -222,14 +241,20 @@ class _TopBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.admin_panel_settings,
-                    size: 16, color: AdminTheme.primary),
+                const Icon(
+                  Icons.admin_panel_settings,
+                  size: 16,
+                  color: AdminTheme.primary,
+                ),
                 const SizedBox(width: 6),
-                Text('Administrator',
-                    style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AdminTheme.textPrimary)),
+                Text(
+                  'Administrator',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AdminTheme.textPrimary,
+                  ),
+                ),
               ],
             ),
           ),

@@ -44,7 +44,9 @@ class _FinanceScreenState extends State<FinanceScreen>
               unselectedLabelColor: AdminTheme.textSecondary,
               indicatorColor: AdminTheme.primary,
               labelStyle: GoogleFonts.inter(
-                  fontSize: 13, fontWeight: FontWeight.w600),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
               tabs: const [
                 Tab(text: 'Payment Transactions'),
                 Tab(text: 'Wallet Ledger'),
@@ -80,8 +82,9 @@ class _PaymentsTab extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return const EmptyState(
-              message: 'No payment records',
-              icon: Icons.payments_outlined);
+            message: 'No payment records',
+            icon: Icons.payments_outlined,
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(16),
@@ -103,17 +106,22 @@ class _PaymentsTab extends StatelessWidget {
               title: Text(
                 '$method  ·  ₱ ${amount.toStringAsFixed(2)}',
                 style: GoogleFonts.inter(
-                    fontSize: 13, fontWeight: FontWeight.w500),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Booking: ${d['bookingId'] ?? '—'}',
-                      style:
-                          GoogleFonts.inter(fontSize: 11)),
+                  Text(
+                    'Booking: ${d['bookingId'] ?? '—'}',
+                    style: GoogleFonts.inter(fontSize: 11),
+                  ),
                   if (ts != null)
-                    Text(DateFormat('MMM d, yyyy – h:mm a').format(ts),
-                        style: GoogleFonts.inter(fontSize: 10)),
+                    Text(
+                      DateFormat('MMM d, yyyy – h:mm a').format(ts),
+                      style: GoogleFonts.inter(fontSize: 10),
+                    ),
                 ],
               ),
             );
@@ -136,8 +144,9 @@ class _WalletLedgerTab extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return const EmptyState(
-              message: 'No wallet transactions',
-              icon: Icons.account_balance_wallet_outlined);
+            message: 'No wallet transactions',
+            icon: Icons.account_balance_wallet_outlined,
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(16),
@@ -159,15 +168,25 @@ class _WalletLedgerTab extends StatelessWidget {
               dense: true,
               leading: Icon(
                 amount >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                color: amount >= 0 ? AdminTheme.statusActive : AdminTheme.accent,
+                color: amount >= 0
+                    ? AdminTheme.statusActive
+                    : AdminTheme.accent,
                 size: 18,
               ),
-              title: Text(type,
-                  style: GoogleFonts.inter(
-                      fontSize: 12, fontWeight: FontWeight.w500)),
-              subtitle: Text(userId,
-                  style: GoogleFonts.inter(
-                      fontSize: 11, color: AdminTheme.textSecondary)),
+              title: Text(
+                type,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: Text(
+                userId,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: AdminTheme.textSecondary,
+                ),
+              ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -175,17 +194,21 @@ class _WalletLedgerTab extends StatelessWidget {
                   Text(
                     '${amount >= 0 ? '+' : ''}₱ ${amount.toStringAsFixed(2)}',
                     style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: amount >= 0
-                            ? AdminTheme.statusActive
-                            : AdminTheme.accent),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: amount >= 0
+                          ? AdminTheme.statusActive
+                          : AdminTheme.accent,
+                    ),
                   ),
                   if (ts != null)
-                    Text(DateFormat('MMM d').format(ts),
-                        style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: AdminTheme.textSecondary)),
+                    Text(
+                      DateFormat('MMM d').format(ts),
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: AdminTheme.textSecondary,
+                      ),
+                    ),
                 ],
               ),
             );
@@ -226,8 +249,8 @@ class _ReconciliationQueueTab extends StatelessWidget {
             final amount = (d['finalFare'] ?? d['estimatedFare'] ?? 0) as num;
             final createdAt = AdminRepository.parseTimestamp(d['createdAt']);
             final issueStatus = (d['issueStatus'] ?? '').toString();
-            final reconciliationStatus =
-                (d['reconciliationStatus'] ?? '').toString();
+            final reconciliationStatus = (d['reconciliationStatus'] ?? '')
+                .toString();
             final shortId = docs[i].id.length > 8
                 ? docs[i].id.substring(0, 8)
                 : docs[i].id;
@@ -314,15 +337,14 @@ class _ReconciliationQueueTab extends StatelessWidget {
     required String label,
   }) async {
     final reasonCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
             title: Text(label),
             content: TextField(
               controller: reasonCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Reason / note',
-              ),
+              decoration: const InputDecoration(labelText: 'Reason / note'),
               maxLines: 3,
             ),
             actions: [

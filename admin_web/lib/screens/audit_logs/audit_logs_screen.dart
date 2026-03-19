@@ -26,8 +26,9 @@ class AuditLogsScreen extends StatelessWidget {
                 final docs = snap.data?.docs ?? [];
                 if (docs.isEmpty) {
                   return const EmptyState(
-                      message: 'No audit logs yet',
-                      icon: Icons.history_outlined);
+                    message: 'No audit logs yet',
+                    icon: Icons.history_outlined,
+                  );
                 }
                 return Card(
                   child: ListView.separated(
@@ -36,14 +37,16 @@ class AuditLogsScreen extends StatelessWidget {
                         const Divider(height: 1, color: AdminTheme.divider),
                     itemBuilder: (context, i) {
                       final d = docs[i].data() as Map<String, dynamic>;
-                      final action = (d['action'] ?? '—')
-                          .toString()
-                          .replaceAll('_', ' ');
+                      final action = (d['action'] ?? '—').toString().replaceAll(
+                        '_',
+                        ' ',
+                      );
                       final entityType = (d['entityType'] ?? '').toString();
                       final entityId = (d['entityId'] ?? '').toString();
                       final reason = (d['reason'] ?? '').toString();
                       final ts = AdminRepository.parseTimestamp(
-                          d['timestamp'] ?? d['createdAt']);
+                        d['timestamp'] ?? d['createdAt'],
+                      );
 
                       return ListTile(
                         dense: true,
@@ -54,30 +57,38 @@ class AuditLogsScreen extends StatelessWidget {
                             color: AdminTheme.primary.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Icon(Icons.history,
-                              size: 18, color: AdminTheme.primary),
+                          child: const Icon(
+                            Icons.history,
+                            size: 18,
+                            color: AdminTheme.primary,
+                          ),
                         ),
-                        title: Text(action.toUpperCase(),
-                            style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.5)),
+                        title: Text(
+                          action.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               '$entityType: $entityId',
                               style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  color: AdminTheme.textSecondary),
+                                fontSize: 11,
+                                color: AdminTheme.textSecondary,
+                              ),
                             ),
                             if (reason.isNotEmpty)
                               Text(
                                 reason,
                                 style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    fontStyle: FontStyle.italic,
-                                    color: AdminTheme.textSecondary),
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                  color: AdminTheme.textSecondary,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -87,8 +98,9 @@ class AuditLogsScreen extends StatelessWidget {
                             ? Text(
                                 DateFormat('MMM d, h:mm a').format(ts),
                                 style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    color: AdminTheme.textSecondary),
+                                  fontSize: 10,
+                                  color: AdminTheme.textSecondary,
+                                ),
                               )
                             : null,
                         isThreeLine: reason.isNotEmpty,

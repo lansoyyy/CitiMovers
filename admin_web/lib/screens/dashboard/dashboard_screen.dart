@@ -45,8 +45,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   int get _activeBookings {
     const active = [
-      'accepted', 'arrived_at_pickup', 'loading', 'loading_complete',
-      'in_transit', 'arrived_at_dropoff', 'unloading', 'unloading_complete'
+      'accepted',
+      'arrived_at_pickup',
+      'loading',
+      'loading_complete',
+      'in_transit',
+      'arrived_at_dropoff',
+      'unloading',
+      'unloading_complete',
     ];
     return active.fold(0, (s, k) => s + (_bookingCounts[k] ?? 0));
   }
@@ -55,8 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int get _cancelledBookings =>
       (_bookingCounts['cancelled'] ?? 0) +
       (_bookingCounts['cancelled_by_rider'] ?? 0);
-  int get _totalBookings =>
-      _bookingCounts.values.fold(0, (a, b) => a + b);
+  int get _totalBookings => _bookingCounts.values.fold(0, (a, b) => a + b);
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +82,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 5, child: _BookingStatusChart(counts: _bookingCounts)),
+              Expanded(
+                flex: 5,
+                child: _BookingStatusChart(counts: _bookingCounts),
+              ),
               const SizedBox(width: 16),
               Expanded(flex: 4, child: _PendingApprovalsList()),
             ],
@@ -92,61 +100,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildKpiRow() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final cols = constraints.maxWidth > 900 ? 4 : 2;
-      return Wrap(
-        spacing: 16,
-        runSpacing: 16,
-        children: [
-          SizedBox(
-            width: (constraints.maxWidth - (cols - 1) * 16) / cols,
-            child: StatCard(
-              label: 'Total Customers',
-              value: _totalUsers.toString(),
-              icon: Icons.people_outlined,
-              iconColor: AdminTheme.primary,
-              onTap: () => context.go('/customers'),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cols = constraints.maxWidth > 900 ? 4 : 2;
+        return Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            SizedBox(
+              width: (constraints.maxWidth - (cols - 1) * 16) / cols,
+              child: StatCard(
+                label: 'Total Customers',
+                value: _totalUsers.toString(),
+                icon: Icons.people_outlined,
+                iconColor: AdminTheme.primary,
+                onTap: () => context.go('/customers'),
+              ),
             ),
-          ),
-          SizedBox(
-            width: (constraints.maxWidth - (cols - 1) * 16) / cols,
-            child: StatCard(
-              label: 'Active Bookings',
-              value: _activeBookings.toString(),
-              icon: Icons.local_shipping_outlined,
-              iconColor: AdminTheme.statusActive,
-              iconBg: AdminTheme.statusActive,
-              onTap: () => context.go('/bookings'),
+            SizedBox(
+              width: (constraints.maxWidth - (cols - 1) * 16) / cols,
+              child: StatCard(
+                label: 'Active Bookings',
+                value: _activeBookings.toString(),
+                icon: Icons.local_shipping_outlined,
+                iconColor: AdminTheme.statusActive,
+                iconBg: AdminTheme.statusActive,
+                onTap: () => context.go('/bookings'),
+              ),
             ),
-          ),
-          SizedBox(
-            width: (constraints.maxWidth - (cols - 1) * 16) / cols,
-            child: StatCard(
-              label: 'Pending Approvals',
-              value: _pendingRiderApprovals.toString(),
-              icon: Icons.pending_actions_outlined,
-              iconColor: AdminTheme.statusPending,
-              iconBg: AdminTheme.statusPending,
-              subtitle: 'Rider documents awaiting review',
-              onTap: () => context.go('/riders'),
+            SizedBox(
+              width: (constraints.maxWidth - (cols - 1) * 16) / cols,
+              child: StatCard(
+                label: 'Pending Approvals',
+                value: _pendingRiderApprovals.toString(),
+                icon: Icons.pending_actions_outlined,
+                iconColor: AdminTheme.statusPending,
+                iconBg: AdminTheme.statusPending,
+                subtitle: 'Rider documents awaiting review',
+                onTap: () => context.go('/riders'),
+              ),
             ),
-          ),
-          SizedBox(
-            width: (constraints.maxWidth - (cols - 1) * 16) / cols,
-            child: StatCard(
-              label: 'Total Bookings',
-              value: _totalBookings.toString(),
-              icon: Icons.receipt_long_outlined,
-              iconColor: AdminTheme.statusCompleted,
-              iconBg: AdminTheme.statusCompleted,
-              subtitle:
-                  '$_completedBookings completed · $_cancelledBookings cancelled',
-              onTap: () => context.go('/bookings'),
+            SizedBox(
+              width: (constraints.maxWidth - (cols - 1) * 16) / cols,
+              child: StatCard(
+                label: 'Total Bookings',
+                value: _totalBookings.toString(),
+                icon: Icons.receipt_long_outlined,
+                iconColor: AdminTheme.statusCompleted,
+                iconBg: AdminTheme.statusCompleted,
+                subtitle:
+                    '$_completedBookings completed · $_cancelledBookings cancelled',
+                onTap: () => context.go('/bookings'),
+              ),
             ),
-          ),
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -166,9 +176,7 @@ class _BookingStatusChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entries = counts.entries
-        .where((e) => e.value > 0)
-        .toList()
+    final entries = counts.entries.where((e) => e.value > 0).toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
     if (entries.isEmpty) {
@@ -191,7 +199,10 @@ class _BookingStatusChart extends StatelessWidget {
         radius: 60,
         title: e.value.toString(),
         titleStyle: GoogleFonts.inter(
-            fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
       );
     }).toList();
 
@@ -208,10 +219,13 @@ class _BookingStatusChart extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: PieChart(PieChartData(
+                    child: PieChart(
+                      PieChartData(
                         sections: sections,
                         centerSpaceRadius: 40,
-                        sectionsSpace: 2)),
+                        sectionsSpace: 2,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Column(
@@ -226,17 +240,20 @@ class _BookingStatusChart extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                    color: color,
-                                    borderRadius: BorderRadius.circular(2))),
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               e.key.replaceAll('_', ' '),
                               style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  color: AdminTheme.textSecondary),
+                                fontSize: 11,
+                                color: AdminTheme.textSecondary,
+                              ),
                             ),
                           ],
                         ),
@@ -281,9 +298,11 @@ class _PendingApprovalsList extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(
-                        child: Text('No pending rider approvals',
-                            style: TextStyle(
-                                color: AdminTheme.textSecondary))),
+                      child: Text(
+                        'No pending rider approvals',
+                        style: TextStyle(color: AdminTheme.textSecondary),
+                      ),
+                    ),
                   )
                 else
                   ...docs.take(5).map((doc) {
@@ -294,26 +313,30 @@ class _PendingApprovalsList extends StatelessWidget {
                       dense: true,
                       leading: CircleAvatar(
                         radius: 18,
-                        backgroundColor:
-                            AdminTheme.primary.withOpacity(0.1),
+                        backgroundColor: AdminTheme.primary.withOpacity(0.1),
                         child: Text(
                           (name as String).isNotEmpty
                               ? name[0].toUpperCase()
                               : 'R',
                           style: GoogleFonts.inter(
-                              color: AdminTheme.primary,
-                              fontWeight: FontWeight.w600),
+                            color: AdminTheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      title: Text(name,
-                          style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500)),
-                      subtitle: Text(phone,
-                          style: GoogleFonts.inter(fontSize: 11)),
+                      title: Text(
+                        name,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        phone,
+                        style: GoogleFonts.inter(fontSize: 11),
+                      ),
                       trailing: TextButton(
-                        onPressed: () =>
-                            context.go('/riders/${doc.id}'),
+                        onPressed: () => context.go('/riders/${doc.id}'),
                         child: const Text('Review'),
                       ),
                       contentPadding: EdgeInsets.zero,
@@ -354,8 +377,9 @@ class _RecentBookingsTable extends StatelessWidget {
                 const SizedBox(height: 12),
                 if (docs.isEmpty)
                   const EmptyState(
-                      message: 'No bookings yet',
-                      icon: Icons.receipt_long_outlined)
+                    message: 'No bookings yet',
+                    icon: Icons.receipt_long_outlined,
+                  )
                 else
                   Table(
                     columnWidths: const {
@@ -368,49 +392,75 @@ class _RecentBookingsTable extends StatelessWidget {
                     children: [
                       TableRow(
                         decoration: const BoxDecoration(
-                            border: Border(
-                                bottom: BorderSide(
-                                    color: AdminTheme.divider))),
-                        children: ['Booking ID', 'Customer', 'Rider', 'Status', 'Amount']
-                            .map((h) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: Text(h,
+                          border: Border(
+                            bottom: BorderSide(color: AdminTheme.divider),
+                          ),
+                        ),
+                        children:
+                            [
+                                  'Booking ID',
+                                  'Customer',
+                                  'Rider',
+                                  'Status',
+                                  'Amount',
+                                ]
+                                .map(
+                                  (h) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      h,
                                       style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: AdminTheme.textSecondary)),
-                                ))
-                            .toList(),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: AdminTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
                       ),
                       ...docs.map((doc) {
                         final d = doc.data() as Map<String, dynamic>;
                         final fare = (d['estimatedFare'] ?? d['finalFare'] ?? 0)
                             .toString();
                         final id = doc.id;
-                        final shortId =
-                            id.length > 8 ? id.substring(0, 8) : id;
+                        final shortId = id.length > 8 ? id.substring(0, 8) : id;
                         return TableRow(
                           children: [
                             _cell(
                               TextButton(
-                                onPressed: () =>
-                                    context.go('/bookings/$id'),
-                                child: Text('#$shortId...',
-                                    style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: AdminTheme.primary)),
+                                onPressed: () => context.go('/bookings/$id'),
+                                child: Text(
+                                  '#$shortId...',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: AdminTheme.primary,
+                                  ),
+                                ),
                               ),
                             ),
-                            _cell(Text(
+                            _cell(
+                              Text(
                                 d['customerName'] ?? d['userName'] ?? '—',
-                                style: GoogleFonts.inter(fontSize: 12))),
-                            _cell(Text(d['riderName'] ?? '—',
-                                style: GoogleFonts.inter(fontSize: 12))),
+                                style: GoogleFonts.inter(fontSize: 12),
+                              ),
+                            ),
+                            _cell(
+                              Text(
+                                d['riderName'] ?? '—',
+                                style: GoogleFonts.inter(fontSize: 12),
+                              ),
+                            ),
                             _cell(StatusBadge(d['status'] ?? 'unknown')),
-                            _cell(Text('₱ $fare',
+                            _cell(
+                              Text(
+                                '₱ $fare',
                                 style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500))),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ],
                         );
                       }),
@@ -425,6 +475,7 @@ class _RecentBookingsTable extends StatelessWidget {
   }
 
   Widget _cell(Widget child) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-      child: child);
+    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+    child: child,
+  );
 }

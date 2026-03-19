@@ -40,8 +40,11 @@ class StatCard extends StatelessWidget {
                   color: (iconBg ?? AdminTheme.primary).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon,
-                    color: iconColor ?? AdminTheme.primary, size: 24),
+                child: Icon(
+                  icon,
+                  color: iconColor ?? AdminTheme.primary,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -49,22 +52,32 @@ class StatCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(label,
-                        style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AdminTheme.textSecondary,
-                            fontWeight: FontWeight.w500)),
+                    Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AdminTheme.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(value,
-                        style: GoogleFonts.inter(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: AdminTheme.textPrimary)),
+                    Text(
+                      value,
+                      style: GoogleFonts.inter(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AdminTheme.textPrimary,
+                      ),
+                    ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 2),
-                      Text(subtitle!,
-                          style: GoogleFonts.inter(
-                              fontSize: 11, color: AdminTheme.textSecondary)),
+                      Text(
+                        subtitle!,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: AdminTheme.textSecondary,
+                        ),
+                      ),
                     ],
                   ],
                 ),

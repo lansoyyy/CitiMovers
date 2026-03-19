@@ -37,18 +37,21 @@ class _BookingsScreenState extends State<BookingsScreen> {
         d.data() as Map<String, dynamic>,
       );
       final hasIssue = (data['issueStatus'] ?? '').toString().isNotEmpty;
-      final reconciliationStatus =
-          (data['reconciliationStatus'] ?? '').toString();
+      final reconciliationStatus = (data['reconciliationStatus'] ?? '')
+          .toString();
       final matchesIssue = switch (_issueFilter) {
         'all' => true,
         'flagged' => hasIssue,
-        'admin_review_required' => reconciliationStatus == 'admin_review_required',
+        'admin_review_required' =>
+          reconciliationStatus == 'admin_review_required',
         'clear' => !hasIssue && reconciliationStatus.isEmpty,
         _ => true,
       };
       if (!matchesIssue) return false;
       if (_searchQuery.isEmpty) return true;
-      final customer = (data['customerName'] ?? data['userName'] ?? '').toString().toLowerCase();
+      final customer = (data['customerName'] ?? data['userName'] ?? '')
+          .toString()
+          .toLowerCase();
       final rider = (data['riderName'] ?? '').toString().toLowerCase();
       final id = d.id.toLowerCase();
       return customer.contains(q) || rider.contains(q) || id.contains(q);
@@ -75,16 +78,24 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 child: DropdownButtonFormField<String>(
                   value: _statusFilter.isEmpty ? 'all' : _statusFilter,
                   decoration: const InputDecoration(
-                      labelText: 'Status', isDense: true),
+                    labelText: 'Status',
+                    isDense: true,
+                  ),
                   items: [
-                    const DropdownMenuItem(value: 'all', child: Text('All statuses')),
-                    ...AdminConstants.bookingStatuses.map((s) =>
-                        DropdownMenuItem(
-                            value: s,
-                            child: Text(s.replaceAll('_', ' ')))),
+                    const DropdownMenuItem(
+                      value: 'all',
+                      child: Text('All statuses'),
+                    ),
+                    ...AdminConstants.bookingStatuses.map(
+                      (s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(s.replaceAll('_', ' ')),
+                      ),
+                    ),
                   ],
                   onChanged: (v) => setState(
-                      () => _statusFilter = v == 'all' ? '' : (v ?? '')),
+                    () => _statusFilter = v == 'all' ? '' : (v ?? ''),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -114,8 +125,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: AdminRepository.streamBookings(
-                statusFilter:
-                    _statusFilter.isEmpty ? null : _statusFilter,
+                statusFilter: _statusFilter.isEmpty ? null : _statusFilter,
                 limit: 200,
               ),
               builder: (context, snap) {
@@ -125,8 +135,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 final docs = _filter(snap.data?.docs ?? []);
                 if (docs.isEmpty) {
                   return const EmptyState(
-                      message: 'No bookings found',
-                      icon: Icons.receipt_long_outlined);
+                    message: 'No bookings found',
+                    icon: Icons.receipt_long_outlined,
+                  );
                 }
                 return Card(
                   child: ListView.separated(
@@ -140,12 +151,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
                         doc.data() as Map<String, dynamic>,
                       );
                       final status = d['status'] ?? 'unknown';
-                      final customer = d['customerName'] ?? d['userName'] ?? '—';
+                      final customer =
+                          d['customerName'] ?? d['userName'] ?? '—';
                       final rider = d['riderName'] ?? '—';
                       final fare = (d['finalFare'] ?? d['estimatedFare'] ?? 0);
-                        final issueStatus = (d['issueStatus'] ?? '').toString();
-                        final noteCount = (d['issueNotesCount'] ?? 0) as int;
-                        final reconciliationStatus =
+                      final issueStatus = (d['issueStatus'] ?? '').toString();
+                      final noteCount = (d['issueNotesCount'] ?? 0) as int;
+                      final reconciliationStatus =
                           (d['reconciliationStatus'] ?? '').toString();
                       final ts = AdminRepository.parseTimestamp(d['createdAt']);
                       final shortId = doc.id.length > 8
@@ -159,14 +171,17 @@ class _BookingsScreenState extends State<BookingsScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
-                              fontSize: 13, fontWeight: FontWeight.w500),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                         subtitle: Text(
                           '#$shortId  ·  $customer  →  $rider'
                           '${ts != null ? '  ·  ${DateFormat('MMM d, h:mm a').format(ts)}' : ''}',
                           style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: AdminTheme.textSecondary),
+                            fontSize: 11,
+                            color: AdminTheme.textSecondary,
+                          ),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -190,14 +205,19 @@ class _BookingsScreenState extends State<BookingsScreen> {
                               ),
                               const SizedBox(width: 8),
                             ],
-                            Text('₱ $fare',
-                                style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AdminTheme.primary)),
+                            Text(
+                              '₱ $fare',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AdminTheme.primary,
+                              ),
+                            ),
                             const SizedBox(width: 8),
-                            const Icon(Icons.chevron_right,
-                                color: AdminTheme.textSecondary),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: AdminTheme.textSecondary,
+                            ),
                           ],
                         ),
                         onTap: () => context.go('/bookings/${doc.id}'),

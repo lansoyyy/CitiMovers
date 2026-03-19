@@ -20,77 +20,74 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 GoRouter buildRouter(AdminAuthService auth) => GoRouter(
-      navigatorKey: _rootNavigatorKey,
-      initialLocation: '/dashboard',
-      redirect: (context, state) {
-        final isLoggedIn = auth.isAuthenticated;
-        final isLoginRoute = state.matchedLocation == '/login';
-        if (!isLoggedIn && !isLoginRoute) return '/login';
-        if (isLoggedIn && isLoginRoute) return '/dashboard';
-        return null;
-      },
+  navigatorKey: _rootNavigatorKey,
+  initialLocation: '/dashboard',
+  redirect: (context, state) {
+    final isLoggedIn = auth.isAuthenticated;
+    final isLoginRoute = state.matchedLocation == '/login';
+    if (!isLoggedIn && !isLoginRoute) return '/login';
+    if (isLoggedIn && isLoginRoute) return '/dashboard';
+    return null;
+  },
+  routes: [
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    ShellRoute(
+      navigatorKey: _shellNavigatorKey,
+      builder: (context, state, child) =>
+          AdminShell(child: child, currentPath: state.matchedLocation),
       routes: [
         GoRoute(
-          path: '/login',
-          builder: (context, state) => const LoginScreen(),
+          path: '/dashboard',
+          builder: (context, state) => const DashboardScreen(),
         ),
-        ShellRoute(
-          navigatorKey: _shellNavigatorKey,
-          builder: (context, state, child) =>
-              AdminShell(child: child, currentPath: state.matchedLocation),
-          routes: [
-            GoRoute(
-              path: '/dashboard',
-              builder: (context, state) => const DashboardScreen(),
-            ),
-            GoRoute(
-              path: '/customers',
-              builder: (context, state) => const CustomersScreen(),
-            ),
-            GoRoute(
-              path: '/customers/:id',
-              builder: (context, state) =>
-                  CustomerDetailScreen(customerId: state.pathParameters['id']!),
-            ),
-            GoRoute(
-              path: '/riders',
-              builder: (context, state) => const RidersScreen(),
-            ),
-            GoRoute(
-              path: '/riders/:id',
-              builder: (context, state) =>
-                  RiderDetailScreen(riderId: state.pathParameters['id']!),
-            ),
-            GoRoute(
-              path: '/bookings',
-              builder: (context, state) => const BookingsScreen(),
-            ),
-            GoRoute(
-              path: '/bookings/:id',
-              builder: (context, state) =>
-                  BookingDetailScreen(bookingId: state.pathParameters['id']!),
-            ),
-            GoRoute(
-              path: '/finance',
-              builder: (context, state) => const FinanceScreen(),
-            ),
-            GoRoute(
-              path: '/notifications',
-              builder: (context, state) => const NotificationsScreen(),
-            ),
-            GoRoute(
-              path: '/promos',
-              builder: (context, state) => const PromosScreen(),
-            ),
-            GoRoute(
-              path: '/audit-logs',
-              builder: (context, state) => const AuditLogsScreen(),
-            ),
-            GoRoute(
-              path: '/maintenance',
-              builder: (context, state) => const MaintenanceScreen(),
-            ),
-          ],
+        GoRoute(
+          path: '/customers',
+          builder: (context, state) => const CustomersScreen(),
+        ),
+        GoRoute(
+          path: '/customers/:id',
+          builder: (context, state) =>
+              CustomerDetailScreen(customerId: state.pathParameters['id']!),
+        ),
+        GoRoute(
+          path: '/riders',
+          builder: (context, state) => const RidersScreen(),
+        ),
+        GoRoute(
+          path: '/riders/:id',
+          builder: (context, state) =>
+              RiderDetailScreen(riderId: state.pathParameters['id']!),
+        ),
+        GoRoute(
+          path: '/bookings',
+          builder: (context, state) => const BookingsScreen(),
+        ),
+        GoRoute(
+          path: '/bookings/:id',
+          builder: (context, state) =>
+              BookingDetailScreen(bookingId: state.pathParameters['id']!),
+        ),
+        GoRoute(
+          path: '/finance',
+          builder: (context, state) => const FinanceScreen(),
+        ),
+        GoRoute(
+          path: '/notifications',
+          builder: (context, state) => const NotificationsScreen(),
+        ),
+        GoRoute(
+          path: '/promos',
+          builder: (context, state) => const PromosScreen(),
+        ),
+        GoRoute(
+          path: '/audit-logs',
+          builder: (context, state) => const AuditLogsScreen(),
+        ),
+        GoRoute(
+          path: '/maintenance',
+          builder: (context, state) => const MaintenanceScreen(),
         ),
       ],
-    );
+    ),
+  ],
+);

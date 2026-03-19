@@ -19,7 +19,10 @@ class StatusBadge extends StatelessWidget {
       child: Text(
         _label(status),
         style: GoogleFonts.inter(
-            fontSize: 11, fontWeight: FontWeight.w600, color: color),
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }

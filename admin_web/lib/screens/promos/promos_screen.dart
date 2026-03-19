@@ -19,62 +19,71 @@ class _PromosScreenState extends State<PromosScreen> {
     Map<String, dynamic>? existing,
   }) async {
     final titleCtrl = TextEditingController(text: existing?['title'] ?? '');
-    final subtitleCtrl =
-        TextEditingController(text: existing?['subtitle'] ?? '');
-    final imageUrlCtrl =
-        TextEditingController(text: existing?['imageUrl'] ?? '');
+    final subtitleCtrl = TextEditingController(
+      text: existing?['subtitle'] ?? '',
+    );
+    final imageUrlCtrl = TextEditingController(
+      text: existing?['imageUrl'] ?? '',
+    );
     bool isActive = existing?['isActive'] ?? true;
 
-    final saved = await showDialog<bool>(
+    final saved =
+        await showDialog<bool>(
           context: context,
-          builder: (_) => StatefulBuilder(builder: (ctx, setSt) {
-            return AlertDialog(
-              title:
-                  Text(docId == null ? 'Create Promo Banner' : 'Edit Banner'),
-              content: SizedBox(
-                width: 440,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: titleCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Title'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: subtitleCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Subtitle / body text'),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: imageUrlCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Image URL (optional)'),
-                    ),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Active'),
-                      value: isActive,
-                      activeColor: AdminTheme.primary,
-                      onChanged: (v) => setSt(() => isActive = v),
-                    ),
-                  ],
+          builder: (_) => StatefulBuilder(
+            builder: (ctx, setSt) {
+              return AlertDialog(
+                title: Text(
+                  docId == null ? 'Create Promo Banner' : 'Edit Banner',
                 ),
-              ),
-              actions: [
-                TextButton(
+                content: SizedBox(
+                  width: 440,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(labelText: 'Title'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: subtitleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Subtitle / body text',
+                        ),
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: imageUrlCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Image URL (optional)',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Active'),
+                        value: isActive,
+                        activeColor: AdminTheme.primary,
+                        onChanged: (v) => setSt(() => isActive = v),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel')),
-                ElevatedButton(
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Save')),
-              ],
-            );
-          }),
+                    child: const Text('Save'),
+                  ),
+                ],
+              );
+            },
+          ),
         ) ??
         false;
 
@@ -129,12 +138,12 @@ class _PromosScreenState extends State<PromosScreen> {
                 final docs = snap.data?.docs ?? [];
                 if (docs.isEmpty) {
                   return const EmptyState(
-                      message: 'No promo banners yet',
-                      icon: Icons.campaign_outlined);
+                    message: 'No promo banners yet',
+                    icon: Icons.campaign_outlined,
+                  );
                 }
                 return GridView.builder(
-                  gridDelegate:
-                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 340,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
@@ -146,7 +155,8 @@ class _PromosScreenState extends State<PromosScreen> {
                     final d = doc.data() as Map<String, dynamic>;
                     final isActive = d['isActive'] == true;
                     final ts = AdminRepository.parseTimestamp(
-                        d['createdAt'] ?? d['updatedAt']);
+                      d['createdAt'] ?? d['updatedAt'],
+                    );
 
                     return Card(
                       child: Padding(
@@ -157,65 +167,81 @@ class _PromosScreenState extends State<PromosScreen> {
                             Row(
                               children: [
                                 Expanded(
-                                  child: Text(d['title'] ?? '—',
-                                      style: GoogleFonts.inter(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    d['title'] ?? '—',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isActive
-                                        ? AdminTheme.statusActive
-                                            .withOpacity(0.1)
-                                        : AdminTheme.textSecondary
-                                            .withOpacity(0.1),
-                                    borderRadius:
-                                        BorderRadius.circular(12),
+                                        ? AdminTheme.statusActive.withOpacity(
+                                            0.1,
+                                          )
+                                        : AdminTheme.textSecondary.withOpacity(
+                                            0.1,
+                                          ),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
                                     isActive ? 'Active' : 'Inactive',
                                     style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: isActive
-                                            ? AdminTheme.statusActive
-                                            : AdminTheme.textSecondary),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: isActive
+                                          ? AdminTheme.statusActive
+                                          : AdminTheme.textSecondary,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 6),
-                            Text(d['subtitle'] ?? '',
-                                style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: AdminTheme.textSecondary),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis),
+                            Text(
+                              d['subtitle'] ?? '',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: AdminTheme.textSecondary,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             const Spacer(),
                             if (ts != null)
-                              Text(DateFormat('MMM d, yyyy').format(ts),
-                                  style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      color: AdminTheme.textSecondary)),
+                              Text(
+                                DateFormat('MMM d, yyyy').format(ts),
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                              ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
                                 TextButton(
                                   onPressed: () => _showBannerDialog(
-                                      docId: doc.id, existing: d),
+                                    docId: doc.id,
+                                    existing: d,
+                                  ),
                                   child: const Text('Edit'),
                                 ),
                                 const Spacer(),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      size: 18,
-                                      color: AdminTheme.accent),
-                                  onPressed: () =>
-                                      _deleteBanner(doc.id),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                    color: AdminTheme.accent,
+                                  ),
+                                  onPressed: () => _deleteBanner(doc.id),
                                 ),
                               ],
                             ),

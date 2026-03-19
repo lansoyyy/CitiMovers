@@ -19,13 +19,7 @@ class _RidersScreenState extends State<RidersScreen> {
   String _searchQuery = '';
   String _statusFilter = '';
 
-  final _statusOptions = [
-    'All',
-    'pending',
-    'active',
-    'suspended',
-    'rejected',
-  ];
+  final _statusOptions = ['All', 'pending', 'active', 'suspended', 'rejected'];
 
   @override
   void dispose() {
@@ -70,15 +64,16 @@ class _RidersScreenState extends State<RidersScreen> {
               Wrap(
                 spacing: 8,
                 children: _statusOptions.map((s) {
-                  final selected = (s == 'All' && _statusFilter.isEmpty) ||
+                  final selected =
+                      (s == 'All' && _statusFilter.isEmpty) ||
                       s == _statusFilter;
                   return FilterChip(
                     label: Text(s, style: GoogleFonts.inter(fontSize: 12)),
                     selected: selected,
                     selectedColor: AdminTheme.primary.withOpacity(0.15),
                     checkmarkColor: AdminTheme.primary,
-                    onSelected: (_) => setState(() =>
-                        _statusFilter = s == 'All' ? '' : s),
+                    onSelected: (_) =>
+                        setState(() => _statusFilter = s == 'All' ? '' : s),
                   );
                 }).toList(),
               ),
@@ -88,8 +83,8 @@ class _RidersScreenState extends State<RidersScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: AdminRepository.streamRiders(
-                  statusFilter:
-                      _statusFilter.isEmpty ? null : _statusFilter),
+                statusFilter: _statusFilter.isEmpty ? null : _statusFilter,
+              ),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -97,8 +92,9 @@ class _RidersScreenState extends State<RidersScreen> {
                 final docs = _filter(snap.data?.docs ?? []);
                 if (docs.isEmpty) {
                   return const EmptyState(
-                      message: 'No riders found',
-                      icon: Icons.local_shipping_outlined);
+                    message: 'No riders found',
+                    icon: Icons.local_shipping_outlined,
+                  );
                 }
                 return Card(
                   child: ListView.separated(
@@ -114,7 +110,8 @@ class _RidersScreenState extends State<RidersScreen> {
                       final name = d['name'] ?? 'Unknown Rider';
                       final phone = d['phoneNumber'] ?? '';
                       final plate = d['plateNumber'] ?? '';
-                      final vehicleType = d['vehicleType'] ?? d['truckType'] ?? '';
+                      final vehicleType =
+                          d['vehicleType'] ?? d['truckType'] ?? '';
                       final status = d['accountStatus'] ?? 'active';
                       final isOnline = d['isOnline'] == true;
 
@@ -123,15 +120,17 @@ class _RidersScreenState extends State<RidersScreen> {
                           clipBehavior: Clip.none,
                           children: [
                             CircleAvatar(
-                              backgroundColor:
-                                  AdminTheme.primary.withOpacity(0.1),
+                              backgroundColor: AdminTheme.primary.withOpacity(
+                                0.1,
+                              ),
                               child: Text(
                                 (name as String).isNotEmpty
                                     ? name[0].toUpperCase()
                                     : 'R',
                                 style: GoogleFonts.inter(
-                                    color: AdminTheme.primary,
-                                    fontWeight: FontWeight.w600),
+                                  color: AdminTheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                             if (isOnline)
@@ -145,22 +144,29 @@ class _RidersScreenState extends State<RidersScreen> {
                                     color: AdminTheme.statusActive,
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                        color: Colors.white, width: 1.5),
+                                      color: Colors.white,
+                                      width: 1.5,
+                                    ),
                                   ),
                                 ),
                               ),
                           ],
                         ),
-                        title: Text(name,
-                            style: GoogleFonts.inter(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500)),
+                        title: Text(
+                          name,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                         subtitle: Text(
-                            '$phone  ·  $vehicleType'
-                            '${plate.isNotEmpty ? '  ·  $plate' : ''}',
-                            style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: AdminTheme.textSecondary)),
+                          '$phone  ·  $vehicleType'
+                          '${plate.isNotEmpty ? '  ·  $plate' : ''}',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: AdminTheme.textSecondary,
+                          ),
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -168,22 +174,30 @@ class _RidersScreenState extends State<RidersScreen> {
                               Container(
                                 margin: const EdgeInsets.only(right: 8),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: AdminTheme.statusActive
-                                      .withOpacity(0.1),
+                                  color: AdminTheme.statusActive.withOpacity(
+                                    0.1,
+                                  ),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text('Online',
-                                    style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        color: AdminTheme.statusActive,
-                                        fontWeight: FontWeight.w600)),
+                                child: Text(
+                                  'Online',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    color: AdminTheme.statusActive,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             StatusBadge(status),
                             const SizedBox(width: 12),
-                            const Icon(Icons.chevron_right,
-                                color: AdminTheme.textSecondary),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: AdminTheme.textSecondary,
+                            ),
                           ],
                         ),
                         onTap: () => context.go('/riders/${doc.id}'),

@@ -23,8 +23,6 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
   Map<String, dynamic>? _riderData;
   bool _loading = true;
 
-
-
   @override
   void initState() {
     super.initState();
@@ -51,7 +49,8 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
     final confirmed = await ConfirmDialog.show(
       context,
       title: 'Approve Rider',
-      message: 'Approve this rider account? They will be able to receive bookings.',
+      message:
+          'Approve this rider account? They will be able to receive bookings.',
       confirmLabel: 'Approve',
       confirmColor: AdminTheme.statusActive,
     );
@@ -82,23 +81,27 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
 
   Future<void> _rejectDocument(String docKey, String docLabel) async {
     final reasonCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
             title: Text('Reject: $docLabel'),
             content: TextField(
               controller: reasonCtrl,
               decoration: const InputDecoration(
-                  labelText: 'Rejection reason (required)'),
+                labelText: 'Rejection reason (required)',
+              ),
               maxLines: 3,
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
-                style:
-                    ElevatedButton.styleFrom(backgroundColor: AdminTheme.accent),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AdminTheme.accent,
+                ),
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Reject Document'),
               ),
@@ -151,7 +154,8 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
               if (isPending)
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: AdminTheme.statusActive),
+                    backgroundColor: AdminTheme.statusActive,
+                  ),
                   onPressed: _approveRider,
                   icon: const Icon(Icons.check_circle, size: 16),
                   label: const Text('Approve Rider'),
@@ -165,8 +169,9 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
                   ),
                   onPressed: _toggleSuspend,
                   icon: Icon(
-                      status == 'suspended' ? Icons.check_circle : Icons.block,
-                      size: 16),
+                    status == 'suspended' ? Icons.check_circle : Icons.block,
+                    size: 16,
+                  ),
                   label: Text(status == 'suspended' ? 'Reactivate' : 'Suspend'),
                 ),
               ],
@@ -187,9 +192,10 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
                     child: Text(
                       (name as String).isNotEmpty ? name[0].toUpperCase() : 'R',
                       style: GoogleFonts.inter(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: AdminTheme.primary),
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: AdminTheme.primary,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 20),
@@ -197,26 +203,40 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: [
-                          Text(name,
+                        Row(
+                          children: [
+                            Text(
+                              name,
                               style: GoogleFonts.inter(
-                                  fontSize: 20, fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 10),
-                          StatusBadge(status),
-                        ]),
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            StatusBadge(status),
+                          ],
+                        ),
                         const SizedBox(height: 4),
-                        Text(phone,
-                            style: GoogleFonts.inter(
-                                fontSize: 13,
-                                color: AdminTheme.textSecondary)),
+                        Text(
+                          phone,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: AdminTheme.textSecondary,
+                          ),
+                        ),
                         const SizedBox(height: 8),
-                        Wrap(spacing: 16, children: [
-                          _InfoChip(
-                              Icons.local_shipping_outlined, vehicleType),
-                          if (plate.isNotEmpty)
-                            _InfoChip(Icons.pin_outlined, plate),
-                          _InfoChip(Icons.star_outline, '$rating ★'),
-                        ]),
+                        Wrap(
+                          spacing: 16,
+                          children: [
+                            _InfoChip(
+                              Icons.local_shipping_outlined,
+                              vehicleType,
+                            ),
+                            if (plate.isNotEmpty)
+                              _InfoChip(Icons.pin_outlined, plate),
+                            _InfoChip(Icons.star_outline, '$rating ★'),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -236,7 +256,9 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
                   unselectedLabelColor: AdminTheme.textSecondary,
                   indicatorColor: AdminTheme.primary,
                   labelStyle: GoogleFonts.inter(
-                      fontSize: 13, fontWeight: FontWeight.w600),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                   tabs: const [
                     Tab(text: 'Documents'),
                     Tab(text: 'Delivery History'),
@@ -278,9 +300,13 @@ class _InfoChip extends StatelessWidget {
       children: [
         Icon(icon, size: 14, color: AdminTheme.textSecondary),
         const SizedBox(width: 4),
-        Text(label,
-            style: GoogleFonts.inter(
-                fontSize: 12, color: AdminTheme.textSecondary)),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            color: AdminTheme.textSecondary,
+          ),
+        ),
       ],
     );
   }
@@ -302,7 +328,7 @@ class _DocumentsTab extends StatelessWidget {
         ('MVSF', 'mvsf'),
         ('Sticker', 'sticker'),
         ('Insurance', 'insurance'),
-      ]
+      ],
     ),
     (
       'Unit Documents',
@@ -311,21 +337,15 @@ class _DocumentsTab extends StatelessWidget {
         ('Truck Back', 'truckPhotoBack'),
         ('Truck Left', 'truckPhotoLeft'),
         ('Truck Right', 'truckPhotoRight'),
-      ]
+      ],
     ),
     (
       'Helper 1',
-      [
-        ('Helper 1 ID', 'helper1Id'),
-        ('Helper 1 NBI', 'helper1Nbi'),
-      ]
+      [('Helper 1 ID', 'helper1Id'), ('Helper 1 NBI', 'helper1Nbi')],
     ),
     (
       'Helper 2',
-      [
-        ('Helper 2 ID', 'helper2Id'),
-        ('Helper 2 NBI', 'helper2Nbi'),
-      ]
+      [('Helper 2 ID', 'helper2Id'), ('Helper 2 NBI', 'helper2Nbi')],
     ),
   ];
 
@@ -346,7 +366,8 @@ class _DocumentsTab extends StatelessWidget {
             final docData = docs[key];
             if (docData == null) return false;
             return (docData is String && docData.isNotEmpty) ||
-                (docData is Map && (docData['url'] ?? '').toString().isNotEmpty);
+                (docData is Map &&
+                    (docData['url'] ?? '').toString().isNotEmpty);
           });
           if (!hasAny) return const SizedBox.shrink();
 
@@ -355,11 +376,14 @@ class _DocumentsTab extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(sectionTitle,
-                    style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AdminTheme.textPrimary)),
+                child: Text(
+                  sectionTitle,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AdminTheme.textPrimary,
+                  ),
+                ),
               ),
               Wrap(
                 spacing: 12,
@@ -427,8 +451,8 @@ class _DocCard extends StatelessWidget {
           color: status == 'rejected'
               ? AdminTheme.accent
               : status == 'approved'
-                  ? AdminTheme.statusActive
-                  : AdminTheme.divider,
+              ? AdminTheme.statusActive
+              : AdminTheme.divider,
           width: status == 'rejected' || status == 'approved' ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(10),
@@ -439,8 +463,7 @@ class _DocCard extends StatelessWidget {
         children: [
           // Image preview
           ClipRRect(
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(9)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
             child: GestureDetector(
               onTap: () => _showFullImage(context, url),
               child: CachedNetworkImage(
@@ -452,13 +475,16 @@ class _DocCard extends StatelessWidget {
                   height: 120,
                   color: AdminTheme.surface,
                   child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
                 errorWidget: (_, __, ___) => Container(
                   height: 120,
                   color: AdminTheme.surface,
-                  child: const Icon(Icons.broken_image_outlined,
-                      color: AdminTheme.textSecondary),
+                  child: const Icon(
+                    Icons.broken_image_outlined,
+                    color: AdminTheme.textSecondary,
+                  ),
                 ),
               ),
             ),
@@ -468,18 +494,26 @@ class _DocCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: GoogleFonts.inter(
-                        fontSize: 11, fontWeight: FontWeight.w600)),
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 StatusBadge(status),
                 if (rejectionReason != null) ...[
                   const SizedBox(height: 4),
-                  Text(rejectionReason!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                          fontSize: 10, color: AdminTheme.accent)),
+                  Text(
+                    rejectionReason!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: AdminTheme.accent,
+                    ),
+                  ),
                 ],
                 if (status != 'rejected') ...[
                   const SizedBox(height: 6),
@@ -493,8 +527,10 @@ class _DocCard extends StatelessWidget {
                         minimumSize: Size.zero,
                       ),
                       onPressed: onReject,
-                      child: Text('Reject',
-                          style: GoogleFonts.inter(fontSize: 11)),
+                      child: Text(
+                        'Reject',
+                        style: GoogleFonts.inter(fontSize: 11),
+                      ),
                     ),
                   ),
                 ],
@@ -517,8 +553,10 @@ class _DocCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  Text(label,
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -532,8 +570,9 @@ class _DocCard extends StatelessWidget {
                 imageUrl: url,
                 fit: BoxFit.contain,
                 placeholder: (_, __) => const SizedBox(
-                    height: 200,
-                    child: Center(child: CircularProgressIndicator())),
+                  height: 200,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
                 errorWidget: (_, __, ___) =>
                     const Icon(Icons.broken_image_outlined),
               ),
@@ -558,8 +597,9 @@ class _DeliveryHistoryTab extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return const EmptyState(
-              message: 'No deliveries',
-              icon: Icons.local_shipping_outlined);
+            message: 'No deliveries',
+            icon: Icons.local_shipping_outlined,
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
@@ -572,8 +612,7 @@ class _DeliveryHistoryTab extends StatelessWidget {
               docs[i].data() as Map<String, dynamic>,
             );
             final status = d['status'] ?? 'unknown';
-            final fare =
-                (d['finalFare'] ?? d['estimatedFare'] ?? 0).toString();
+            final fare = (d['finalFare'] ?? d['estimatedFare'] ?? 0).toString();
             return ListTile(
               dense: true,
               leading: StatusBadge(status),
@@ -583,9 +622,13 @@ class _DeliveryHistoryTab extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(fontSize: 12),
               ),
-              trailing: Text('₱ $fare',
-                  style: GoogleFonts.inter(
-                      fontSize: 12, fontWeight: FontWeight.w600)),
+              trailing: Text(
+                '₱ $fare',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               onTap: () => context.go('/bookings/${docs[i].id}'),
             );
           },
@@ -613,8 +656,9 @@ class _EarningsTab extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return const EmptyState(
-              message: 'No earnings records',
-              icon: Icons.payments_outlined);
+            message: 'No earnings records',
+            icon: Icons.payments_outlined,
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
@@ -630,17 +674,26 @@ class _EarningsTab extends StatelessWidget {
             final type = (d['type'] ?? d['transactionType'] ?? '').toString();
             return ListTile(
               dense: true,
-              leading: Icon(Icons.payments_outlined,
-                  color: amount >= 0 ? AdminTheme.statusActive : AdminTheme.accent),
-              title: Text(type.replaceAll('_', ' '),
-                  style: GoogleFonts.inter(fontSize: 12)),
-              trailing: Text('₱ ${amount.toStringAsFixed(2)}',
-                  style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: amount >= 0
-                          ? AdminTheme.statusActive
-                          : AdminTheme.accent)),
+              leading: Icon(
+                Icons.payments_outlined,
+                color: amount >= 0
+                    ? AdminTheme.statusActive
+                    : AdminTheme.accent,
+              ),
+              title: Text(
+                type.replaceAll('_', ' '),
+                style: GoogleFonts.inter(fontSize: 12),
+              ),
+              trailing: Text(
+                '₱ ${amount.toStringAsFixed(2)}',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: amount >= 0
+                      ? AdminTheme.statusActive
+                      : AdminTheme.accent,
+                ),
+              ),
             );
           },
         );

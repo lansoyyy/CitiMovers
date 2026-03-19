@@ -65,9 +65,7 @@ class AdminRepository {
   static Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) {
-      return value.map(
-        (key, entry) => MapEntry(key.toString(), entry),
-      );
+      return value.map((key, entry) => MapEntry(key.toString(), entry));
     }
     return <String, dynamic>{};
   }
@@ -181,7 +179,8 @@ class AdminRepository {
     String userId,
     Map<String, dynamic> raw,
   ) {
-    final isSuspended = _asBool(raw['isSuspended']) ||
+    final isSuspended =
+        _asBool(raw['isSuspended']) ||
         _asString(raw['accountStatus']) == 'suspended';
     final accountStatus = isSuspended
         ? 'suspended'
@@ -204,14 +203,12 @@ class AdminRepository {
         raw['phone'],
         raw['mobileNumber'],
       ]),
-      'email': _coalesceString([
-        raw['email'],
-        raw['emailAddress'],
-      ]),
+      'email': _coalesceString([raw['email'], raw['emailAddress']]),
       'walletBalance': _asDouble(raw['walletBalance']),
       'isSuspended': isSuspended,
       'accountStatus': accountStatus,
-      'createdAt': parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
+      'createdAt':
+          parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
       'updatedAt': parseTimestamp(raw['updatedAt']),
     };
   }
@@ -221,7 +218,8 @@ class AdminRepository {
     Map<String, dynamic> raw,
   ) {
     final isApproved = _asBool(raw['isApproved']);
-    final isSuspended = _asBool(raw['isSuspended']) ||
+    final isSuspended =
+        _asBool(raw['isSuspended']) ||
         _asString(raw['accountStatus']) == 'suspended';
     final accountStatus = isSuspended
         ? 'suspended'
@@ -240,10 +238,7 @@ class AdminRepository {
         raw['fullName'],
         raw['displayName'],
       ], fallback: 'Unknown Rider'),
-      'phoneNumber': _coalesceString([
-        raw['phoneNumber'],
-        raw['phone'],
-      ]),
+      'phoneNumber': _coalesceString([raw['phoneNumber'], raw['phone']]),
       'vehicleType': _coalesceString([
         raw['vehicleType'],
         raw['truckType'],
@@ -260,7 +255,8 @@ class AdminRepository {
       'documents': _normalizeRiderDocuments(raw['documents']),
       'averageRating': _asDouble(raw['averageRating'] ?? raw['rating']),
       'rating': _asDouble(raw['rating'] ?? raw['averageRating']),
-      'createdAt': parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
+      'createdAt':
+          parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
       'updatedAt': parseTimestamp(raw['updatedAt']),
     };
   }
@@ -290,11 +286,23 @@ class AdminRepository {
       'userId': _coalesceString([raw['userId'], raw['customerId']]),
       'riderId': _coalesceString([raw['riderId'], raw['driverId']]),
       'driverId': _coalesceString([raw['driverId'], raw['riderId']]),
-      'customerName': _coalesceString([raw['customerName'], raw['userName']], fallback: 'Unknown Customer'),
-      'userName': _coalesceString([raw['userName'], raw['customerName']], fallback: 'Unknown Customer'),
-      'customerPhone': _coalesceString([raw['customerPhone'], raw['userPhone']]),
+      'customerName': _coalesceString([
+        raw['customerName'],
+        raw['userName'],
+      ], fallback: 'Unknown Customer'),
+      'userName': _coalesceString([
+        raw['userName'],
+        raw['customerName'],
+      ], fallback: 'Unknown Customer'),
+      'customerPhone': _coalesceString([
+        raw['customerPhone'],
+        raw['userPhone'],
+      ]),
       'userPhone': _coalesceString([raw['userPhone'], raw['customerPhone']]),
-      'riderName': _coalesceString([raw['riderName'], raw['driverName']], fallback: 'Unassigned'),
+      'riderName': _coalesceString([
+        raw['riderName'],
+        raw['driverName'],
+      ], fallback: 'Unassigned'),
       'pickupAddress': _coalesceString([
         raw['pickupAddress'],
         _asMap(raw['pickupLocation'])['address'],
@@ -321,7 +329,8 @@ class AdminRepository {
       'issueStatus': issueStatus,
       'issueNotesCount': issueNotesCount,
       'deliveryPhotos': deliveryPhotos,
-      'createdAt': parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
+      'createdAt':
+          parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
       'updatedAt': parseTimestamp(raw['updatedAt']),
       'cancelledAt': parseTimestamp(raw['cancelledAt']),
       'cancellationReason': _asString(raw['cancellationReason']),
@@ -337,16 +346,22 @@ class AdminRepository {
     final inferredAmount = raw['amount'] != null
         ? _asDouble(raw['amount'])
         : (newBalance != 0 || previousBalance != 0)
-            ? newBalance - previousBalance
-            : _asDouble(raw['balance']);
+        ? newBalance - previousBalance
+        : _asDouble(raw['balance']);
 
     return {
       ...raw,
       'id': transactionId,
       'userId': _coalesceString([raw['userId'], raw['riderId']]),
       'riderId': _coalesceString([raw['riderId'], raw['userId']]),
-      'type': _coalesceString([raw['type'], raw['transactionType']], fallback: 'transaction'),
-      'transactionType': _coalesceString([raw['transactionType'], raw['type']], fallback: 'transaction'),
+      'type': _coalesceString([
+        raw['type'],
+        raw['transactionType'],
+      ], fallback: 'transaction'),
+      'transactionType': _coalesceString([
+        raw['transactionType'],
+        raw['type'],
+      ], fallback: 'transaction'),
       'amount': inferredAmount,
       'previousBalance': previousBalance,
       'newBalance': newBalance,
@@ -354,7 +369,8 @@ class AdminRepository {
       'description': _coalesceString([raw['description'], raw['remarks']]),
       'remarks': _coalesceString([raw['remarks'], raw['description']]),
       'reconciliationStatus': _coalesceString([raw['reconciliationStatus']]),
-      'createdAt': parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
+      'createdAt':
+          parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
     };
   }
 
@@ -368,10 +384,17 @@ class AdminRepository {
       'amount': _asDouble(raw['amount'] ?? raw['finalFare']),
       'paymentMethod': _coalesceString([raw['paymentMethod'], raw['method']]),
       'method': _coalesceString([raw['method'], raw['paymentMethod']]),
-      'paymentStatus': _coalesceString([raw['paymentStatus'], raw['status']], fallback: 'pending'),
-      'status': _coalesceString([raw['status'], raw['paymentStatus']], fallback: 'pending'),
+      'paymentStatus': _coalesceString([
+        raw['paymentStatus'],
+        raw['status'],
+      ], fallback: 'pending'),
+      'status': _coalesceString([
+        raw['status'],
+        raw['paymentStatus'],
+      ], fallback: 'pending'),
       'reconciliationStatus': _coalesceString([raw['reconciliationStatus']]),
-      'createdAt': parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
+      'createdAt':
+          parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
     };
   }
 
@@ -390,8 +413,10 @@ class AdminRepository {
       'note': _coalesceString([raw['note'], raw['body']]),
       'createdBy': _coalesceString([raw['createdBy'], raw['addedBy']]),
       'addedBy': _coalesceString([raw['addedBy'], raw['createdBy']]),
-      'createdAt': parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['addedAt']),
-      'addedAt': parseTimestamp(raw['addedAt']) ?? parseTimestamp(raw['createdAt']),
+      'createdAt':
+          parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['addedAt']),
+      'addedAt':
+          parseTimestamp(raw['addedAt']) ?? parseTimestamp(raw['createdAt']),
     };
   }
 
@@ -461,15 +486,11 @@ class AdminRepository {
       final userSnap = await transaction.get(userRef);
       final beforeData = _asMap(userSnap.data());
 
-      transaction.set(
-        userRef,
-        {
-          'isSuspended': isSuspended,
-          'accountStatus': nextStatus,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(userRef, {
+        'isSuspended': isSuspended,
+        'accountStatus': nextStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       transaction.set(
         auditRef,
         _buildAuditEntry(
@@ -482,10 +503,7 @@ class AdminRepository {
             'isSuspended': beforeData['isSuspended'] == true,
             'accountStatus': beforeData['accountStatus'] ?? 'active',
           },
-          after: {
-            'isSuspended': isSuspended,
-            'accountStatus': nextStatus,
-          },
+          after: {'isSuspended': isSuspended, 'accountStatus': nextStatus},
         ),
       );
     });
@@ -508,14 +526,10 @@ class AdminRepository {
       final previousBalance = _asDouble(userData['walletBalance']);
       final newBalance = previousBalance + amount;
 
-      transaction.set(
-        userRef,
-        {
-          'walletBalance': newBalance,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(userRef, {
+        'walletBalance': newBalance,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       transaction.set(walletRef, {
         'userId': userId,
         'amount': amount,
@@ -538,17 +552,11 @@ class AdminRepository {
           entityId: userId,
           reason: reason,
           before: {'walletBalance': previousBalance},
-          after: {
-            'walletBalance': newBalance,
-            'adjustmentAmount': amount,
-          },
+          after: {'walletBalance': newBalance, 'adjustmentAmount': amount},
         ),
       );
 
-      return {
-        'previousBalance': previousBalance,
-        'newBalance': newBalance,
-      };
+      return {'previousBalance': previousBalance, 'newBalance': newBalance};
     });
   }
 
@@ -564,7 +572,9 @@ class AdminRepository {
   static Future<DocumentSnapshot> getRider(String riderId) =>
       _db.collection(AdminConstants.colRiders).doc(riderId).get();
 
-  static Future<Map<String, dynamic>?> getNormalizedRider(String riderId) async {
+  static Future<Map<String, dynamic>?> getNormalizedRider(
+    String riderId,
+  ) async {
     final doc = await getRider(riderId);
     if (!doc.exists) return null;
     return normalizeRiderData(riderId, _asMap(doc.data()));
@@ -588,16 +598,12 @@ class AdminRepository {
       final riderSnap = await transaction.get(riderRef);
       final beforeData = _asMap(riderSnap.data());
 
-      transaction.set(
-        riderRef,
-        {
-          'accountStatus': 'active',
-          'isApproved': true,
-          'isSuspended': false,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(riderRef, {
+        'accountStatus': 'active',
+        'isApproved': true,
+        'isSuspended': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       transaction.set(
         auditRef,
         _buildAuditEntry(
@@ -608,10 +614,7 @@ class AdminRepository {
             'accountStatus': beforeData['accountStatus'],
             'isApproved': beforeData['isApproved'] == true,
           },
-          after: {
-            'accountStatus': 'active',
-            'isApproved': true,
-          },
+          after: {'accountStatus': 'active', 'isApproved': true},
         ),
       );
     });
@@ -629,15 +632,11 @@ class AdminRepository {
       final riderSnap = await transaction.get(riderRef);
       final beforeData = _asMap(riderSnap.data());
 
-      transaction.set(
-        riderRef,
-        {
-          'accountStatus': nextStatus,
-          'isSuspended': isSuspended,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(riderRef, {
+        'accountStatus': nextStatus,
+        'isSuspended': isSuspended,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       transaction.set(
         auditRef,
         _buildAuditEntry(
@@ -650,10 +649,7 @@ class AdminRepository {
             'accountStatus': beforeData['accountStatus'],
             'isSuspended': beforeData['isSuspended'] == true,
           },
-          after: {
-            'accountStatus': nextStatus,
-            'isSuspended': isSuspended,
-          },
+          after: {'accountStatus': nextStatus, 'isSuspended': isSuspended},
         ),
       );
     });
@@ -683,14 +679,10 @@ class AdminRepository {
         'reviewedBy': AdminConstants.adminUsername,
       };
 
-      transaction.set(
-        riderRef,
-        {
-          'documents': documents,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(riderRef, {
+        'documents': documents,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       transaction.set(
         auditRef,
         _buildAuditEntry(
@@ -698,10 +690,7 @@ class AdminRepository {
           entityType: 'rider',
           entityId: riderId,
           reason: reason,
-          before: {
-            'documentKey': docKey,
-            'document': previousDocument,
-          },
+          before: {'documentKey': docKey, 'document': previousDocument},
           after: {
             'documentKey': docKey,
             'document': {
@@ -735,28 +724,37 @@ class AdminRepository {
   static Future<DocumentSnapshot> getBooking(String bookingId) =>
       _db.collection(AdminConstants.colBookings).doc(bookingId).get();
 
-  static Future<Map<String, dynamic>?> getNormalizedBooking(String bookingId) async {
+  static Future<Map<String, dynamic>?> getNormalizedBooking(
+    String bookingId,
+  ) async {
     final doc = await getBooking(bookingId);
     if (!doc.exists) return null;
     return normalizeBookingData(bookingId, _asMap(doc.data()));
   }
 
   static Future<void> updateBooking(
-          String bookingId, Map<String, dynamic> data) =>
-      _db.collection(AdminConstants.colBookings).doc(bookingId).update(data);
+    String bookingId,
+    Map<String, dynamic> data,
+  ) => _db.collection(AdminConstants.colBookings).doc(bookingId).update(data);
 
   static Future<void> cancelBooking({
     required String bookingId,
     required String reason,
   }) async {
-    final bookingRef = _db.collection(AdminConstants.colBookings).doc(bookingId);
-    final deliveryRequestRef =
-        _db.collection(AdminConstants.colDeliveryRequests).doc(bookingId);
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
+    final deliveryRequestRef = _db
+        .collection(AdminConstants.colDeliveryRequests)
+        .doc(bookingId);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
 
     await _db.runTransaction((transaction) async {
       final bookingSnap = await transaction.get(bookingRef);
-      final beforeData = normalizeBookingData(bookingId, _asMap(bookingSnap.data()));
+      final beforeData = normalizeBookingData(
+        bookingId,
+        _asMap(bookingSnap.data()),
+      );
       final customerId = _coalesceString([
         beforeData['customerId'],
         beforeData['userId'],
@@ -765,43 +763,40 @@ class AdminRepository {
         beforeData['driverId'],
         beforeData['riderId'],
       ]);
-      final paymentStatus = _asString(beforeData['paymentStatus'], fallback: 'pending');
+      final paymentStatus = _asString(
+        beforeData['paymentStatus'],
+        fallback: 'pending',
+      );
       final reconciliationStatus = paymentStatus == 'held'
           ? 'admin_review_required'
           : _asString(beforeData['reconciliationStatus']);
 
-      transaction.set(
-        bookingRef,
-        {
-          'status': 'cancelled',
-          'cancellationReason': reason,
-          'cancelledAt': FieldValue.serverTimestamp(),
-          'cancelledBy': AdminConstants.adminUsername,
-          'issueStatus': 'flagged',
-          'reconciliationStatus': reconciliationStatus,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-      transaction.set(
-        deliveryRequestRef,
-        {
-          'bookingId': bookingId,
-          'status': 'cancelled',
-          'cancellationReason': reason,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(bookingRef, {
+        'status': 'cancelled',
+        'cancellationReason': reason,
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'cancelledBy': AdminConstants.adminUsername,
+        'issueStatus': 'flagged',
+        'reconciliationStatus': reconciliationStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      transaction.set(deliveryRequestRef, {
+        'bookingId': bookingId,
+        'status': 'cancelled',
+        'cancellationReason': reason,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       if (customerId.isNotEmpty) {
-        final notificationRef =
-            _db.collection(AdminConstants.colNotifications).doc();
+        final notificationRef = _db
+            .collection(AdminConstants.colNotifications)
+            .doc();
         transaction.set(notificationRef, {
           'id': notificationRef.id,
           'userId': customerId,
           'userType': 'customer',
           'title': 'Booking Cancelled by Admin',
-          'message': 'Your booking has been cancelled by support. Reason: $reason',
+          'message':
+              'Your booking has been cancelled by support. Reason: $reason',
           'body': 'Your booking has been cancelled by support. Reason: $reason',
           'type': 'booking',
           'referenceId': bookingId,
@@ -811,15 +806,18 @@ class AdminRepository {
         });
       }
       if (riderId.isNotEmpty) {
-        final notificationRef =
-            _db.collection(AdminConstants.colNotifications).doc();
+        final notificationRef = _db
+            .collection(AdminConstants.colNotifications)
+            .doc();
         transaction.set(notificationRef, {
           'id': notificationRef.id,
           'userId': riderId,
           'userType': 'rider',
           'title': 'Booking Cancelled by Admin',
-          'message': 'Booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} was cancelled by support.',
-          'body': 'Booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} was cancelled by support.',
+          'message':
+              'Booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} was cancelled by support.',
+          'body':
+              'Booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} was cancelled by support.',
           'type': 'booking',
           'referenceId': bookingId,
           'bookingId': bookingId,
@@ -854,7 +852,9 @@ class AdminRepository {
     required String bookingId,
     required String note,
   }) async {
-    final bookingRef = _db.collection(AdminConstants.colBookings).doc(bookingId);
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
     final noteRef = bookingRef
         .collection(AdminConstants.colBookingAdminNotes)
         .doc();
@@ -877,15 +877,11 @@ class AdminRepository {
         'addedBy': AdminConstants.adminUsername,
         'addedAt': FieldValue.serverTimestamp(),
       });
-      transaction.set(
-        bookingRef,
-        {
-          'issueStatus': 'flagged',
-          'issueNotesCount': currentNotesCount + 1,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(bookingRef, {
+        'issueStatus': 'flagged',
+        'issueNotesCount': currentNotesCount + 1,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       transaction.set(
         auditRef,
         _buildAuditEntry(
@@ -918,37 +914,40 @@ class AdminRepository {
   static Stream<QuerySnapshot> streamBookingPayments(
     String bookingId, {
     int limit = 20,
-  }) =>
-      _db
-          .collection(AdminConstants.colPayments)
-          .where('bookingId', isEqualTo: bookingId)
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .snapshots();
+  }) => _db
+      .collection(AdminConstants.colPayments)
+      .where('bookingId', isEqualTo: bookingId)
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots();
 
   static Stream<QuerySnapshot> streamBookingWalletTransactions(
     String bookingId, {
     int limit = 20,
-  }) =>
-      _db
-          .collection(AdminConstants.colWalletTransactions)
-          .where('referenceId', isEqualTo: bookingId)
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .snapshots();
+  }) => _db
+      .collection(AdminConstants.colWalletTransactions)
+      .where('referenceId', isEqualTo: bookingId)
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots();
 
   static Future<void> updateBookingReconciliationStatus({
     required String bookingId,
     required String status,
     required String reason,
   }) async {
-    final bookingRef = _db.collection(AdminConstants.colBookings).doc(bookingId);
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
     final noteRef = bookingRef
         .collection(AdminConstants.colBookingAdminNotes)
         .doc();
 
     final bookingSnap = await bookingRef.get();
-    final beforeData = normalizeBookingData(bookingId, _asMap(bookingSnap.data()));
+    final beforeData = normalizeBookingData(
+      bookingId,
+      _asMap(bookingSnap.data()),
+    );
     final paymentsSnap = await _db
         .collection(AdminConstants.colPayments)
         .where('bookingId', isEqualTo: bookingId)
@@ -959,34 +958,22 @@ class AdminRepository {
         .get();
 
     final batch = _db.batch();
-    batch.set(
-      bookingRef,
-      {
+    batch.set(bookingRef, {
+      'reconciliationStatus': status,
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (status == 'reconciled') 'reconciledAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    for (final doc in paymentsSnap.docs) {
+      batch.set(doc.reference, {
         'reconciliationStatus': status,
         'updatedAt': FieldValue.serverTimestamp(),
-        if (status == 'reconciled') 'reconciledAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
-    for (final doc in paymentsSnap.docs) {
-      batch.set(
-        doc.reference,
-        {
-          'reconciliationStatus': status,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      }, SetOptions(merge: true));
     }
     for (final doc in walletSnap.docs) {
-      batch.set(
-        doc.reference,
-        {
-          'reconciliationStatus': status,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      batch.set(doc.reference, {
+        'reconciliationStatus': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     }
     batch.set(noteRef, {
       'noteId': noteRef.id,
@@ -1008,9 +995,7 @@ class AdminRepository {
         entityType: 'booking',
         entityId: bookingId,
         reason: reason,
-        before: {
-          'reconciliationStatus': beforeData['reconciliationStatus'],
-        },
+        before: {'reconciliationStatus': beforeData['reconciliationStatus']},
         after: {
           'reconciliationStatus': status,
           'paymentRecordsUpdated': paymentsSnap.docs.length,
@@ -1022,13 +1007,12 @@ class AdminRepository {
   }
 
   // ─── Wallet transactions ──────────────────────────────────────────────────
-  static Stream<QuerySnapshot> streamWalletTransactions(String userId) =>
-      _db
-          .collection(AdminConstants.colWalletTransactions)
-          .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots();
+  static Stream<QuerySnapshot> streamWalletTransactions(String userId) => _db
+      .collection(AdminConstants.colWalletTransactions)
+      .where('userId', isEqualTo: userId)
+      .orderBy('createdAt', descending: true)
+      .limit(50)
+      .snapshots();
 
   static Stream<QuerySnapshot> streamAllWalletTransactions({int limit = 100}) =>
       _db
@@ -1040,22 +1024,20 @@ class AdminRepository {
   static Stream<QuerySnapshot> streamBookingAdminNotes(
     String bookingId, {
     int limit = 50,
-  }) =>
-      _db
-          .collection(AdminConstants.colBookings)
-          .doc(bookingId)
-          .collection(AdminConstants.colBookingAdminNotes)
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .snapshots();
+  }) => _db
+      .collection(AdminConstants.colBookings)
+      .doc(bookingId)
+      .collection(AdminConstants.colBookingAdminNotes)
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots();
 
   // ─── Payments ─────────────────────────────────────────────────────────────
-  static Stream<QuerySnapshot> streamPayments({int limit = 100}) =>
-      _db
-          .collection(AdminConstants.colPayments)
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .snapshots();
+  static Stream<QuerySnapshot> streamPayments({int limit = 100}) => _db
+      .collection(AdminConstants.colPayments)
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots();
 
   static Future<Map<String, int>> getBackfillSummary() async {
     final usersFuture = _db.collection(AdminConstants.colUsers).get();
@@ -1215,7 +1197,8 @@ class AdminRepository {
       final normalized = normalizeBookingData(doc.id, raw);
       final bookingRef = doc.reference;
       var noteCount = _asInt(raw['issueNotesCount']);
-      if (!raw.containsKey('issueNotesCount') || !raw.containsKey('issueStatus')) {
+      if (!raw.containsKey('issueNotesCount') ||
+          !raw.containsKey('issueStatus')) {
         final countSnap = await bookingRef
             .collection(AdminConstants.colBookingAdminNotes)
             .count()
@@ -1224,16 +1207,17 @@ class AdminRepository {
       }
 
       final isCancelled = {
-            'cancelled',
-            'cancelled_by_rider',
-            'cancelled_by_customer',
-          }.contains(normalized['status']);
+        'cancelled',
+        'cancelled_by_rider',
+        'cancelled_by_customer',
+      }.contains(normalized['status']);
       final derivedIssueStatus = noteCount > 0 || isCancelled ? 'flagged' : '';
-      final derivedReconciliationStatus = !_isMissing(raw['reconciliationStatus'])
+      final derivedReconciliationStatus =
+          !_isMissing(raw['reconciliationStatus'])
           ? raw['reconciliationStatus']
           : (normalized['paymentStatus'] == 'held' && isCancelled)
-              ? 'admin_review_required'
-              : '';
+          ? 'admin_review_required'
+          : '';
 
       final payload = <String, dynamic>{};
       if (_isMissing(raw['customerId'])) {
@@ -1322,12 +1306,11 @@ class AdminRepository {
           .limit(limit)
           .snapshots();
 
-  static Stream<QuerySnapshot> streamEmailNotifications({int limit = 50}) =>
-      _db
-          .collection(AdminConstants.colEmailNotifications)
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .snapshots();
+  static Stream<QuerySnapshot> streamEmailNotifications({int limit = 50}) => _db
+      .collection(AdminConstants.colEmailNotifications)
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots();
 
   static Future<int> sendBroadcastNotifications({
     required String targetType,
@@ -1337,12 +1320,15 @@ class AdminRepository {
     final targetCollection = targetType == 'all_customers'
         ? AdminConstants.colUsers
         : AdminConstants.colRiders;
-    final userType =
-        targetType == 'all_customers' ? 'customer' : 'rider';
+    final userType = targetType == 'all_customers' ? 'customer' : 'rider';
     final targetSnap = await _db.collection(targetCollection).get();
     final recipients = targetSnap.docs;
 
-    for (var offset = 0; offset < recipients.length; offset += _batchWriteLimit) {
+    for (
+      var offset = 0;
+      offset < recipients.length;
+      offset += _batchWriteLimit
+    ) {
       final batch = _db.batch();
       final slice = recipients.skip(offset).take(_batchWriteLimit);
 
@@ -1387,12 +1373,15 @@ class AdminRepository {
   }
 
   // ─── Promo Banners ────────────────────────────────────────────────────────
-  static Stream<QuerySnapshot> streamPromoBanners() =>
-      _db.collection(AdminConstants.colPromoBanners)
-          .orderBy('createdAt', descending: true)
-          .snapshots();
+  static Stream<QuerySnapshot> streamPromoBanners() => _db
+      .collection(AdminConstants.colPromoBanners)
+      .orderBy('createdAt', descending: true)
+      .snapshots();
 
-  static Future<String> upsertBanner(String? id, Map<String, dynamic> data) async {
+  static Future<String> upsertBanner(
+    String? id,
+    Map<String, dynamic> data,
+  ) async {
     final bannerCollection = _db.collection(AdminConstants.colPromoBanners);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
 
@@ -1400,10 +1389,7 @@ class AdminRepository {
       final docRef = bannerCollection.doc(id);
       final beforeSnap = await docRef.get();
       final beforeData = _asMap(beforeSnap.data());
-      final nextData = {
-        ...data,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+      final nextData = {...data, 'updatedAt': FieldValue.serverTimestamp()};
       final batch = _db.batch();
       batch.set(docRef, nextData, SetOptions(merge: true));
       batch.set(
@@ -1441,7 +1427,9 @@ class AdminRepository {
   }
 
   static Future<void> deleteBanner(String bannerId) async {
-    final bannerRef = _db.collection(AdminConstants.colPromoBanners).doc(bannerId);
+    final bannerRef = _db
+        .collection(AdminConstants.colPromoBanners)
+        .doc(bannerId);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
     final bannerSnap = await bannerRef.get();
     final beforeData = _asMap(bannerSnap.data());
@@ -1460,17 +1448,15 @@ class AdminRepository {
   }
 
   // ─── Audit Logs ───────────────────────────────────────────────────────────
-  static Stream<QuerySnapshot> streamAuditLogs({int limit = 100}) =>
-      _db
-          .collection(AdminConstants.colAdminAuditLogs)
-          .orderBy('timestamp', descending: true)
-          .limit(limit)
-          .snapshots();
+  static Stream<QuerySnapshot> streamAuditLogs({int limit = 100}) => _db
+      .collection(AdminConstants.colAdminAuditLogs)
+      .orderBy('timestamp', descending: true)
+      .limit(limit)
+      .snapshots();
 
   // ─── Dashboard aggregates ─────────────────────────────────────────────────
   static Future<Map<String, int>> getBookingStatusCounts() async {
-    final snap =
-        await _db.collection(AdminConstants.colBookings).get();
+    final snap = await _db.collection(AdminConstants.colBookings).get();
     final counts = <String, int>{};
     for (final doc in snap.docs) {
       final status = (doc.data()['status'] as String?) ?? 'unknown';
@@ -1489,8 +1475,7 @@ class AdminRepository {
   }
 
   static Future<int> countUsers() async {
-    final snap =
-        await _db.collection(AdminConstants.colUsers).count().get();
+    final snap = await _db.collection(AdminConstants.colUsers).count().get();
     return snap.count ?? 0;
   }
 }

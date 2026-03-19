@@ -2,8 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 
 class AdminAuditService {
-  static final _col =
-      FirebaseFirestore.instance.collection(AdminConstants.colAdminAuditLogs);
+  static final _col = FirebaseFirestore.instance.collection(
+    AdminConstants.colAdminAuditLogs,
+  );
 
   static Future<void> log({
     required String action,

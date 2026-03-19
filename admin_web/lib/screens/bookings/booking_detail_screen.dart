@@ -29,7 +29,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   Future<void> _loadBooking() async {
-    final bookingData = await AdminRepository.getNormalizedBooking(widget.bookingId);
+    final bookingData = await AdminRepository.getNormalizedBooking(
+      widget.bookingId,
+    );
     if (!mounted) return;
     setState(() {
       _bookingData = bookingData;
@@ -39,7 +41,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
   Future<void> _cancelBooking() async {
     final reasonCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Cancel Booking'),
@@ -48,23 +51,27 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                    'This will cancel the booking and trigger a wallet refund if held.'),
+                  'This will cancel the booking and trigger a wallet refund if held.',
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: reasonCtrl,
                   decoration: const InputDecoration(
-                      labelText: 'Cancellation reason (required)'),
+                    labelText: 'Cancellation reason (required)',
+                  ),
                   maxLines: 2,
                 ),
               ],
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Back')),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Back'),
+              ),
               ElevatedButton(
-                style:
-                    ElevatedButton.styleFrom(backgroundColor: AdminTheme.accent),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AdminTheme.accent,
+                ),
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Cancel Booking'),
               ),
@@ -84,23 +91,25 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
   Future<void> _addNote() async {
     final noteCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Add Admin Note'),
             content: TextField(
               controller: noteCtrl,
-              decoration:
-                  const InputDecoration(labelText: 'Note text'),
+              decoration: const InputDecoration(labelText: 'Note text'),
               maxLines: 4,
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Add Note')),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Add Note'),
+              ),
             ],
           ),
         ) ??
@@ -114,9 +123,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Admin note added.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Admin note added.')));
     }
   }
 
@@ -131,8 +140,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
     final d = _bookingData!;
     final status = d['status'] ?? 'unknown';
-    final canCancel = !['completed', 'cancelled', 'cancelled_by_rider', 'cancelled_by_customer']
-        .contains(status);
+    final canCancel = ![
+      'completed',
+      'cancelled',
+      'cancelled_by_rider',
+      'cancelled_by_customer',
+    ].contains(status);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -157,7 +170,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: AdminTheme.accent),
+                    backgroundColor: AdminTheme.accent,
+                  ),
                   onPressed: _cancelBooking,
                   icon: const Icon(Icons.cancel_outlined, size: 16),
                   label: const Text('Cancel Booking'),
@@ -170,7 +184,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 5, child: _BookingInfoCard(d: d, bookingId: widget.bookingId)),
+              Expanded(
+                flex: 5,
+                child: _BookingInfoCard(d: d, bookingId: widget.bookingId),
+              ),
               const SizedBox(width: 16),
               Expanded(flex: 3, child: _StatusTimelineCard(d: d)),
             ],
@@ -187,10 +204,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           ),
           const SizedBox(height: 16),
 
-          _SupportNotesCard(
-            bookingId: widget.bookingId,
-            d: d,
-          ),
+          _SupportNotesCard(bookingId: widget.bookingId, d: d),
           const SizedBox(height: 16),
 
           // Delivery photos
@@ -226,7 +240,10 @@ class _BookingInfoCard extends StatelessWidget {
             const SizedBox(height: 16),
             _Row('ID', bookingId),
             if (created != null)
-              _Row('Created', DateFormat('MMM d, yyyy – h:mm a').format(created)),
+              _Row(
+                'Created',
+                DateFormat('MMM d, yyyy – h:mm a').format(created),
+              ),
             _Row('Customer', d['customerName'] ?? d['userName'] ?? '—'),
             _Row('Customer Phone', d['customerPhone'] ?? d['userPhone'] ?? '—'),
             _Row('Rider', d['riderName'] ?? '—'),
@@ -249,26 +266,33 @@ class _BookingInfoCard extends StatelessWidget {
   }
 
   Widget _Row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 130,
-              child: Text(label,
-                  style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: AdminTheme.textSecondary,
-                      fontWeight: FontWeight.w500)),
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 130,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AdminTheme.textSecondary,
+              fontWeight: FontWeight.w500,
             ),
-            Expanded(
-              child: Text(value,
-                  style: GoogleFonts.inter(
-                      fontSize: 12, color: AdminTheme.textPrimary)),
-            ),
-          ],
+          ),
         ),
-      );
+        Expanded(
+          child: Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AdminTheme.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _StatusTimelineCard extends StatelessWidget {
@@ -323,17 +347,18 @@ class _StatusTimelineCard extends StatelessWidget {
                           color: isCurrent
                               ? AdminTheme.primary
                               : isDone
-                                  ? AdminTheme.statusActive
-                                  : AdminTheme.divider,
+                              ? AdminTheme.statusActive
+                              : AdminTheme.divider,
                         ),
                       ),
                       if (step != _timeline.last)
                         Container(
-                            width: 2,
-                            height: 20,
-                            color: isDone
-                                ? AdminTheme.statusActive
-                                : AdminTheme.divider),
+                          width: 2,
+                          height: 20,
+                          color: isDone
+                              ? AdminTheme.statusActive
+                              : AdminTheme.divider,
+                        ),
                     ],
                   ),
                   const SizedBox(width: 10),
@@ -343,21 +368,26 @@ class _StatusTimelineCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(label,
-                              style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: isCurrent
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                  color: isDone
-                                      ? AdminTheme.textPrimary
-                                      : AdminTheme.textSecondary)),
+                          Text(
+                            label,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: isCurrent
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              color: isDone
+                                  ? AdminTheme.textPrimary
+                                  : AdminTheme.textSecondary,
+                            ),
+                          ),
                           if (ts != null)
                             Text(
-                                DateFormat('MMM d, h:mm a').format(ts),
-                                style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    color: AdminTheme.textSecondary)),
+                              DateFormat('MMM d, h:mm a').format(ts),
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: AdminTheme.textSecondary,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -393,8 +423,7 @@ class _PaymentCard extends StatelessWidget {
             const SectionHeader(title: 'Payment'),
             const SizedBox(height: 12),
             _FRow('Estimated Fare', '₱ ${estimated.toStringAsFixed(2)}'),
-            _FRow('Final Fare', '₱ ${final_.toStringAsFixed(2)}',
-                bold: true),
+            _FRow('Final Fare', '₱ ${final_.toStringAsFixed(2)}', bold: true),
             _FRow('Tip', '₱ ${tip.toStringAsFixed(2)}'),
             _FRow('Payment Method', d['paymentMethod'] ?? '—'),
             _FRow('Payment Status', payStatus),
@@ -406,34 +435,38 @@ class _PaymentCard extends StatelessWidget {
     );
   }
 
-  Widget _FRow(String label, String value, {bool bold = false}) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(children: [
-          SizedBox(
-            width: 140,
-            child: Text(label,
-                style: GoogleFonts.inter(
-                    fontSize: 12, color: AdminTheme.textSecondary)),
+  Widget _FRow(String label, String value, {bool bold = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 140,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AdminTheme.textSecondary,
+            ),
           ),
-          Text(value,
-              style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight:
-                      bold ? FontWeight.w700 : FontWeight.w400,
-                  color: bold ? AdminTheme.primary : AdminTheme.textPrimary)),
-        ]),
-      );
+        ),
+        Text(
+          value,
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+            color: bold ? AdminTheme.primary : AdminTheme.textPrimary,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _SupportNotesCard extends StatelessWidget {
   final String bookingId;
   final Map<String, dynamic> d;
 
-  const _SupportNotesCard({
-    required this.bookingId,
-    required this.d,
-  });
+  const _SupportNotesCard({required this.bookingId, required this.d});
 
   @override
   Widget build(BuildContext context) {
@@ -498,11 +531,15 @@ class _SupportNotesCard extends StatelessWidget {
                     doc.data() as Map<String, dynamic>,
                   );
                   entries.add({
-                    'title': (note['noteType'] ?? 'support').toString().replaceAll('_', ' '),
+                    'title': (note['noteType'] ?? 'support')
+                        .toString()
+                        .replaceAll('_', ' '),
                     'body': note['body'],
                     'type': note['noteType'] ?? 'support',
                     'createdBy': note['createdBy'],
-                    'createdAt': AdminRepository.parseTimestamp(note['createdAt']),
+                    'createdAt': AdminRepository.parseTimestamp(
+                      note['createdAt'],
+                    ),
                   });
                 }
                 entries.sort((a, b) {
@@ -531,7 +568,10 @@ class _SupportNotesCard extends StatelessWidget {
                                 decoration: BoxDecoration(
                                   color: AdminTheme.primary,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
                                   boxShadow: const [
                                     BoxShadow(
                                       color: Color(0x11000000),
@@ -562,18 +602,24 @@ class _SupportNotesCard extends StatelessWidget {
                                   Row(
                                     children: [
                                       Text(
-                                        (entry['createdBy'] ?? AdminConstants.adminUsername).toString(),
+                                        (entry['createdBy'] ??
+                                                AdminConstants.adminUsername)
+                                            .toString(),
                                         style: GoogleFonts.inter(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      StatusBadge((entry['type'] ?? 'support').toString()),
+                                      StatusBadge(
+                                        (entry['type'] ?? 'support').toString(),
+                                      ),
                                       const Spacer(),
                                       if (createdAt != null)
                                         Text(
-                                          DateFormat('MMM d, yyyy – h:mm a').format(createdAt),
+                                          DateFormat(
+                                            'MMM d, yyyy – h:mm a',
+                                          ).format(createdAt),
                                           style: GoogleFonts.inter(
                                             fontSize: 10,
                                             color: AdminTheme.textSecondary,
@@ -583,7 +629,9 @@ class _SupportNotesCard extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    (entry['title'] ?? '').toString().toUpperCase(),
+                                    (entry['title'] ?? '')
+                                        .toString()
+                                        .toUpperCase(),
                                     style: GoogleFonts.inter(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
@@ -631,19 +679,13 @@ class _DemurrageCard extends StatelessWidget {
           children: [
             const SectionHeader(title: 'Demurrage'),
             const SizedBox(height: 12),
-            _FRow('Loading Started',
-                _fmt(d['loadingStartedAt'])),
-            _FRow('Loading Completed',
-                _fmt(d['loadingCompletedAt'])),
-            _FRow('Loading Fee',
-                '₱ ${loadingFee.toStringAsFixed(2)}'),
+            _FRow('Loading Started', _fmt(d['loadingStartedAt'])),
+            _FRow('Loading Completed', _fmt(d['loadingCompletedAt'])),
+            _FRow('Loading Fee', '₱ ${loadingFee.toStringAsFixed(2)}'),
             const Divider(color: AdminTheme.divider),
-            _FRow('Unloading Started',
-                _fmt(d['unloadingStartedAt'])),
-            _FRow('Unloading Completed',
-                _fmt(d['unloadingCompletedAt'])),
-            _FRow('Unloading Fee',
-                '₱ ${unloadingFee.toStringAsFixed(2)}'),
+            _FRow('Unloading Started', _fmt(d['unloadingStartedAt'])),
+            _FRow('Unloading Completed', _fmt(d['unloadingCompletedAt'])),
+            _FRow('Unloading Fee', '₱ ${unloadingFee.toStringAsFixed(2)}'),
           ],
         ),
       ),
@@ -656,19 +698,26 @@ class _DemurrageCard extends StatelessWidget {
   }
 
   Widget _FRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(children: [
-          SizedBox(
-            width: 150,
-            child: Text(label,
-                style: GoogleFonts.inter(
-                    fontSize: 12, color: AdminTheme.textSecondary)),
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 150,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AdminTheme.textSecondary,
+            ),
           ),
-          Text(value,
-              style: GoogleFonts.inter(
-                  fontSize: 12, color: AdminTheme.textPrimary)),
-        ]),
-      );
+        ),
+        Text(
+          value,
+          style: GoogleFonts.inter(fontSize: 12, color: AdminTheme.textPrimary),
+        ),
+      ],
+    ),
+  );
 }
 
 class _DeliveryPhotosCard extends StatelessWidget {
@@ -688,25 +737,29 @@ class _DeliveryPhotosCard extends StatelessWidget {
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: photos.map((url) => GestureDetector(
-                    onTap: () => showDialog(
-                      context: context,
-                      builder: (_) => Dialog(
-                        child: InteractiveViewer(
-                          child: CachedNetworkImage(imageUrl: url),
+              children: photos
+                  .map(
+                    (url) => GestureDetector(
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => Dialog(
+                          child: InteractiveViewer(
+                            child: CachedNetworkImage(imageUrl: url),
+                          ),
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CachedNetworkImage(
+                          imageUrl: url,
+                          width: 140,
+                          height: 100,
+                          fit: BoxFit.cover,
                         ),
                       ),
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: url,
-                        width: 140,
-                        height: 100,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  )).toList(),
+                  )
+                  .toList(),
             ),
           ],
         ),

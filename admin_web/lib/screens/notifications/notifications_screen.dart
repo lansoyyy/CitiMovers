@@ -34,57 +34,65 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     final bodyCtrl = TextEditingController();
     String targetType = 'all_customers';
 
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
-          builder: (_) => StatefulBuilder(builder: (ctx, setSt) {
-            return AlertDialog(
-              title: const Text('Send Broadcast Notification'),
-              content: SizedBox(
-                width: 420,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: titleCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Title'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: bodyCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Message body'),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: targetType,
-                      decoration:
-                          const InputDecoration(labelText: 'Audience'),
-                      items: const [
-                        DropdownMenuItem(
+          builder: (_) => StatefulBuilder(
+            builder: (ctx, setSt) {
+              return AlertDialog(
+                title: const Text('Send Broadcast Notification'),
+                content: SizedBox(
+                  width: 420,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(labelText: 'Title'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: bodyCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Message body',
+                        ),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: targetType,
+                        decoration: const InputDecoration(
+                          labelText: 'Audience',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
                             value: 'all_customers',
-                            child: Text('All Customers')),
-                        DropdownMenuItem(
+                            child: Text('All Customers'),
+                          ),
+                          DropdownMenuItem(
                             value: 'all_riders',
-                            child: Text('All Riders')),
-                      ],
-                      onChanged: (v) => setSt(
-                          () => targetType = v ?? 'all_customers'),
-                    ),
-                  ],
+                            child: Text('All Riders'),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setSt(() => targetType = v ?? 'all_customers'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
+                actions: [
+                  TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel')),
-                ElevatedButton(
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Send')),
-              ],
-            );
-          }),
+                    child: const Text('Send'),
+                  ),
+                ],
+              );
+            },
+          ),
         ) ??
         false;
 
@@ -103,8 +111,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                'Sent to $sentCount ${targetType.replaceAll('_', ' ')}')),
+          content: Text(
+            'Sent to $sentCount ${targetType.replaceAll('_', ' ')}',
+          ),
+        ),
       );
     }
   }
@@ -136,7 +146,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                     unselectedLabelColor: AdminTheme.textSecondary,
                     indicatorColor: AdminTheme.primary,
                     labelStyle: GoogleFonts.inter(
-                        fontSize: 13, fontWeight: FontWeight.w600),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                     tabs: const [
                       Tab(text: 'Recent Notifications'),
                       Tab(text: 'Email Queue'),
@@ -145,10 +157,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                   Expanded(
                     child: TabBarView(
                       controller: _tabs,
-                      children: [
-                        _RecentNotificationsTab(),
-                        _EmailQueueTab(),
-                      ],
+                      children: [_RecentNotificationsTab(), _EmailQueueTab()],
                     ),
                   ),
                 ],
@@ -170,8 +179,9 @@ class _RecentNotificationsTab extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return const EmptyState(
-              message: 'No notifications',
-              icon: Icons.notifications_none_outlined);
+            message: 'No notifications',
+            icon: Icons.notifications_none_outlined,
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
@@ -186,26 +196,30 @@ class _RecentNotificationsTab extends StatelessWidget {
               dense: true,
               leading: Icon(
                 isRead ? Icons.notifications_none : Icons.notifications,
-                color: isRead
-                    ? AdminTheme.textSecondary
-                    : AdminTheme.primary,
+                color: isRead ? AdminTheme.textSecondary : AdminTheme.primary,
                 size: 20,
               ),
-              title: Text(d['title'] ?? '—',
-                  style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: isRead
-                          ? FontWeight.w400
-                          : FontWeight.w600)),
-                subtitle: Text(d['body'] ?? d['message'] ?? '',
-                  style: GoogleFonts.inter(fontSize: 11),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              title: Text(
+                d['title'] ?? '—',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: isRead ? FontWeight.w400 : FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                d['body'] ?? d['message'] ?? '',
+                style: GoogleFonts.inter(fontSize: 11),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: ts != null
-                  ? Text(DateFormat('MMM d, h:mm a').format(ts),
+                  ? Text(
+                      DateFormat('MMM d, h:mm a').format(ts),
                       style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: AdminTheme.textSecondary))
+                        fontSize: 10,
+                        color: AdminTheme.textSecondary,
+                      ),
+                    )
                   : null,
             );
           },
@@ -224,8 +238,9 @@ class _EmailQueueTab extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return const EmptyState(
-              message: 'No email queued',
-              icon: Icons.email_outlined);
+            message: 'No email queued',
+            icon: Icons.email_outlined,
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
@@ -240,19 +255,27 @@ class _EmailQueueTab extends StatelessWidget {
               dense: true,
               leading: Icon(
                 sent ? Icons.mark_email_read_outlined : Icons.email_outlined,
-                color: sent ? AdminTheme.statusActive : AdminTheme.statusPending,
+                color: sent
+                    ? AdminTheme.statusActive
+                    : AdminTheme.statusPending,
               ),
-              title: Text(d['subject'] ?? d['template'] ?? '—',
-                  style: GoogleFonts.inter(fontSize: 13)),
-              subtitle: Text(d['to'] ?? d['email'] ?? '—',
-                  style: GoogleFonts.inter(fontSize: 11)),
+              title: Text(
+                d['subject'] ?? d['template'] ?? '—',
+                style: GoogleFonts.inter(fontSize: 13),
+              ),
+              subtitle: Text(
+                d['to'] ?? d['email'] ?? '—',
+                style: GoogleFonts.inter(fontSize: 11),
+              ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: sent
                           ? AdminTheme.statusActive.withOpacity(0.1)
@@ -262,18 +285,22 @@ class _EmailQueueTab extends StatelessWidget {
                     child: Text(
                       sent ? 'Sent' : 'Queued',
                       style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: sent
-                              ? AdminTheme.statusActive
-                              : AdminTheme.statusPending),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: sent
+                            ? AdminTheme.statusActive
+                            : AdminTheme.statusPending,
+                      ),
                     ),
                   ),
                   if (ts != null)
-                    Text(DateFormat('MMM d').format(ts),
-                        style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: AdminTheme.textSecondary)),
+                    Text(
+                      DateFormat('MMM d').format(ts),
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: AdminTheme.textSecondary,
+                      ),
+                    ),
                 ],
               ),
             );

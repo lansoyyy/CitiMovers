@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.black.withOpacity(0.06),
                       blurRadius: 24,
                       offset: const Offset(0, 8),
-                    )
+                    ),
                   ],
                 ),
                 child: Form(
@@ -100,32 +100,44 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: AdminTheme.accent,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(Icons.local_shipping,
-                                color: Colors.white, size: 26),
+                            child: const Icon(
+                              Icons.local_shipping,
+                              color: Colors.white,
+                              size: 26,
+                            ),
                           ),
                           const SizedBox(width: 14),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('CitiMovers',
-                                  style: GoogleFonts.inter(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: AdminTheme.primary)),
-                              Text('Operations Admin',
-                                  style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      color: AdminTheme.textSecondary)),
+                              Text(
+                                'CitiMovers',
+                                style: GoogleFonts.inter(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: AdminTheme.primary,
+                                ),
+                              ),
+                              Text(
+                                'Operations Admin',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                              ),
                             ],
                           ),
                         ],
                       ),
                       const SizedBox(height: 32),
-                      Text('Sign in to continue',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                              fontSize: 15,
-                              color: AdminTheme.textSecondary)),
+                      Text(
+                        'Sign in to continue',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 15,
+                          color: AdminTheme.textSecondary,
+                        ),
+                      ),
                       const SizedBox(height: 24),
 
                       // Username
@@ -135,10 +147,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           labelText: 'Username',
                           prefixIcon: Icon(Icons.person_outline, size: 20),
                         ),
-                        validator: (v) =>
-                            (v == null || v.trim().isEmpty)
-                                ? 'Enter username'
-                                : null,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Enter username'
+                            : null,
                         onFieldSubmitted: (_) => _submit(),
                       ),
                       const SizedBox(height: 16),
@@ -149,8 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           labelText: 'Password',
-                          prefixIcon:
-                              const Icon(Icons.lock_outline, size: 20),
+                          prefixIcon: const Icon(Icons.lock_outline, size: 20),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword
@@ -159,13 +169,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               size: 20,
                             ),
                             onPressed: () => setState(
-                                () => _obscurePassword = !_obscurePassword),
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
                         validator: (v) =>
-                            (v == null || v.isEmpty)
-                                ? 'Enter password'
-                                : null,
+                            (v == null || v.isEmpty) ? 'Enter password' : null,
                         onFieldSubmitted: (_) => _submit(),
                       ),
                       const SizedBox(height: 8),
@@ -175,21 +184,29 @@ class _LoginScreenState extends State<LoginScreen> {
                         Container(
                           margin: const EdgeInsets.only(top: 8),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFEE2E2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline,
-                                  size: 16, color: Color(0xFFDC2626)),
+                              const Icon(
+                                Icons.error_outline,
+                                size: 16,
+                                color: Color(0xFFDC2626),
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: Text(_errorMessage!,
-                                    style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        color: const Color(0xFFDC2626))),
+                                child: Text(
+                                  _errorMessage!,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: const Color(0xFFDC2626),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -206,12 +223,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white),
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
                                 )
-                              : Text('Sign In',
-                                  style:
-                                      GoogleFonts.inter(fontSize: 15)),
+                              : Text(
+                                  'Sign In',
+                                  style: GoogleFonts.inter(fontSize: 15),
+                                ),
                         ),
                       ),
                     ],
@@ -219,9 +238,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Internal use only · CitiMovers © 2026',
-                  style: GoogleFonts.inter(
-                      fontSize: 11, color: AdminTheme.textSecondary)),
+              Text(
+                'Internal use only · CitiMovers © 2026',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: AdminTheme.textSecondary,
+                ),
+              ),
             ],
           ),
         ),

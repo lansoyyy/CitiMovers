@@ -12,11 +12,14 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(title,
-            style: GoogleFonts.inter(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AdminTheme.textPrimary)),
+        Text(
+          title,
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AdminTheme.textPrimary,
+          ),
+        ),
         const Spacer(),
         if (trailing != null) trailing!,
       ],
@@ -46,12 +49,19 @@ class SearchField extends StatelessWidget {
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.inter(
-              fontSize: 13, color: AdminTheme.textSecondary),
-          prefixIcon: const Icon(Icons.search, size: 18,
-              color: AdminTheme.textSecondary),
+            fontSize: 13,
+            color: AdminTheme.textSecondary,
+          ),
+          prefixIcon: const Icon(
+            Icons.search,
+            size: 18,
+            color: AdminTheme.textSecondary,
+          ),
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
         ),
       ),
     );
@@ -129,10 +139,11 @@ class EmptyState extends StatelessWidget {
   final String message;
   final IconData icon;
 
-  const EmptyState(
-      {super.key,
-      required this.message,
-      this.icon = Icons.inbox_outlined});
+  const EmptyState({
+    super.key,
+    required this.message,
+    this.icon = Icons.inbox_outlined,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -142,9 +153,13 @@ class EmptyState extends StatelessWidget {
         children: [
           Icon(icon, size: 48, color: AdminTheme.textSecondary),
           const SizedBox(height: 12),
-          Text(message,
-              style: GoogleFonts.inter(
-                  fontSize: 14, color: AdminTheme.textSecondary)),
+          Text(
+            message,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: AdminTheme.textSecondary,
+            ),
+          ),
         ],
       ),
     );

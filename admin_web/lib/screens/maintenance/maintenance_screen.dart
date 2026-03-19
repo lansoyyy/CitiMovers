@@ -14,11 +14,7 @@ class MaintenanceScreen extends StatefulWidget {
 class _MaintenanceScreenState extends State<MaintenanceScreen> {
   bool _loading = true;
   String? _runningTask;
-  Map<String, int> _summary = const {
-    'users': 0,
-    'riders': 0,
-    'bookings': 0,
-  };
+  Map<String, int> _summary = const {'users': 0, 'riders': 0, 'bookings': 0};
 
   @override
   void initState() {
@@ -77,8 +73,10 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded,
-                      color: AdminTheme.statusPending),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: AdminTheme.statusPending,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
