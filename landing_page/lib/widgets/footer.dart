@@ -44,20 +44,26 @@ class LandingFooter extends StatelessWidget {
         const SizedBox(width: 60),
 
         // Quick links
-        Expanded(flex: 2, child: _buildLinksColumn('Quick Links', [
-          'Features',
-          'Vehicle Fleet',
-          'How It Works',
-          'Download App',
-        ])),
+        Expanded(
+          flex: 2,
+          child: _buildLinksColumn('Quick Links', [
+            'Features',
+            'Vehicle Fleet',
+            'How It Works',
+            'Download App',
+          ]),
+        ),
 
         // Services
-        Expanded(flex: 2, child: _buildLinksColumn('Services', [
-          'Same-Day Delivery',
-          'Scheduled Booking',
-          'Corporate Logistics',
-          'Bulk Cargo',
-        ])),
+        Expanded(
+          flex: 2,
+          child: _buildLinksColumn('Services', [
+            'Same-Day Delivery',
+            'Scheduled Booking',
+            'Corporate Logistics',
+            'Bulk Cargo',
+          ]),
+        ),
 
         // Contact
         Expanded(flex: 3, child: _buildContactColumn()),
@@ -74,18 +80,22 @@ class LandingFooter extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _buildLinksColumn('Quick Links', [
-              'Features',
-              'Vehicle Fleet',
-              'How It Works',
-              'Download App',
-            ])),
-            Expanded(child: _buildLinksColumn('Services', [
-              'Same-Day Delivery',
-              'Scheduled Booking',
-              'Corporate Logistics',
-              'Bulk Cargo',
-            ])),
+            Expanded(
+              child: _buildLinksColumn('Quick Links', [
+                'Features',
+                'Vehicle Fleet',
+                'How It Works',
+                'Download App',
+              ]),
+            ),
+            Expanded(
+              child: _buildLinksColumn('Services', [
+                'Same-Day Delivery',
+                'Scheduled Booking',
+                'Corporate Logistics',
+                'Bulk Cargo',
+              ]),
+            ),
           ],
         ),
         const SizedBox(height: 40),
@@ -98,10 +108,7 @@ class LandingFooter extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Image.asset(
-          'assets/images/logo.png',
-          height: 48,
-        ),
+        Image.asset('assets/images/logo.png', height: 48),
         const SizedBox(height: 16),
         Text(
           'Your Reliable Delivery Partner',
@@ -162,10 +169,12 @@ class LandingFooter extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        ...links.map((link) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _FooterLink(label: link),
-            )),
+        ...links.map(
+          (link) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _FooterLink(label: link),
+          ),
+        ),
       ],
     );
   }
@@ -186,43 +195,51 @@ class LandingFooter extends StatelessWidget {
         const SizedBox(height: 16),
         _FooterContactItem(
           icon: Icons.location_on_outlined,
-          text: '24 JP Rizal St. Cor. Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City 1117',
+          text:
+              '24 JP Rizal St. Cor. Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City 1117',
         ),
         const SizedBox(height: 12),
-        _FooterContactItem(icon: Icons.phone_outlined, text: '0967 489 3335', url: 'tel:+639674893335'),
+        _FooterContactItem(
+          icon: Icons.phone_outlined,
+          text: '0967 489 3335',
+          url: 'tel:+639674893335',
+        ),
         const SizedBox(height: 12),
-        _FooterContactItem(icon: Icons.email_outlined, text: 'excel_gesite@yahoo.com', url: 'mailto:excel_gesite@yahoo.com'),
+        _FooterContactItem(
+          icon: Icons.email_outlined,
+          text: 'excel_gesite@yahoo.com',
+          url: 'mailto:excel_gesite@yahoo.com',
+        ),
         const SizedBox(height: 12),
-        _FooterContactItem(icon: Icons.map_outlined, text: 'Metro Manila, Philippines'),
+        _FooterContactItem(
+          icon: Icons.map_outlined,
+          text: 'Metro Manila, Philippines',
+        ),
       ],
     );
   }
 
   Widget _buildBottomBar() {
-    return Builder(builder: (context) {
-      final isMobile = MediaQuery.of(context).size.width < 768;
-      return Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        runSpacing: 8,
-        children: [
-          Text(
-            '© ${DateTime.now().year} CitiMovers. All rights reserved.',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.white38,
+    return Builder(
+      builder: (context) {
+        final isMobile = MediaQuery.of(context).size.width < 768;
+        return Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          runSpacing: 8,
+          children: [
+            Text(
+              '© ${DateTime.now().year} CitiMovers. All rights reserved.',
+              style: GoogleFonts.poppins(fontSize: 12, color: Colors.white38),
             ),
-          ),
-          if (!isMobile) const SizedBox(width: 40),
-          Text(
-            'Metro Manila, Philippines',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.white38,
+            if (!isMobile) const SizedBox(width: 40),
+            Text(
+              'Metro Manila, Philippines',
+              style: GoogleFonts.poppins(fontSize: 12, color: Colors.white38),
             ),
-          ),
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -279,11 +296,13 @@ class _FooterContactItemState extends State<_FooterContactItem> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(widget.icon,
-                size: 16,
-                color: _hovered && widget.url != null
-                    ? AppColors.primaryLight
-                    : Colors.white38),
+            Icon(
+              widget.icon,
+              size: 16,
+              color: _hovered && widget.url != null
+                  ? AppColors.primaryLight
+                  : Colors.white38,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -341,8 +360,11 @@ class _FooterSocialBtnState extends State<_FooterSocialBtn> {
                   : Colors.white.withOpacity(0.1),
             ),
           ),
-          child: Icon(widget.icon,
-              color: _hovered ? Colors.white : Colors.white38, size: 18),
+          child: Icon(
+            widget.icon,
+            color: _hovered ? Colors.white : Colors.white38,
+            size: 18,
+          ),
         ),
       ),
     );

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color primary = Color(0xFF1565C0);      // Deep Blue
-  static const Color primaryLight = Color(0xFF1E88E5);  // Medium Blue
-  static const Color primaryDark = Color(0xFF0D47A1);   // Dark Blue
-  static const Color accent = Color(0xFFE53935);        // Red
-  static const Color accentLight = Color(0xFFFF6F60);   // Light Red
+  static const Color primary = Color(0xFF1565C0); // Deep Blue
+  static const Color primaryLight = Color(0xFF1E88E5); // Medium Blue
+  static const Color primaryDark = Color(0xFF0D47A1); // Dark Blue
+  static const Color accent = Color(0xFFE53935); // Red
+  static const Color accentLight = Color(0xFFFF6F60); // Light Red
   static const Color white = Color(0xFFFFFFFF);
   static const Color offWhite = Color(0xFFF5F7FA);
-  static const Color darkBg = Color(0xFF0A1628);        // Deep navy dark
+  static const Color darkBg = Color(0xFF0A1628); // Deep navy dark
   static const Color darkCard = Color(0xFF0F2044);
   static const Color textDark = Color(0xFF1A1A2E);
   static const Color textGrey = Color(0xFF6B7280);

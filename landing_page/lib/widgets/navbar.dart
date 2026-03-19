@@ -62,7 +62,7 @@ class _LandingNavbarState extends State<LandingNavbar> {
                   color: Colors.black.withOpacity(0.08),
                   blurRadius: 20,
                   offset: const Offset(0, 4),
-                )
+                ),
               ]
             : [],
       ),
@@ -77,34 +77,35 @@ class _LandingNavbarState extends State<LandingNavbar> {
               // Logo
               GestureDetector(
                 onTap: widget.onScrollToHero,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  height: 44,
-                ),
+                child: Image.asset('assets/images/logo.png', height: 44),
               ),
               const Spacer(),
 
               // Nav links (desktop only)
               if (!isMobile) ...[
                 _NavLink(
-                    label: 'Features',
-                    isScrolled: _isScrolled,
-                    onTap: widget.onScrollToFeatures),
+                  label: 'Features',
+                  isScrolled: _isScrolled,
+                  onTap: widget.onScrollToFeatures,
+                ),
                 const SizedBox(width: 32),
                 _NavLink(
-                    label: 'Vehicles',
-                    isScrolled: _isScrolled,
-                    onTap: widget.onScrollToVehicles),
+                  label: 'Vehicles',
+                  isScrolled: _isScrolled,
+                  onTap: widget.onScrollToVehicles,
+                ),
                 const SizedBox(width: 32),
                 _NavLink(
-                    label: 'How It Works',
-                    isScrolled: _isScrolled,
-                    onTap: widget.onScrollToHowItWorks),
+                  label: 'How It Works',
+                  isScrolled: _isScrolled,
+                  onTap: widget.onScrollToHowItWorks,
+                ),
                 const SizedBox(width: 32),
                 _NavLink(
-                    label: 'Contact',
-                    isScrolled: _isScrolled,
-                    onTap: widget.onScrollToContact),
+                  label: 'Contact',
+                  isScrolled: _isScrolled,
+                  onTap: widget.onScrollToContact,
+                ),
                 const SizedBox(width: 40),
                 _DownloadButton(isScrolled: _isScrolled),
               ] else ...[
@@ -129,8 +130,11 @@ class _NavLink extends StatefulWidget {
   final bool isScrolled;
   final VoidCallback onTap;
 
-  const _NavLink(
-      {required this.label, required this.isScrolled, required this.onTap});
+  const _NavLink({
+    required this.label,
+    required this.isScrolled,
+    required this.onTap,
+  });
 
   @override
   State<_NavLink> createState() => _NavLinkState();
@@ -154,8 +158,8 @@ class _NavLinkState extends State<_NavLink> {
             color: _hovered
                 ? AppColors.accent
                 : widget.isScrolled
-                    ? AppColors.textDark
-                    : AppColors.white,
+                ? AppColors.textDark
+                : AppColors.white,
           ),
           child: Text(widget.label),
         ),
@@ -182,10 +186,11 @@ class _DownloadButtonState extends State<_DownloadButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          gradient: _hovered ? AppColors.accentGradient : AppColors.cardGradient,
+          gradient: _hovered
+              ? AppColors.accentGradient
+              : AppColors.cardGradient,
           borderRadius: BorderRadius.circular(25),
           boxShadow: AppShadows.buttonShadow,
         ),
@@ -277,10 +282,38 @@ class _MobileMenu extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            _MobileNavItem(label: 'Features', icon: Icons.star_rounded, onTap: () { Navigator.pop(context); onFeatures(); }),
-            _MobileNavItem(label: 'Vehicles', icon: Icons.local_shipping_rounded, onTap: () { Navigator.pop(context); onVehicles(); }),
-            _MobileNavItem(label: 'How It Works', icon: Icons.help_outline_rounded, onTap: () { Navigator.pop(context); onHowItWorks(); }),
-            _MobileNavItem(label: 'Contact Us', icon: Icons.contact_mail_rounded, onTap: () { Navigator.pop(context); onContact(); }),
+            _MobileNavItem(
+              label: 'Features',
+              icon: Icons.star_rounded,
+              onTap: () {
+                Navigator.pop(context);
+                onFeatures();
+              },
+            ),
+            _MobileNavItem(
+              label: 'Vehicles',
+              icon: Icons.local_shipping_rounded,
+              onTap: () {
+                Navigator.pop(context);
+                onVehicles();
+              },
+            ),
+            _MobileNavItem(
+              label: 'How It Works',
+              icon: Icons.help_outline_rounded,
+              onTap: () {
+                Navigator.pop(context);
+                onHowItWorks();
+              },
+            ),
+            _MobileNavItem(
+              label: 'Contact Us',
+              icon: Icons.contact_mail_rounded,
+              onTap: () {
+                Navigator.pop(context);
+                onContact();
+              },
+            ),
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
@@ -312,7 +345,11 @@ class _MobileNavItem extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _MobileNavItem({required this.label, required this.icon, required this.onTap});
+  const _MobileNavItem({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -334,8 +371,11 @@ class _MobileNavItem extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            Icon(Icons.arrow_forward_ios_rounded,
-                color: AppColors.textLight, size: 14),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: AppColors.textLight,
+              size: 14,
+            ),
           ],
         ),
       ),

@@ -27,10 +27,26 @@ class StatsSection extends StatelessWidget {
         runSpacing: 32,
         spacing: 32,
         children: const [
-          _StatItem(value: '7', label: 'Vehicle Types', icon: Icons.local_shipping_rounded),
-          _StatItem(value: '24/7', label: 'Support Available', icon: Icons.headset_mic_rounded),
-          _StatItem(value: 'Real-Time', label: 'GPS Tracking', icon: Icons.gps_fixed_rounded),
-          _StatItem(value: 'Secure', label: 'Insured Deliveries', icon: Icons.shield_rounded),
+          _StatItem(
+            value: '7',
+            label: 'Vehicle Types',
+            icon: Icons.local_shipping_rounded,
+          ),
+          _StatItem(
+            value: '24/7',
+            label: 'Support Available',
+            icon: Icons.headset_mic_rounded,
+          ),
+          _StatItem(
+            value: 'Real-Time',
+            label: 'GPS Tracking',
+            icon: Icons.gps_fixed_rounded,
+          ),
+          _StatItem(
+            value: 'Secure',
+            label: 'Insured Deliveries',
+            icon: Icons.shield_rounded,
+          ),
         ],
       ),
     );
@@ -42,7 +58,11 @@ class _StatItem extends StatefulWidget {
   final String label;
   final IconData icon;
 
-  const _StatItem({required this.value, required this.label, required this.icon});
+  const _StatItem({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
 
   @override
   State<_StatItem> createState() => _StatItemState();

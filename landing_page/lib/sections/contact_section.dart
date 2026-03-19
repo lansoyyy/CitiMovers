@@ -22,12 +22,14 @@ class ContactSection extends StatelessWidget {
           Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AppColors.primary.withOpacity(0.2)),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
                 ),
                 child: Text(
                   'Get In Touch',
@@ -121,10 +123,7 @@ class _ContactInfoPanel extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 'Your Reliable Delivery Partner',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: Colors.white70,
-                ),
+                style: GoogleFonts.poppins(fontSize: 13, color: Colors.white70),
               ),
               const SizedBox(height: 28),
               const Divider(color: Colors.white24),
@@ -132,7 +131,8 @@ class _ContactInfoPanel extends StatelessWidget {
               _ContactItem(
                 icon: Icons.location_on_rounded,
                 label: 'Address',
-                value: '24 JP Rizal St. Cor. Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City, Philippines 1117',
+                value:
+                    '24 JP Rizal St. Cor. Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City, Philippines 1117',
               ),
               const SizedBox(height: 20),
               _ContactItem(
@@ -274,8 +274,11 @@ class _SocialButton extends StatefulWidget {
   final String label;
   final String url;
 
-  const _SocialButton(
-      {required this.icon, required this.label, required this.url});
+  const _SocialButton({
+    required this.icon,
+    required this.label,
+    required this.url,
+  });
 
   @override
   State<_SocialButton> createState() => _SocialButtonState();
@@ -376,8 +379,11 @@ class _ContactFormState extends State<_ContactForm> {
             color: AppColors.success.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.check_circle_rounded,
-              color: AppColors.success, size: 36),
+          child: const Icon(
+            Icons.check_circle_rounded,
+            color: AppColors.success,
+            size: 36,
+          ),
         ),
         const SizedBox(height: 20),
         Text(
@@ -435,10 +441,7 @@ class _ContactFormState extends State<_ContactForm> {
           const SizedBox(height: 6),
           Text(
             'We typically respond within 1 business day.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppColors.textGrey,
-            ),
+            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textGrey),
           ),
           const SizedBox(height: 24),
           _FormField(
@@ -446,7 +449,8 @@ class _ContactFormState extends State<_ContactForm> {
             label: 'Full Name',
             hint: 'Juan dela Cruz',
             icon: Icons.person_outline_rounded,
-            validator: (v) => v == null || v.isEmpty ? 'Please enter your name' : null,
+            validator: (v) =>
+                v == null || v.isEmpty ? 'Please enter your name' : null,
           ),
           const SizedBox(height: 16),
           _FormField(
@@ -468,8 +472,9 @@ class _ContactFormState extends State<_ContactForm> {
             hint: 'Tell us about your delivery needs...',
             icon: Icons.chat_bubble_outline_rounded,
             maxLines: 5,
-            validator: (v) =>
-                v == null || v.length < 10 ? 'Message must be at least 10 characters' : null,
+            validator: (v) => v == null || v.length < 10
+                ? 'Message must be at least 10 characters'
+                : null,
           ),
           const SizedBox(height: 28),
           SizedBox(
@@ -542,7 +547,9 @@ class _FormField extends StatelessWidget {
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: GoogleFonts.poppins(
-                fontSize: 14, color: AppColors.textLight),
+              fontSize: 14,
+              color: AppColors.textLight,
+            ),
             prefixIcon: maxLines == 1
                 ? Icon(icon, color: AppColors.textLight, size: 20)
                 : null,
@@ -562,18 +569,18 @@ class _FormField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  const BorderSide(color: AppColors.primary, width: 1.5),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  const BorderSide(color: AppColors.accent, width: 1.5),
+              borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  const BorderSide(color: AppColors.accent, width: 1.5),
+              borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
             ),
           ),
         ),

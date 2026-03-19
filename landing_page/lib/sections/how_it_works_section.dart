@@ -21,7 +21,10 @@ class HowItWorksSection extends StatelessWidget {
           Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(20),
@@ -77,13 +80,45 @@ class HowItWorksSection extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _StepCard(step: 1, icon: Icons.pin_drop_rounded, title: 'Set Locations', description: 'Enter your pickup address and delivery destination. Use autocomplete to find any address in Metro Manila quickly.')),
+        Expanded(
+          child: _StepCard(
+            step: 1,
+            icon: Icons.pin_drop_rounded,
+            title: 'Set Locations',
+            description:
+                'Enter your pickup address and delivery destination. Use autocomplete to find any address in Metro Manila quickly.',
+          ),
+        ),
         _StepConnector(),
-        Expanded(child: _StepCard(step: 2, icon: Icons.local_shipping_rounded, title: 'Choose Vehicle', description: 'Select the right vehicle for your cargo — from an AUV for small items up to a 10-Wheeler Wingvan for heavy loads.')),
+        Expanded(
+          child: _StepCard(
+            step: 2,
+            icon: Icons.local_shipping_rounded,
+            title: 'Choose Vehicle',
+            description:
+                'Select the right vehicle for your cargo — from an AUV for small items up to a 10-Wheeler Wingvan for heavy loads.',
+          ),
+        ),
         _StepConnector(),
-        Expanded(child: _StepCard(step: 3, icon: Icons.check_circle_rounded, title: 'Confirm & Pay', description: 'Review your fare estimate, confirm the booking, and pay seamlessly via your in-app wallet.')),
+        Expanded(
+          child: _StepCard(
+            step: 3,
+            icon: Icons.check_circle_rounded,
+            title: 'Confirm & Pay',
+            description:
+                'Review your fare estimate, confirm the booking, and pay seamlessly via your in-app wallet.',
+          ),
+        ),
         _StepConnector(),
-        Expanded(child: _StepCard(step: 4, icon: Icons.gps_fixed_rounded, title: 'Track Live', description: 'Watch your driver on the real-time map. Get notified at every step — from accepted to delivered.')),
+        Expanded(
+          child: _StepCard(
+            step: 4,
+            icon: Icons.gps_fixed_rounded,
+            title: 'Track Live',
+            description:
+                'Watch your driver on the real-time map. Get notified at every step — from accepted to delivered.',
+          ),
+        ),
       ],
     );
   }
@@ -91,13 +126,37 @@ class HowItWorksSection extends StatelessWidget {
   Widget _buildMobileSteps() {
     return Column(
       children: [
-        _StepCard(step: 1, icon: Icons.pin_drop_rounded, title: 'Set Locations', description: 'Enter your pickup address and delivery destination using Google Places autocomplete.'),
+        _StepCard(
+          step: 1,
+          icon: Icons.pin_drop_rounded,
+          title: 'Set Locations',
+          description:
+              'Enter your pickup address and delivery destination using Google Places autocomplete.',
+        ),
         const SizedBox(height: 16),
-        _StepCard(step: 2, icon: Icons.local_shipping_rounded, title: 'Choose Vehicle', description: 'Select the right vehicle for your cargo size and budget.'),
+        _StepCard(
+          step: 2,
+          icon: Icons.local_shipping_rounded,
+          title: 'Choose Vehicle',
+          description:
+              'Select the right vehicle for your cargo size and budget.',
+        ),
         const SizedBox(height: 16),
-        _StepCard(step: 3, icon: Icons.check_circle_rounded, title: 'Confirm & Pay', description: 'Review the fare, confirm booking, and pay via in-app wallet.'),
+        _StepCard(
+          step: 3,
+          icon: Icons.check_circle_rounded,
+          title: 'Confirm & Pay',
+          description:
+              'Review the fare, confirm booking, and pay via in-app wallet.',
+        ),
         const SizedBox(height: 16),
-        _StepCard(step: 4, icon: Icons.gps_fixed_rounded, title: 'Track Live', description: 'Watch your driver on real-time GPS. Get notified every step of the way.'),
+        _StepCard(
+          step: 4,
+          icon: Icons.gps_fixed_rounded,
+          title: 'Track Live',
+          description:
+              'Watch your driver on real-time GPS. Get notified every step of the way.',
+        ),
       ],
     );
   }
@@ -163,7 +222,9 @@ class _StepCardState extends State<_StepCard> {
         duration: const Duration(milliseconds: 220),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: _hovered ? AppColors.primary.withOpacity(0.03) : Colors.transparent,
+          color: _hovered
+              ? AppColors.primary.withOpacity(0.03)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: _hovered

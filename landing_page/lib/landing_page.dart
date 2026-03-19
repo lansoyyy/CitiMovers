@@ -165,8 +165,11 @@ class _ScrollToTopButtonState extends State<_ScrollToTopButton>
                 ),
               ],
             ),
-            child: const Icon(Icons.arrow_upward_rounded,
-                color: Colors.white, size: 22),
+            child: const Icon(
+              Icons.arrow_upward_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
         ),
       ),

@@ -33,18 +33,20 @@ class FeaturesSection extends StatelessWidget {
               final crossAxisCount = constraints.maxWidth < 600
                   ? 1
                   : constraints.maxWidth < 1000
-                      ? 2
-                      : 3;
+                  ? 2
+                  : 3;
               return Wrap(
                 spacing: 24,
                 runSpacing: 24,
                 children: _features
-                    .map((f) => SizedBox(
-                          width: (constraints.maxWidth -
-                                  (crossAxisCount - 1) * 24) /
-                              crossAxisCount,
-                          child: _FeatureCard(feature: f),
-                        ))
+                    .map(
+                      (f) => SizedBox(
+                        width:
+                            (constraints.maxWidth - (crossAxisCount - 1) * 24) /
+                            crossAxisCount,
+                        child: _FeatureCard(feature: f),
+                      ),
+                    )
                     .toList(),
               );
             },
@@ -163,7 +165,7 @@ class _FeatureCardState extends State<_FeatureCard> {
                     color: widget.feature.color.withOpacity(0.15),
                     blurRadius: 32,
                     offset: const Offset(0, 12),
-                  )
+                  ),
                 ]
               : AppShadows.cardShadow,
           border: Border.all(
@@ -185,8 +187,11 @@ class _FeatureCardState extends State<_FeatureCard> {
                 color: widget.feature.color.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(widget.feature.icon,
-                  color: widget.feature.color, size: 26),
+              child: Icon(
+                widget.feature.icon,
+                color: widget.feature.color,
+                size: 26,
+              ),
             ),
             const SizedBox(height: 18),
             Text(

@@ -70,11 +70,13 @@ class _DownloadSectionState extends State<DownloadSection> {
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border:
-                          Border.all(color: Colors.white.withOpacity(0.25)),
+                      border: Border.all(color: Colors.white.withOpacity(0.25)),
                     ),
-                    child:
-                        const Icon(Icons.download_rounded, color: Colors.white, size: 34),
+                    child: const Icon(
+                      Icons.download_rounded,
+                      color: Colors.white,
+                      size: 34,
+                    ),
                   ),
                   const SizedBox(height: 24),
 
@@ -146,8 +148,11 @@ class _DownloadSectionState extends State<DownloadSection> {
                     children: [
                       ...List.generate(
                         5,
-                        (_) => const Icon(Icons.star_rounded,
-                            color: AppColors.gold, size: 20),
+                        (_) => const Icon(
+                          Icons.star_rounded,
+                          color: AppColors.gold,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Text(

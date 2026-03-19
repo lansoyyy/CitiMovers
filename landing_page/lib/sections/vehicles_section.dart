@@ -23,7 +23,8 @@ class VehiclesSection extends StatelessWidget {
       icon: Icons.local_shipping_rounded,
       name: 'L300 Van',
       capacity: '500 kg',
-      description: 'Versatile van for furniture, appliances, and business cargo.',
+      description:
+          'Versatile van for furniture, appliances, and business cargo.',
       tag: 'Most Popular',
       tagColor: AppColors.primary,
       gradient: AppColors.cardGradient,
@@ -32,7 +33,8 @@ class VehiclesSection extends StatelessWidget {
       icon: Icons.fire_truck_rounded,
       name: '4-Wheeler',
       capacity: '200 kg',
-      description: 'Compact truck ideal for retail deliveries and small commercial loads.',
+      description:
+          'Compact truck ideal for retail deliveries and small commercial loads.',
       tag: 'Light commercial',
       tagColor: const Color(0xFF7C3AED),
       gradient: const LinearGradient(
@@ -45,7 +47,8 @@ class VehiclesSection extends StatelessWidget {
       icon: Icons.local_shipping,
       name: '6-Wheeler',
       capacity: '1,000 kg',
-      description: 'Mid-size delivery truck for larger commercial and industrial cargo.',
+      description:
+          'Mid-size delivery truck for larger commercial and industrial cargo.',
       tag: 'Heavy commercial',
       tagColor: const Color(0xFFE53935),
       gradient: AppColors.accentGradient,
@@ -54,7 +57,8 @@ class VehiclesSection extends StatelessWidget {
       icon: Icons.conveyor_belt,
       name: 'Wingvan',
       capacity: '2,000 kg',
-      description: 'Large enclosed panel van with wingdoors — perfect for bulk deliveries.',
+      description:
+          'Large enclosed panel van with wingdoors — perfect for bulk deliveries.',
       tag: 'Bulk deliveries',
       tagColor: const Color(0xFFFF8C00),
       gradient: const LinearGradient(
@@ -67,7 +71,8 @@ class VehiclesSection extends StatelessWidget {
       icon: Icons.rv_hookup_rounded,
       name: 'Trailer',
       capacity: '5,000 kg',
-      description: 'Heavy-duty trailer for construction materials and industrial equipment.',
+      description:
+          'Heavy-duty trailer for construction materials and industrial equipment.',
       tag: 'Industrial',
       tagColor: const Color(0xFF0891B2),
       gradient: const LinearGradient(
@@ -80,7 +85,8 @@ class VehiclesSection extends StatelessWidget {
       icon: Icons.train_rounded,
       name: '10-Wheeler Wingvan',
       capacity: '8,000 kg',
-      description: 'Maximum capacity for warehouse-to-warehouse and long-haul cargo across Metro Manila.',
+      description:
+          'Maximum capacity for warehouse-to-warehouse and long-haul cargo across Metro Manila.',
       tag: 'Max capacity',
       tagColor: AppColors.textDark,
       gradient: const LinearGradient(
@@ -124,20 +130,22 @@ class VehiclesSection extends StatelessWidget {
               final crossAxisCount = constraints.maxWidth < 600
                   ? 1
                   : constraints.maxWidth < 900
-                      ? 2
-                      : constraints.maxWidth < 1300
-                          ? 3
-                          : 4;
+                  ? 2
+                  : constraints.maxWidth < 1300
+                  ? 3
+                  : 4;
               return Wrap(
                 spacing: 20,
                 runSpacing: 20,
                 children: _vehicles
-                    .map((v) => SizedBox(
-                          width: (constraints.maxWidth -
-                                  (crossAxisCount - 1) * 20) /
-                              crossAxisCount,
-                          child: _VehicleCard(vehicle: v),
-                        ))
+                    .map(
+                      (v) => SizedBox(
+                        width:
+                            (constraints.maxWidth - (crossAxisCount - 1) * 20) /
+                            crossAxisCount,
+                        child: _VehicleCard(vehicle: v),
+                      ),
+                    )
                     .toList(),
               );
             },
@@ -213,18 +221,24 @@ class _VehicleCardState extends State<_VehicleCard> {
                     gradient: widget.vehicle.gradient,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(widget.vehicle.icon,
-                      color: Colors.white, size: 26),
+                  child: Icon(
+                    widget.vehicle.icon,
+                    color: Colors.white,
+                    size: 26,
+                  ),
                 ),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: widget.vehicle.tagColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: widget.vehicle.tagColor.withOpacity(0.3)),
+                      color: widget.vehicle.tagColor.withOpacity(0.3),
+                    ),
                   ),
                   child: Text(
                     widget.vehicle.tag,
@@ -251,7 +265,11 @@ class _VehicleCardState extends State<_VehicleCard> {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.scale_rounded, size: 14, color: Colors.white38),
+                const Icon(
+                  Icons.scale_rounded,
+                  size: 14,
+                  color: Colors.white38,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'Up to ${widget.vehicle.capacity}',
@@ -295,13 +313,11 @@ class _DarkSectionHeader extends StatelessWidget {
     return Column(
       children: [
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             color: AppColors.primary.withOpacity(0.2),
             borderRadius: BorderRadius.circular(20),
-            border:
-                Border.all(color: AppColors.primary.withOpacity(0.4)),
+            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
           ),
           child: Text(
             tag,

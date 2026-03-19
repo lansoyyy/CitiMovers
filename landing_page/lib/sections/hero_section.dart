@@ -33,8 +33,10 @@ class _HeroSectionState extends State<HeroSection>
       begin: const Offset(0, 0.15),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
-    _scaleAnim = Tween<double>(begin: 0.92, end: 1.0).animate(
-        CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
+    _scaleAnim = Tween<double>(
+      begin: 0.92,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
 
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
@@ -197,8 +199,9 @@ class _HeroSectionState extends State<HeroSection>
 
   Widget _buildHeroText(bool isMobile) {
     return Column(
-      crossAxisAlignment:
-          isMobile ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: isMobile
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         // Badge
         Container(
@@ -288,7 +291,7 @@ class _HeroSectionState extends State<HeroSection>
                   color: AppColors.accent.withOpacity(0.4),
                   blurRadius: 16,
                   offset: const Offset(0, 6),
-                )
+                ),
               ],
             ),
             _HeroCTAButton(
@@ -309,8 +312,14 @@ class _HeroSectionState extends State<HeroSection>
           spacing: 24,
           runSpacing: 12,
           children: [
-            _TrustBadge(icon: Icons.local_shipping_rounded, label: '7 Vehicle Types'),
-            _TrustBadge(icon: Icons.gps_fixed_rounded, label: 'Live GPS Tracking'),
+            _TrustBadge(
+              icon: Icons.local_shipping_rounded,
+              label: '7 Vehicle Types',
+            ),
+            _TrustBadge(
+              icon: Icons.gps_fixed_rounded,
+              label: 'Live GPS Tracking',
+            ),
             _TrustBadge(icon: Icons.shield_rounded, label: 'Insured Delivery'),
           ],
         ),
@@ -332,16 +341,19 @@ class _HeroSectionState extends State<HeroSection>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.10),
-                    Colors.transparent,
-                  ],
+                  colors: [Colors.white.withOpacity(0.10), Colors.transparent],
                 ),
               ),
             ),
 
-            // Mock phone frame
-            _MockPhoneFrame(isMobile: isMobile),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: Image.asset(
+                'assets/images/emulator.png',
+                width: isMobile ? 210 : 320,
+                fit: BoxFit.contain,
+              ),
+            ),
           ],
         ),
       ),
@@ -427,262 +439,6 @@ class _TrustBadge extends StatelessWidget {
             fontSize: 12,
             color: Colors.white60,
             fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MockPhoneFrame extends StatelessWidget {
-  final bool isMobile;
-  const _MockPhoneFrame({required this.isMobile});
-
-  @override
-  Widget build(BuildContext context) {
-    final w = isMobile ? 200.0 : 280.0;
-    final h = isMobile ? 360.0 : 500.0;
-
-    return Container(
-      width: w,
-      height: h,
-      decoration: BoxDecoration(
-        color: AppColors.darkBg,
-        borderRadius: BorderRadius.circular(36),
-        border: Border.all(color: Colors.white.withOpacity(0.15), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.4),
-            blurRadius: 40,
-            offset: const Offset(0, 20),
-          ),
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.2),
-            blurRadius: 60,
-            offset: const Offset(-10, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(34),
-        child: Column(
-          children: [
-            // Status bar notch
-            Container(
-              height: 28,
-              color: Colors.black,
-              child: Center(
-                child: Container(
-                  width: 80,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-              ),
-            ),
-            // App content mock
-            Expanded(
-              child: Container(
-                color: const Color(0xFF0F2044),
-                child: Column(
-                  children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              gradient: AppColors.cardGradient,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.local_shipping,
-                                color: Colors.white, size: 16),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'CitiMovers',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Map placeholder
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                      height: isMobile ? 100 : 150,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A3560),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                            color: Colors.white.withOpacity(0.07)),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Grid lines to simulate map
-                          ...List.generate(
-                            4,
-                            (i) => Positioned(
-                              top: i * (isMobile ? 30.0 : 40.0),
-                              left: 0,
-                              right: 0,
-                              child: Container(
-                                height: 1,
-                                color: Colors.white.withOpacity(0.06),
-                              ),
-                            ),
-                          ),
-                          ...List.generate(
-                            4,
-                            (i) => Positioned(
-                              left: i * (isMobile ? 30.0 : 60.0),
-                              top: 0,
-                              bottom: 0,
-                              child: Container(
-                                width: 1,
-                                color: Colors.white.withOpacity(0.06),
-                              ),
-                            ),
-                          ),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.location_on,
-                                  color: AppColors.accent, size: 28),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Live Tracking',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white60,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // Book now card
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        gradient: AppColors.cardGradient,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Book a Delivery',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _MockInputField(
-                              icon: Icons.trip_origin, hint: 'Pickup location'),
-                          const SizedBox(height: 6),
-                          _MockInputField(
-                              icon: Icons.location_on, hint: 'Destination'),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Vehicle row
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _MockVehicleChip(Icons.airport_shuttle, 'AUV'),
-                          _MockVehicleChip(Icons.local_shipping, 'L300'),
-                          _MockVehicleChip(Icons.fire_truck, '6-Wheel'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MockInputField extends StatelessWidget {
-  final IconData icon;
-  final String hint;
-  const _MockInputField({required this.icon, required this.hint});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white70, size: 12),
-          const SizedBox(width: 6),
-          Text(
-            hint,
-            style: GoogleFonts.poppins(
-              color: Colors.white54,
-              fontSize: 9,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MockVehicleChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _MockVehicleChip(this.icon, this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: Colors.white60, size: 18),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            color: Colors.white54,
-            fontSize: 8,
           ),
         ),
       ],
