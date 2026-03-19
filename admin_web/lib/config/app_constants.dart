@@ -22,10 +22,13 @@ class AdminConstants {
   static const String colRiderSettings = 'rider_settings';
   static const String colChatRooms = 'chatRooms';
   static const String colAdminAuditLogs = 'admin_audit_logs';
+  static const String colBookingAdminNotes = 'admin_notes';
 
   // Booking statuses
   static const List<String> bookingStatuses = [
     'pending',
+    'awaiting_payment',
+    'payment_locked',
     'accepted',
     'arrived_at_pickup',
     'loading',
@@ -37,6 +40,7 @@ class AdminConstants {
     'completed',
     'cancelled',
     'cancelled_by_rider',
+    'cancelled_by_customer',
   ];
 
   // Audit action types
@@ -50,6 +54,9 @@ class AdminConstants {
   static const String auditReactivateRider = 'reactivate_rider';
   static const String auditCancelBooking = 'cancel_booking';
   static const String auditAddBookingNote = 'add_booking_note';
+  static const String auditUpdateReconciliation = 'update_reconciliation';
   static const String auditPublishBanner = 'publish_promo_banner';
+  static const String auditDeleteBanner = 'delete_promo_banner';
   static const String auditSendNotification = 'send_notification';
+  static const String auditRunBackfill = 'run_backfill';
 }

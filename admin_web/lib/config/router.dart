@@ -13,6 +13,7 @@ import '../screens/finance/finance_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/promos/promos_screen.dart';
 import '../screens/audit_logs/audit_logs_screen.dart';
+import '../screens/maintenance/maintenance_screen.dart';
 import '../services/auth_service.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -84,6 +85,10 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
             GoRoute(
               path: '/audit-logs',
               builder: (context, state) => const AuditLogsScreen(),
+            ),
+            GoRoute(
+              path: '/maintenance',
+              builder: (context, state) => const MaintenanceScreen(),
             ),
           ],
         ),

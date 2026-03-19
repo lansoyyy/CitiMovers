@@ -3,9 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
-import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
-import '../../services/audit_service.dart';
 import '../../widgets/common_widgets.dart';
 
 class PromosScreen extends StatefulWidget {
@@ -87,16 +85,9 @@ class _PromosScreenState extends State<PromosScreen> {
       'subtitle': subtitleCtrl.text.trim(),
       'imageUrl': imageUrlCtrl.text.trim(),
       'isActive': isActive,
-      'updatedAt': FieldValue.serverTimestamp(),
     };
 
     await AdminRepository.upsertBanner(docId, data);
-    await AdminAuditService.log(
-      action: AdminConstants.auditPublishBanner,
-      entityType: 'promo_banner',
-      entityId: docId ?? 'new',
-      after: data,
-    );
   }
 
   Future<void> _deleteBanner(String docId) async {
@@ -107,10 +98,7 @@ class _PromosScreenState extends State<PromosScreen> {
       confirmLabel: 'Delete',
     );
     if (!confirmed) return;
-    await FirebaseFirestore.instance
-        .collection(AdminConstants.colPromoBanners)
-        .doc(docId)
-        .delete();
+    await AdminRepository.deleteBanner(docId);
   }
 
   @override

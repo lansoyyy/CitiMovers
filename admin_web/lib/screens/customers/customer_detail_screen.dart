@@ -4,9 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
-import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
-import '../../services/audit_service.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -32,10 +30,10 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
   }
 
   Future<void> _loadUser() async {
-    final doc = await AdminRepository.getUser(widget.customerId);
+    final userData = await AdminRepository.getNormalizedUser(widget.customerId);
     if (!mounted) return;
     setState(() {
-      _userData = doc.exists ? doc.data() as Map<String, dynamic> : null;
+      _userData = userData;
       _loading = false;
     });
   }
@@ -59,18 +57,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
     if (!confirmed) return;
 
     final newValue = !isSuspended;
-    await AdminRepository.updateUser(widget.customerId, {
-      'isSuspended': newValue,
-      'accountStatus': newValue ? 'suspended' : 'active',
-    });
-    await AdminAuditService.log(
-      action: newValue
-          ? AdminConstants.auditSuspendUser
-          : AdminConstants.auditReactivateUser,
-      entityType: 'user',
-      entityId: widget.customerId,
-      before: {'isSuspended': isSuspended},
-      after: {'isSuspended': newValue},
+    await AdminRepository.setUserSuspended(
+      userId: widget.customerId,
+      isSuspended: newValue,
     );
     _loadUser();
   }
@@ -128,28 +117,22 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
 
     final currentBalance =
         ((_userData?['walletBalance'] ?? 0) as num).toDouble();
-    final newBalance = currentBalance + amount;
-
-    await AdminRepository.updateUser(widget.customerId,
-        {'walletBalance': newBalance});
-    await FirebaseFirestore.instance
-        .collection(AdminConstants.colWalletTransactions)
-        .add({
-      'userId': widget.customerId,
-      'amount': amount,
-      'balance': newBalance,
-      'type': 'admin_adjustment',
-      'description': reasonCtrl.text.trim(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    await AdminAuditService.log(
-      action: AdminConstants.auditWalletAdjust,
-      entityType: 'user',
-      entityId: widget.customerId,
+    await AdminRepository.adjustUserWallet(
+      userId: widget.customerId,
+      amount: amount,
       reason: reasonCtrl.text.trim(),
-      before: {'walletBalance': currentBalance},
-      after: {'walletBalance': newBalance},
     );
+
+    if (mounted) {
+      final newBalance = currentBalance + amount;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Wallet updated to ₱ ${newBalance.toStringAsFixed(2)}',
+          ),
+        ),
+      );
+    }
     _loadUser();
   }
 
@@ -303,12 +286,7 @@ class _BookingHistoryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(AdminConstants.colBookings)
-          .where('userId', isEqualTo: customerId)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots(),
+      stream: AdminRepository.streamCustomerBookings(customerId),
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
@@ -321,7 +299,10 @@ class _BookingHistoryTab extends StatelessWidget {
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AdminTheme.divider),
           itemBuilder: (context, i) {
-            final d = docs[i].data() as Map<String, dynamic>;
+            final d = AdminRepository.normalizeBookingData(
+              docs[i].id,
+              docs[i].data() as Map<String, dynamic>,
+            );
             final fare =
                 (d['finalFare'] ?? d['estimatedFare'] ?? 0).toString();
             final status = d['status'] ?? 'unknown';
@@ -425,11 +406,7 @@ class _SavedLocationsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(AdminConstants.colSavedLocations)
-          .where('userId', isEqualTo: userId)
-          .limit(20)
-          .snapshots(),
+      stream: AdminRepository.streamSavedLocations(userId),
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {

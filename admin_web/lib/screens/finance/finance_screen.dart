@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
@@ -21,7 +22,7 @@ class _FinanceScreenState extends State<FinanceScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -47,6 +48,7 @@ class _FinanceScreenState extends State<FinanceScreen>
               tabs: const [
                 Tab(text: 'Payment Transactions'),
                 Tab(text: 'Wallet Ledger'),
+                Tab(text: 'Reconciliation Queue'),
               ],
             ),
             Expanded(
@@ -55,6 +57,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                 children: [
                   _PaymentsTab(),
                   _WalletLedgerTab(),
+                  _ReconciliationQueueTab(),
                 ],
               ),
             ),
@@ -86,7 +89,10 @@ class _PaymentsTab extends StatelessWidget {
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AdminTheme.divider),
           itemBuilder: (context, i) {
-            final d = docs[i].data() as Map<String, dynamic>;
+            final d = AdminRepository.normalizePaymentData(
+              docs[i].id,
+              docs[i].data() as Map<String, dynamic>,
+            );
             final amount = (d['amount'] ?? 0) as num;
             final status = d['status'] ?? d['paymentStatus'] ?? '—';
             final method = d['method'] ?? d['paymentMethod'] ?? '—';
@@ -122,11 +128,7 @@ class _WalletLedgerTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('wallet_transactions')
-          .orderBy('createdAt', descending: true)
-          .limit(100)
-          .snapshots(),
+      stream: AdminRepository.streamAllWalletTransactions(limit: 100),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -143,9 +145,11 @@ class _WalletLedgerTab extends StatelessWidget {
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AdminTheme.divider),
           itemBuilder: (context, i) {
-            final d = docs[i].data() as Map<String, dynamic>;
-            // normalize dual-schema: 'amount' or 'balance' field
-            final amount = (d['amount'] ?? d['balance'] ?? d['newBalance'] ?? 0) as num;
+            final d = AdminRepository.normalizeWalletTransactionData(
+              docs[i].id,
+              docs[i].data() as Map<String, dynamic>,
+            );
+            final amount = (d['amount'] ?? 0) as num;
             final type = (d['type'] ?? d['transactionType'] ?? 'transaction')
                 .toString()
                 .replaceAll('_', ' ');
@@ -189,5 +193,164 @@ class _WalletLedgerTab extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _ReconciliationQueueTab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: AdminRepository.streamReconciliationQueue(limit: 100),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const EmptyState(
+            message: 'No reconciliation items pending',
+            icon: Icons.fact_check_outlined,
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: AdminTheme.divider),
+          itemBuilder: (context, i) {
+            final d = AdminRepository.normalizeBookingData(
+              docs[i].id,
+              docs[i].data() as Map<String, dynamic>,
+            );
+            final amount = (d['finalFare'] ?? d['estimatedFare'] ?? 0) as num;
+            final createdAt = AdminRepository.parseTimestamp(d['createdAt']);
+            final issueStatus = (d['issueStatus'] ?? '').toString();
+            final reconciliationStatus =
+                (d['reconciliationStatus'] ?? '').toString();
+            final shortId = docs[i].id.length > 8
+                ? docs[i].id.substring(0, 8)
+                : docs[i].id;
+
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '#$shortId · ${d['customerName'] ?? 'Unknown Customer'}',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  StatusBadge(reconciliationStatus),
+                  if (issueStatus.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    StatusBadge(issueStatus),
+                  ],
+                ],
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${d['pickupAddress'] ?? 'Pickup'} → ${d['dropoffAddress'] ?? 'Dropoff'}',
+                      style: GoogleFonts.inter(fontSize: 11),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Payment: ${d['paymentStatus'] ?? '—'} · Fare: ₱ ${amount.toStringAsFixed(2)}${createdAt != null ? ' · ${DateFormat('MMM d, h:mm a').format(createdAt)}' : ''}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AdminTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              trailing: Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => _updateReconciliation(
+                      context,
+                      bookingId: docs[i].id,
+                      status: 'under_review',
+                      label: 'Mark Under Review',
+                    ),
+                    child: const Text('Under Review'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _updateReconciliation(
+                      context,
+                      bookingId: docs[i].id,
+                      status: 'reconciled',
+                      label: 'Mark Reconciled',
+                    ),
+                    child: const Text('Reconciled'),
+                  ),
+                  IconButton(
+                    onPressed: () => context.go('/bookings/${docs[i].id}'),
+                    icon: const Icon(Icons.open_in_new_outlined),
+                    tooltip: 'Open booking',
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateReconciliation(
+    BuildContext context, {
+    required String bookingId,
+    required String status,
+    required String label,
+  }) async {
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(label),
+            content: TextField(
+              controller: reasonCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Reason / note',
+              ),
+              maxLines: 3,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(label),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed || reasonCtrl.text.trim().isEmpty) return;
+
+    await AdminRepository.updateBookingReconciliationStatus(
+      bookingId: bookingId,
+      status: status,
+      reason: reasonCtrl.text.trim(),
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Updated booking reconciliation to $status.')),
+      );
+    }
   }
 }

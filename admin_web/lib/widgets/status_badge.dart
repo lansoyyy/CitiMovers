@@ -31,21 +31,40 @@ class StatusBadge extends StatelessWidget {
       case 'completed':
         return (const Color(0xFF065F46), const Color(0xFFD1FAE5));
       case 'pending':
+      case 'awaiting_payment':
+      case 'payment_locked':
         return (const Color(0xFF92400E), const Color(0xFFFEF3C7));
       case 'accepted':
+      case 'arrived_at_pickup':
+      case 'arrived_at_dropoff':
       case 'in_transit':
+      case 'loading_complete':
+      case 'unloading_complete':
         return (const Color(0xFF1E40AF), const Color(0xFFDBEAFE));
       case 'cancelled':
       case 'cancelled_by_rider':
+      case 'cancelled_by_customer':
         return (const Color(0xFF991B1B), const Color(0xFFFEE2E2));
       case 'loading':
       case 'unloading':
         return (const Color(0xFF7C3AED), const Color(0xFFEDE9FE));
       case 'active':
       case 'approved':
+      case 'paid':
+      case 'sent':
         return (const Color(0xFF065F46), const Color(0xFFD1FAE5));
       case 'suspended':
+      case 'failed':
+      case 'rejected':
         return (const Color(0xFF991B1B), const Color(0xFFFEE2E2));
+      case 'held':
+      case 'queued':
+      case 'flagged':
+      case 'review_required':
+      case 'admin_review_required':
+        return (const Color(0xFF92400E), const Color(0xFFFEF3C7));
+      case 'refunded':
+        return (const Color(0xFF0F766E), const Color(0xFFCCFBF1));
       default:
         return (AdminTheme.textSecondary, AdminTheme.surface);
     }

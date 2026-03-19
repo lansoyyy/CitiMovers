@@ -6,7 +6,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
-import '../../services/audit_service.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -34,10 +33,10 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
   }
 
   Future<void> _loadRider() async {
-    final doc = await AdminRepository.getRider(widget.riderId);
+    final riderData = await AdminRepository.getNormalizedRider(widget.riderId);
     if (!mounted) return;
     setState(() {
-      _riderData = doc.exists ? doc.data() as Map<String, dynamic> : null;
+      _riderData = riderData;
       _loading = false;
     });
   }
@@ -58,17 +57,7 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
     );
     if (!confirmed) return;
 
-    await AdminRepository.updateRider(widget.riderId, {
-      'accountStatus': 'active',
-      'isApproved': true,
-    });
-    await AdminAuditService.log(
-      action: AdminConstants.auditApproveRider,
-      entityType: 'rider',
-      entityId: widget.riderId,
-      before: {'accountStatus': _riderData?['accountStatus']},
-      after: {'accountStatus': 'active'},
-    );
+    await AdminRepository.approveRider(widget.riderId);
     _loadRider();
   }
 
@@ -84,19 +73,9 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
     );
     if (!confirmed) return;
 
-    final newStatus = isSuspended ? 'active' : 'suspended';
-    await AdminRepository.updateRider(widget.riderId, {
-      'accountStatus': newStatus,
-      'isSuspended': !isSuspended,
-    });
-    await AdminAuditService.log(
-      action: isSuspended
-          ? AdminConstants.auditReactivateRider
-          : AdminConstants.auditSuspendRider,
-      entityType: 'rider',
-      entityId: widget.riderId,
-      before: {'accountStatus': _riderData?['accountStatus']},
-      after: {'accountStatus': newStatus},
+    await AdminRepository.setRiderSuspended(
+      riderId: widget.riderId,
+      isSuspended: !isSuspended,
     );
     _loadRider();
   }
@@ -129,22 +108,10 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
         false;
     if (!confirmed || reasonCtrl.text.trim().isEmpty) return;
 
-    final docs = Map<String, dynamic>.from(
-        (_riderData?['documents'] ?? {}) as Map<String, dynamic>);
-    docs[docKey] = {
-      ...(docs[docKey] as Map<String, dynamic>? ?? {}),
-      'status': 'rejected',
-      'rejectionReason': reasonCtrl.text.trim(),
-      'reviewedAt': FieldValue.serverTimestamp(),
-      'reviewedBy': AdminConstants.adminUsername,
-    };
-    await AdminRepository.updateRider(widget.riderId, {'documents': docs});
-    await AdminAuditService.log(
-      action: AdminConstants.auditRejectRiderDoc,
-      entityType: 'rider',
-      entityId: widget.riderId,
+    await AdminRepository.rejectRiderDocument(
+      riderId: widget.riderId,
+      docKey: docKey,
       reason: reasonCtrl.text.trim(),
-      after: {'documentKey': docKey},
     );
     _loadRider();
   }
@@ -586,12 +553,7 @@ class _DeliveryHistoryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(AdminConstants.colBookings)
-          .where('riderId', isEqualTo: riderId)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots(),
+      stream: AdminRepository.streamRiderBookings(riderId),
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
@@ -605,7 +567,10 @@ class _DeliveryHistoryTab extends StatelessWidget {
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AdminTheme.divider),
           itemBuilder: (context, i) {
-            final d = docs[i].data() as Map<String, dynamic>;
+            final d = AdminRepository.normalizeBookingData(
+              docs[i].id,
+              docs[i].data() as Map<String, dynamic>,
+            );
             final status = d['status'] ?? 'unknown';
             final fare =
                 (d['finalFare'] ?? d['estimatedFare'] ?? 0).toString();
@@ -657,8 +622,11 @@ class _EarningsTab extends StatelessWidget {
           separatorBuilder: (_, __) =>
               const Divider(height: 1, color: AdminTheme.divider),
           itemBuilder: (context, i) {
-            final d = docs[i].data() as Map<String, dynamic>;
-            final amount = ((d['amount'] ?? d['balance'] ?? 0) as num).toDouble();
+            final d = AdminRepository.normalizeWalletTransactionData(
+              docs[i].id,
+              docs[i].data() as Map<String, dynamic>,
+            );
+            final amount = (d['amount'] as num).toDouble();
             final type = (d['type'] ?? d['transactionType'] ?? '').toString();
             return ListTile(
               dense: true,

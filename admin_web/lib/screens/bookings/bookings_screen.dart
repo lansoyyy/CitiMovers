@@ -20,6 +20,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
   String _statusFilter = '';
+  String _issueFilter = 'all';
 
   @override
   void dispose() {
@@ -28,10 +29,25 @@ class _BookingsScreenState extends State<BookingsScreen> {
   }
 
   List<QueryDocumentSnapshot> _filter(List<QueryDocumentSnapshot> docs) {
-    if (_searchQuery.isEmpty) return docs;
+    if (_searchQuery.isEmpty && _issueFilter == 'all') return docs;
     final q = _searchQuery.toLowerCase();
     return docs.where((d) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = AdminRepository.normalizeBookingData(
+        d.id,
+        d.data() as Map<String, dynamic>,
+      );
+      final hasIssue = (data['issueStatus'] ?? '').toString().isNotEmpty;
+      final reconciliationStatus =
+          (data['reconciliationStatus'] ?? '').toString();
+      final matchesIssue = switch (_issueFilter) {
+        'all' => true,
+        'flagged' => hasIssue,
+        'admin_review_required' => reconciliationStatus == 'admin_review_required',
+        'clear' => !hasIssue && reconciliationStatus.isEmpty,
+        _ => true,
+      };
+      if (!matchesIssue) return false;
+      if (_searchQuery.isEmpty) return true;
       final customer = (data['customerName'] ?? data['userName'] ?? '').toString().toLowerCase();
       final rider = (data['riderName'] ?? '').toString().toLowerCase();
       final id = d.id.toLowerCase();
@@ -71,6 +87,27 @@ class _BookingsScreenState extends State<BookingsScreen> {
                       () => _statusFilter = v == 'all' ? '' : (v ?? '')),
                 ),
               ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 180,
+                child: DropdownButtonFormField<String>(
+                  value: _issueFilter,
+                  decoration: const InputDecoration(
+                    labelText: 'Issue State',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All issues')),
+                    DropdownMenuItem(value: 'flagged', child: Text('Flagged')),
+                    DropdownMenuItem(
+                      value: 'admin_review_required',
+                      child: Text('Needs reconciliation'),
+                    ),
+                    DropdownMenuItem(value: 'clear', child: Text('Clear')),
+                  ],
+                  onChanged: (v) => setState(() => _issueFilter = v ?? 'all'),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -98,11 +135,18 @@ class _BookingsScreenState extends State<BookingsScreen> {
                         const Divider(height: 1, color: AdminTheme.divider),
                     itemBuilder: (context, i) {
                       final doc = docs[i];
-                      final d = doc.data() as Map<String, dynamic>;
+                      final d = AdminRepository.normalizeBookingData(
+                        doc.id,
+                        doc.data() as Map<String, dynamic>,
+                      );
                       final status = d['status'] ?? 'unknown';
                       final customer = d['customerName'] ?? d['userName'] ?? '—';
                       final rider = d['riderName'] ?? '—';
                       final fare = (d['finalFare'] ?? d['estimatedFare'] ?? 0);
+                        final issueStatus = (d['issueStatus'] ?? '').toString();
+                        final noteCount = (d['issueNotesCount'] ?? 0) as int;
+                        final reconciliationStatus =
+                          (d['reconciliationStatus'] ?? '').toString();
                       final ts = AdminRepository.parseTimestamp(d['createdAt']);
                       final shortId = doc.id.length > 8
                           ? doc.id.substring(0, 8)
@@ -127,6 +171,25 @@ class _BookingsScreenState extends State<BookingsScreen> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (issueStatus.isNotEmpty) ...[
+                              StatusBadge(issueStatus),
+                              const SizedBox(width: 6),
+                            ],
+                            if (reconciliationStatus.isNotEmpty) ...[
+                              StatusBadge(reconciliationStatus),
+                              const SizedBox(width: 6),
+                            ],
+                            if (noteCount > 0) ...[
+                              Text(
+                                '$noteCount',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                             Text('₱ $fare',
                                 style: GoogleFonts.inter(
                                     fontSize: 13,

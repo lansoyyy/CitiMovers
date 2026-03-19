@@ -28,7 +28,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (_searchQuery.isEmpty) return docs;
     final q = _searchQuery.toLowerCase();
     return docs.where((d) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = AdminRepository.normalizeUserData(
+        d.id,
+        d.data() as Map<String, dynamic>,
+      );
       final name = (data['name'] ?? '').toString().toLowerCase();
       final phone = (data['phoneNumber'] ?? '').toString().toLowerCase();
       final email = (data['email'] ?? '').toString().toLowerCase();
@@ -73,7 +76,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         const Divider(height: 1, color: AdminTheme.divider),
                     itemBuilder: (context, i) {
                       final doc = docs[i];
-                      final d = doc.data() as Map<String, dynamic>;
+                      final d = AdminRepository.normalizeUserData(
+                        doc.id,
+                        doc.data() as Map<String, dynamic>,
+                      );
                       final name = d['name'] ?? 'Unknown';
                       final phone = d['phoneNumber'] ?? '';
                       final email = d['email'] ?? '';

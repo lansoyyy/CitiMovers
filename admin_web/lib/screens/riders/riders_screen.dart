@@ -38,7 +38,10 @@ class _RidersScreenState extends State<RidersScreen> {
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       result = result.where((d) {
-        final data = d.data() as Map<String, dynamic>;
+        final data = AdminRepository.normalizeRiderData(
+          d.id,
+          d.data() as Map<String, dynamic>,
+        );
         final name = (data['name'] ?? '').toString().toLowerCase();
         final phone = (data['phoneNumber'] ?? '').toString().toLowerCase();
         final plate = (data['plateNumber'] ?? '').toString().toLowerCase();
@@ -104,7 +107,10 @@ class _RidersScreenState extends State<RidersScreen> {
                         const Divider(height: 1, color: AdminTheme.divider),
                     itemBuilder: (context, i) {
                       final doc = docs[i];
-                      final d = doc.data() as Map<String, dynamic>;
+                      final d = AdminRepository.normalizeRiderData(
+                        doc.id,
+                        doc.data() as Map<String, dynamic>,
+                      );
                       final name = d['name'] ?? 'Unknown Rider';
                       final phone = d['phoneNumber'] ?? '';
                       final plate = d['plateNumber'] ?? '';

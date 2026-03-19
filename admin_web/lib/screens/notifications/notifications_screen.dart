@@ -3,9 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
-import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
-import '../../services/audit_service.dart';
 import '../../widgets/common_widgets.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -92,41 +90,21 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
     if (!confirmed ||
         titleCtrl.text.trim().isEmpty ||
-        bodyCtrl.text.trim().isEmpty) return;
-
-    // Fetch all target users and send a notification to each
-    final col = targetType == 'all_customers'
-        ? AdminConstants.colUsers
-        : AdminConstants.colRiders;
-    final snap =
-        await FirebaseFirestore.instance.collection(col).get();
-    final batch = FirebaseFirestore.instance.batch();
-    for (final doc in snap.docs) {
-      final ref = FirebaseFirestore.instance
-          .collection(AdminConstants.colNotifications)
-          .doc();
-      batch.set(ref, {
-        'userId': doc.id,
-        'title': titleCtrl.text.trim(),
-        'body': bodyCtrl.text.trim(),
-        'type': 'admin_broadcast',
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+        bodyCtrl.text.trim().isEmpty) {
+      return;
     }
-    await batch.commit();
-    await AdminAuditService.log(
-      action: AdminConstants.auditSendNotification,
-      entityType: 'notification',
-      entityId: 'broadcast',
-      reason: '${titleCtrl.text.trim()} — audience: $targetType',
+
+    final sentCount = await AdminRepository.sendBroadcastNotifications(
+      targetType: targetType,
+      title: titleCtrl.text.trim(),
+      message: bodyCtrl.text.trim(),
     );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                'Sent to ${snap.docs.length} ${targetType.replaceAll('_', ' ')}')),
+                'Sent to $sentCount ${targetType.replaceAll('_', ' ')}')),
       );
     }
   }
@@ -187,11 +165,7 @@ class _RecentNotificationsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(AdminConstants.colNotifications)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots(),
+      stream: AdminRepository.streamRecentNotifications(),
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
@@ -223,7 +197,7 @@ class _RecentNotificationsTab extends StatelessWidget {
                       fontWeight: isRead
                           ? FontWeight.w400
                           : FontWeight.w600)),
-              subtitle: Text(d['body'] ?? '',
+                subtitle: Text(d['body'] ?? d['message'] ?? '',
                   style: GoogleFonts.inter(fontSize: 11),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
@@ -245,11 +219,7 @@ class _EmailQueueTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(AdminConstants.colEmailNotifications)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots(),
+      stream: AdminRepository.streamEmailNotifications(),
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
@@ -264,7 +234,7 @@ class _EmailQueueTab extends StatelessWidget {
               const Divider(height: 1, color: AdminTheme.divider),
           itemBuilder: (context, i) {
             final d = docs[i].data() as Map<String, dynamic>;
-            final sent = d['sent'] == true;
+            final sent = d['isSent'] == true || d['sent'] == true;
             final ts = AdminRepository.parseTimestamp(d['createdAt']);
             return ListTile(
               dense: true,

@@ -7,7 +7,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
-import '../../services/audit_service.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -30,10 +29,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   Future<void> _loadBooking() async {
-    final doc = await AdminRepository.getBooking(widget.bookingId);
+    final bookingData = await AdminRepository.getNormalizedBooking(widget.bookingId);
     if (!mounted) return;
     setState(() {
-      _bookingData = doc.exists ? doc.data() as Map<String, dynamic> : null;
+      _bookingData = bookingData;
       _loading = false;
     });
   }
@@ -76,19 +75,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
     if (!confirmed || reasonCtrl.text.trim().isEmpty) return;
 
-    await AdminRepository.updateBooking(widget.bookingId, {
-      'status': 'cancelled',
-      'cancellationReason': reasonCtrl.text.trim(),
-      'cancelledAt': FieldValue.serverTimestamp(),
-      'cancelledBy': 'admin',
-    });
-    await AdminAuditService.log(
-      action: AdminConstants.auditCancelBooking,
-      entityType: 'booking',
-      entityId: widget.bookingId,
+    await AdminRepository.cancelBooking(
+      bookingId: widget.bookingId,
       reason: reasonCtrl.text.trim(),
-      before: {'status': _bookingData?['status']},
-      after: {'status': 'cancelled'},
     );
     _loadBooking();
   }
@@ -119,21 +108,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
     if (!confirmed || noteCtrl.text.trim().isEmpty) return;
 
-    await FirebaseFirestore.instance
-        .collection(AdminConstants.colBookings)
-        .doc(widget.bookingId)
-        .collection('admin_notes')
-        .add({
-      'note': noteCtrl.text.trim(),
-      'addedBy': AdminConstants.adminUsername,
-      'addedAt': FieldValue.serverTimestamp(),
-    });
-    await AdminAuditService.log(
-      action: AdminConstants.auditAddBookingNote,
-      entityType: 'booking',
-      entityId: widget.bookingId,
-      reason: noteCtrl.text.trim(),
+    await AdminRepository.addBookingAdminNote(
+      bookingId: widget.bookingId,
+      note: noteCtrl.text.trim(),
     );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Admin note added.')),
+      );
+    }
   }
 
   @override
@@ -147,7 +131,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
     final d = _bookingData!;
     final status = d['status'] ?? 'unknown';
-    final canCancel = !['completed', 'cancelled', 'cancelled_by_rider']
+    final canCancel = !['completed', 'cancelled', 'cancelled_by_rider', 'cancelled_by_customer']
         .contains(status);
 
     return SingleChildScrollView(
@@ -203,6 +187,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           ),
           const SizedBox(height: 16),
 
+          _SupportNotesCard(
+            bookingId: widget.bookingId,
+            d: d,
+          ),
+          const SizedBox(height: 16),
+
           // Delivery photos
           if ((d['deliveryPhotos'] as List?)?.isNotEmpty == true)
             _DeliveryPhotosCard(photos: List<String>.from(d['deliveryPhotos'])),
@@ -248,6 +238,10 @@ class _BookingInfoCard extends StatelessWidget {
             _Row('Receiver Phone', d['receiverPhone'] ?? '—'),
             _Row('Distance', '${d['distance'] ?? '—'} km'),
             _Row('Payment Method', d['paymentMethod'] ?? '—'),
+            if ((d['cancellationReason'] ?? '').toString().isNotEmpty) ...[
+              const Divider(color: AdminTheme.divider),
+              _Row('Cancellation Reason', d['cancellationReason'] ?? '—'),
+            ],
           ],
         ),
       ),
@@ -388,6 +382,7 @@ class _PaymentCard extends StatelessWidget {
     final final_ = (d['finalFare'] ?? 0) as num;
     final tip = (d['tipAmount'] ?? 0) as num;
     final payStatus = d['paymentStatus'] ?? '—';
+    final reconciliationStatus = d['reconciliationStatus'] ?? '';
 
     return Card(
       child: Padding(
@@ -403,6 +398,8 @@ class _PaymentCard extends StatelessWidget {
             _FRow('Tip', '₱ ${tip.toStringAsFixed(2)}'),
             _FRow('Payment Method', d['paymentMethod'] ?? '—'),
             _FRow('Payment Status', payStatus),
+            if (reconciliationStatus.toString().isNotEmpty)
+              _FRow('Reconciliation', reconciliationStatus.toString()),
           ],
         ),
       ),
@@ -427,6 +424,194 @@ class _PaymentCard extends StatelessWidget {
                   color: bold ? AdminTheme.primary : AdminTheme.textPrimary)),
         ]),
       );
+}
+
+class _SupportNotesCard extends StatelessWidget {
+  final String bookingId;
+  final Map<String, dynamic> d;
+
+  const _SupportNotesCard({
+    required this.bookingId,
+    required this.d,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final issueStatus = (d['issueStatus'] ?? '').toString();
+    final issueNotesCount = (d['issueNotesCount'] ?? 0) as int;
+    final reconciliationStatus = (d['reconciliationStatus'] ?? '').toString();
+    final cancellationReason = (d['cancellationReason'] ?? '').toString();
+    final cancelledAt = AdminRepository.parseTimestamp(d['cancelledAt']);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const SectionHeader(title: 'Issue History'),
+                const SizedBox(width: 12),
+                if (issueStatus.isNotEmpty) StatusBadge(issueStatus),
+                if (reconciliationStatus.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  StatusBadge(reconciliationStatus),
+                ],
+                const Spacer(),
+                Text(
+                  '$issueNotesCount note${issueNotesCount == 1 ? '' : 's'}',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: AdminTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<QuerySnapshot>(
+              stream: AdminRepository.streamBookingAdminNotes(bookingId),
+              builder: (context, snap) {
+                final docs = snap.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  if (cancellationReason.isEmpty) {
+                    return const EmptyState(
+                      message: 'No issue history yet',
+                      icon: Icons.timeline_outlined,
+                    );
+                  }
+                }
+
+                final entries = <Map<String, dynamic>>[];
+                if (cancellationReason.isNotEmpty) {
+                  entries.add({
+                    'title': 'Booking cancelled by admin',
+                    'body': cancellationReason,
+                    'type': 'flagged',
+                    'createdBy': AdminConstants.adminUsername,
+                    'createdAt': cancelledAt,
+                  });
+                }
+                for (final doc in docs) {
+                  final note = AdminRepository.normalizeBookingNoteData(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  );
+                  entries.add({
+                    'title': (note['noteType'] ?? 'support').toString().replaceAll('_', ' '),
+                    'body': note['body'],
+                    'type': note['noteType'] ?? 'support',
+                    'createdBy': note['createdBy'],
+                    'createdAt': AdminRepository.parseTimestamp(note['createdAt']),
+                  });
+                }
+                entries.sort((a, b) {
+                  final aTime = a['createdAt'] as DateTime?;
+                  final bTime = b['createdAt'] as DateTime?;
+                  if (aTime == null && bTime == null) return 0;
+                  if (aTime == null) return 1;
+                  if (bTime == null) return -1;
+                  return bTime.compareTo(aTime);
+                });
+
+                return Column(
+                  children: entries.map((entry) {
+                    final createdAt = entry['createdAt'] as DateTime?;
+                    return Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Column(
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: AdminTheme.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x11000000),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (entry != entries.last)
+                                Container(
+                                  width: 2,
+                                  height: 56,
+                                  color: AdminTheme.divider,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AdminTheme.divider),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        (entry['createdBy'] ?? AdminConstants.adminUsername).toString(),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      StatusBadge((entry['type'] ?? 'support').toString()),
+                                      const Spacer(),
+                                      if (createdAt != null)
+                                        Text(
+                                          DateFormat('MMM d, yyyy – h:mm a').format(createdAt),
+                                          style: GoogleFonts.inter(
+                                            fontSize: 10,
+                                            color: AdminTheme.textSecondary,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    (entry['title'] ?? '').toString().toUpperCase(),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AdminTheme.textSecondary,
+                                      letterSpacing: 0.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    entry['body'] ?? '',
+                                    style: GoogleFonts.inter(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _DemurrageCard extends StatelessWidget {

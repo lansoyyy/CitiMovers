@@ -49,6 +49,7 @@ final _navItems = [
   _NavItem('Notifications', Icons.notifications_outlined, '/notifications'),
   _NavItem('Promo Banners', Icons.campaign_outlined, '/promos'),
   _NavItem('Audit Logs', Icons.history_outlined, '/audit-logs'),
+  _NavItem('Maintenance', Icons.build_circle_outlined, '/maintenance'),
 ];
 
 class _Sidebar extends StatelessWidget {
@@ -189,6 +190,7 @@ class _TopBar extends StatelessWidget {
       case '/notifications': return 'Notifications';
       case '/promos': return 'Promo Banners';
       case '/audit-logs': return 'Audit Logs';
+      case '/maintenance': return 'Maintenance';
       default: return 'Admin Panel';
     }
   }
