@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
+import '../utils/download_helpers.dart';
 
 class LandingNavbar extends StatefulWidget {
   final ScrollController scrollController;
@@ -184,22 +185,25 @@ class _DownloadButtonState extends State<_DownloadButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          gradient: _hovered
-              ? AppColors.accentGradient
-              : AppColors.cardGradient,
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: AppShadows.buttonShadow,
-        ),
-        child: Text(
-          'Get the App',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppColors.white,
+      child: GestureDetector(
+        onTap: () => showGeneralDownloadDialog(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: _hovered
+                ? AppColors.accentGradient
+                : AppColors.cardGradient,
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: AppShadows.buttonShadow,
+          ),
+          child: Text(
+            'Get the App',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.white,
+            ),
           ),
         ),
       ),
@@ -315,20 +319,26 @@ class _MobileMenu extends StatelessWidget {
               },
             ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              decoration: BoxDecoration(
-                gradient: AppColors.cardGradient,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  'Get the App',
-                  style: GoogleFonts.poppins(
-                    color: AppColors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                showGeneralDownloadDialog(context);
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: AppColors.cardGradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    'Get the App',
+                    style: GoogleFonts.poppins(
+                      color: AppColors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ),

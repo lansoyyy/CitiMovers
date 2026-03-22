@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
+import '../utils/download_helpers.dart';
 
 class HeroSection extends StatefulWidget {
   const HeroSection({super.key});
@@ -286,6 +287,7 @@ class _HeroSectionState extends State<HeroSection>
               label: 'Download App',
               icon: Icons.download_rounded,
               gradient: AppColors.accentGradient,
+              onTap: () => showGeneralDownloadDialog(context),
               shadows: [
                 BoxShadow(
                   color: AppColors.accent.withOpacity(0.4),
@@ -367,6 +369,7 @@ class _HeroCTAButton extends StatefulWidget {
   final Gradient gradient;
   final List<BoxShadow>? shadows;
   final Border? border;
+  final VoidCallback? onTap;
 
   const _HeroCTAButton({
     required this.label,
@@ -374,6 +377,7 @@ class _HeroCTAButton extends StatefulWidget {
     required this.gradient,
     this.shadows,
     this.border,
+    this.onTap,
   });
 
   @override
@@ -388,10 +392,12 @@ class _HeroCTAButtonState extends State<_HeroCTAButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        scale: _hovered ? 1.04 : 1.0,
-        duration: const Duration(milliseconds: 180),
-        child: Container(
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hovered ? 1.04 : 1.0,
+          duration: const Duration(milliseconds: 180),
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           decoration: BoxDecoration(
             gradient: widget.gradient,
@@ -414,6 +420,7 @@ class _HeroCTAButtonState extends State<_HeroCTAButton> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

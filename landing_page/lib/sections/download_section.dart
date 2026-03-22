@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
+import '../utils/download_helpers.dart';
 
 class DownloadSection extends StatefulWidget {
   const DownloadSection({super.key});
@@ -115,11 +116,14 @@ class _DownloadSectionState extends State<DownloadSection> {
                         child: AnimatedScale(
                           scale: _androidHovered ? 1.04 : 1.0,
                           duration: const Duration(milliseconds: 180),
-                          child: _StoreButton(
-                            icon: Icons.android_rounded,
-                            label: 'Get it on',
-                            storeName: 'Google Play',
-                            isHovered: _androidHovered,
+                          child: GestureDetector(
+                            onTap: () => showGooglePlayChoiceDialog(context),
+                            child: _StoreButton(
+                              icon: Icons.android_rounded,
+                              label: 'Get it on',
+                              storeName: 'Google Play',
+                              isHovered: _androidHovered,
+                            ),
                           ),
                         ),
                       ),
@@ -129,11 +133,14 @@ class _DownloadSectionState extends State<DownloadSection> {
                         child: AnimatedScale(
                           scale: _iosHovered ? 1.04 : 1.0,
                           duration: const Duration(milliseconds: 180),
-                          child: _StoreButton(
-                            icon: Icons.apple_rounded,
-                            label: 'Download on the',
-                            storeName: 'App Store',
-                            isHovered: _iosHovered,
+                          child: GestureDetector(
+                            onTap: () => showAppStoreComingSoonDialog(context),
+                            child: _StoreButton(
+                              icon: Icons.apple_rounded,
+                              label: 'Download on the',
+                              storeName: 'App Store',
+                              isHovered: _iosHovered,
+                            ),
                           ),
                         ),
                       ),
