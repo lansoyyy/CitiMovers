@@ -6,7 +6,7 @@ const _googlePlayRidersUrl =
     'https://play.google.com/store/apps/details?id=com.algovision.citimovers_drivers&pli=1';
 
 const _googlePlayCustomersUrl =
-    'https://drive.google.com/file/d/17w4Q23UeoBgiz7wHJi31PAvSzdDZ5YC7/view?usp=sharing';
+    'https://play.google.com/store/apps/details?id=com.algovision.citimovers';
 
 Future<void> _openUrl(String url) async {
   final uri = Uri.parse(url);

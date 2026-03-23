@@ -141,13 +141,8 @@ class LandingFooter extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             _FooterSocialBtn(
-              icon: Icons.email_rounded,
-              url: 'mailto:excel_gesite@yahoo.com',
-            ),
-            const SizedBox(width: 10),
-            _FooterSocialBtn(
               icon: Icons.phone_rounded,
-              url: 'tel:+639674893335',
+              url: 'tel:+639560288513',
             ),
           ],
         ),
@@ -196,24 +191,24 @@ class LandingFooter extends StatelessWidget {
         _FooterContactItem(
           icon: Icons.location_on_outlined,
           text:
-              '24 JP Rizal St. Cor. Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City 1117',
+              'Field Office:\n3JCP+2V2, Marange Road,\nSan Fernando, Pampanga',
         ),
         const SizedBox(height: 12),
         _FooterContactItem(
           icon: Icons.phone_outlined,
-          text: '0967 489 3335',
+          text: '0956-028-8513',
+          url: 'tel:+639560288513',
+        ),
+        const SizedBox(height: 12),
+        _FooterContactItem(
+          icon: Icons.phone_outlined,
+          text: '0967-489-3335',
           url: 'tel:+639674893335',
         ),
         const SizedBox(height: 12),
         _FooterContactItem(
-          icon: Icons.email_outlined,
-          text: 'excel_gesite@yahoo.com',
-          url: 'mailto:excel_gesite@yahoo.com',
-        ),
-        const SizedBox(height: 12),
-        _FooterContactItem(
-          icon: Icons.map_outlined,
-          text: 'Metro Manila, Philippines',
+          icon: Icons.local_shipping_outlined,
+          text: 'Motor Pool:\nRXH3+XM9 Santa Maria,\nBulacan',
         ),
       ],
     );
@@ -233,7 +228,7 @@ class LandingFooter extends StatelessWidget {
             ),
             if (!isMobile) const SizedBox(width: 40),
             Text(
-              'Metro Manila, Philippines',
+              'Pampanga and Bulacan, Philippines',
               style: GoogleFonts.poppins(fontSize: 12, color: Colors.white38),
             ),
           ],

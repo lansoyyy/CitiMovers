@@ -15,10 +15,11 @@ class IntegrationsConfig {
     // 'billing@citimovers.net',
     // 'finance@citimovers.net',
     // 'president@citimovers.net',
-    'excel_gesite@yahoo.com',
+    'ceo@citimovers.net',
     'potohubsystem@gmail.com',
     'Tyoinxmarie@gmail.com',
-    'olanalans12345@gmail.com'
+    'olanalans12345@gmail.com',
+    'excel_gesite@yahoo.com'
   ];
 
   static const List<String> sampleClientReportRecipients = <String>[
