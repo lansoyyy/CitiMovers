@@ -25,6 +25,7 @@ import 'package:citimovers/services/emailjs_service.dart';
 import 'package:citimovers/services/wallet_service.dart';
 import 'package:citimovers/services/gps_map_camera_service.dart';
 import 'package:citimovers/services/chat_service.dart';
+import 'package:citimovers/utils/demurrage_utils.dart';
 import 'package:citimovers/screens/chat/chat_screen.dart';
 import 'package:citimovers/models/location_model.dart';
 import 'package:citimovers/services/delivery_queue_service.dart';
@@ -146,6 +147,10 @@ class _RiderDeliveryProgressScreenState
   final List<String> _damagePhotoUrls = [];
   final TextEditingController _damageItemController = TextEditingController();
   final TextEditingController _damageQtyController = TextEditingController();
+
+  double get _baseFareAmount =>
+      double.tryParse(widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+      0.0;
 
   @override
   void initState() {
@@ -494,8 +499,10 @@ class _RiderDeliveryProgressScreenState
 
   Future<void> _restoreSavedDeliveryState() async {
     final savedState = _riderAuthService.getActiveDeliveryState();
-    if (savedState == null) return;
-    if (savedState['bookingId']?.toString() != widget.request.id) return;
+    if (savedState != null &&
+        savedState['bookingId']?.toString() != widget.request.id) {
+      return;
+    }
 
     try {
       final bookingData = await _getBookingDoc(widget.request.id);
@@ -507,22 +514,46 @@ class _RiderDeliveryProgressScreenState
         return;
       }
 
-      final savedSnapshot = _DeliveryProgressStateSnapshot(
-        step:
-            _parseStoredEnum(DeliveryStep.values, savedState['currentStep']) ??
-                DeliveryStep.headingToWarehouse,
-        loadingSubStep: _parseStoredEnum(
-            LoadingSubStep.values, savedState['loadingSubStep']),
-        unloadingSubStep: _parseStoredEnum(
-            UnloadingSubStep.values, savedState['unloadingSubStep']),
-        receivingSubStep: _parseStoredEnum(
-                ReceivingSubStep.values, savedState['receivingSubStep']) ??
-            ReceivingSubStep.receiverName,
-      );
-
       final inferredSnapshot = _inferDeliveryStateFromBooking(bookingData);
-      final mergedSnapshot =
-          _mergeDeliveryStates(savedSnapshot, inferredSnapshot);
+      final mergedSnapshot = savedState == null
+          ? inferredSnapshot
+          : _mergeDeliveryStates(
+              _DeliveryProgressStateSnapshot(
+                step: _parseStoredEnum(
+                        DeliveryStep.values, savedState['currentStep']) ??
+                    DeliveryStep.headingToWarehouse,
+                loadingSubStep: _parseStoredEnum(
+                    LoadingSubStep.values, savedState['loadingSubStep']),
+                unloadingSubStep: _parseStoredEnum(
+                    UnloadingSubStep.values, savedState['unloadingSubStep']),
+                receivingSubStep: _parseStoredEnum(ReceivingSubStep.values,
+                        savedState['receivingSubStep']) ??
+                    ReceivingSubStep.receiverName,
+              ),
+              inferredSnapshot,
+            );
+
+      final now = DateTime.now();
+      final loadingStartedAt =
+          _parseBookingDateTime(bookingData?['loadingStartedAt']);
+      final loadingCompletedAt =
+          _parseBookingDateTime(bookingData?['loadingCompletedAt']);
+      final unloadingStartedAt =
+          _parseBookingDateTime(bookingData?['unloadingStartedAt']);
+      final unloadingCompletedAt =
+          _parseBookingDateTime(bookingData?['unloadingCompletedAt']);
+
+      final loadingDuration = loadingStartedAt == null
+          ? Duration.zero
+          : (loadingCompletedAt ?? now).difference(loadingStartedAt);
+      final unloadingDuration = unloadingStartedAt == null
+          ? Duration.zero
+          : (unloadingCompletedAt ?? now).difference(unloadingStartedAt);
+
+      final loadingActive =
+          loadingStartedAt != null && loadingCompletedAt == null;
+      final unloadingActive =
+          unloadingStartedAt != null && unloadingCompletedAt == null;
 
       if (!mounted) return;
       setState(() {
@@ -536,10 +567,41 @@ class _RiderDeliveryProgressScreenState
         _receivingSubStep = mergedSnapshot.step == DeliveryStep.receiving
             ? mergedSnapshot.receivingSubStep
             : ReceivingSubStep.receiverName;
+        _loadingDuration = loadingDuration;
+        _unloadingDuration = unloadingDuration;
+        _loadingDemurrageFee =
+            DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
+        _unloadingDemurrageFee =
+            DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
       });
+
+      if (loadingActive) {
+        _startLoadingTimer();
+      } else {
+        _loadingTimer?.cancel();
+      }
+
+      if (unloadingActive) {
+        _startUnloadingTimer();
+      } else {
+        _unloadingTimer?.cancel();
+      }
     } catch (e) {
       debugPrint('Error restoring saved delivery state: $e');
     }
+  }
+
+  DateTime? _parseBookingDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is num) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    }
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
   }
 
   /// Start periodic location tracking — every 3 seconds for real-time navigation
@@ -1281,10 +1343,12 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _startLoadingTimer() {
+    _loadingTimer?.cancel();
     _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _loadingDuration += const Duration(seconds: 1);
-        _loadingDemurrageFee = 0.0;
+        _loadingDemurrageFee =
+            DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
       });
     });
   }
@@ -1471,7 +1535,8 @@ class _RiderDeliveryProgressScreenState
     }
 
     _loadingTimer?.cancel();
-    _loadingDemurrageFee = 0.0;
+    _loadingDemurrageFee =
+        DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
 
     // Update booking status in Firestore with demurrage data
     // Note: delivery photos are already saved by addDeliveryPhoto when taken
@@ -1980,10 +2045,12 @@ class _RiderDeliveryProgressScreenState
   }
 
   void _startUnloadingTimer() {
+    _unloadingTimer?.cancel();
     _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _unloadingDuration += const Duration(seconds: 1);
-        _unloadingDemurrageFee = 0.0;
+        _unloadingDemurrageFee =
+            DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
       });
     });
   }
@@ -2012,7 +2079,9 @@ class _RiderDeliveryProgressScreenState
     // Note: URL gate removed — photos are saved locally and queued for upload.
     // Driver can proceed as soon as both photos are taken.
 
-    _unloadingDemurrageFee = 0.0;
+    _unloadingTimer?.cancel();
+    _unloadingDemurrageFee =
+        DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
 
     // Update booking status in Firestore with demurrage data
     // Note: delivery photos are already saved by addDeliveryPhoto when taken
@@ -2021,6 +2090,7 @@ class _RiderDeliveryProgressScreenState
       status: 'unloading_complete',
       unloadingCompletedAt: DateTime.now(),
       unloadingDemurrageFee: _unloadingDemurrageFee,
+      destinationDemurrageSeconds: _unloadingDuration.inSeconds,
       picklistItems: _picklistItems,
     );
 
@@ -2068,7 +2138,6 @@ class _RiderDeliveryProgressScreenState
     final savedUnloadingDemurrage = _unloadingDemurrageFee;
 
     _unloadingTimer?.cancel();
-    _unloadingDemurrageFee = 0.0;
 
     final loadingSeconds = _loadingDuration.inSeconds;
     final destinationSeconds = _unloadingDuration.inSeconds;

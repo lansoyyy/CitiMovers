@@ -57,6 +57,12 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
     if (!confirmed) return;
 
     await AdminRepository.approveRider(widget.riderId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Rider approved. They can now log in to the rider app.'),
+      ),
+    );
     _loadRider();
   }
 

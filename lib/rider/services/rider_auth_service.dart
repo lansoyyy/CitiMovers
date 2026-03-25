@@ -14,6 +14,8 @@ import '../../services/storage_service.dart';
 import 'rider_location_service.dart';
 import '../models/rider_model.dart';
 
+enum RiderAccessState { approved, pendingApproval, suspended }
+
 /// Authentication service for CitiMovers Riders
 /// Handles rider registration, login, and session management
 class RiderAuthService {
@@ -68,8 +70,10 @@ class RiderAuthService {
 
   // Current rider (in-memory for now, will be replaced with Firebase)
   RiderModel? _currentRider;
+  String? _lastLoginBlockMessage;
 
   RiderModel? get currentRider => _currentRider;
+  String? get lastLoginBlockMessage => _lastLoginBlockMessage;
   bool get isLoggedIn {
     if (_currentRider != null) return true;
     final riderId = _storage.read('riderId') as String?;
@@ -123,6 +127,40 @@ class RiderAuthService {
     return _firestore.collection('riders').doc(normalizedPhoneNumber);
   }
 
+  RiderAccessState _resolveAccessState(Map<String, dynamic> data) {
+    final accountStatus =
+        (data['accountStatus'] ?? data['status'] ?? 'pending').toString();
+    final status = (data['status'] ?? '').toString();
+    final isSuspended =
+        data['isSuspended'] == true || accountStatus == 'suspended';
+    final isApproved = data['isApproved'] == true ||
+        accountStatus == 'active' ||
+        accountStatus == 'approved' ||
+        status == 'active' ||
+        status == 'approved';
+
+    if (isSuspended) {
+      return RiderAccessState.suspended;
+    }
+
+    if (isApproved) {
+      return RiderAccessState.approved;
+    }
+
+    return RiderAccessState.pendingApproval;
+  }
+
+  String _buildAccessBlockedMessage(RiderAccessState state) {
+    switch (state) {
+      case RiderAccessState.pendingApproval:
+        return 'Your account is pending admin approval. Please wait for verification before logging in.';
+      case RiderAccessState.suspended:
+        return 'Your rider account is suspended. Please contact CitiMovers support.';
+      case RiderAccessState.approved:
+        return '';
+    }
+  }
+
   void _loadRiderFromStorage() {
     try {
       final riderId = _storage.read('riderId') as String?;
@@ -174,6 +212,7 @@ class RiderAuthService {
     await _storage.write('riderPhoneNumber', rider.phoneNumber);
     // Store full rider data for session restoration
     await _storage.write('riderData', rider.toMap());
+    _lastLoginBlockMessage = null;
   }
 
   Future<void> _clearRiderFromStorage() async {
@@ -456,6 +495,9 @@ class RiderAuthService {
             ],
           'createdAt': createdAtIso,
           'updatedAt': now.toIso8601String(),
+          'accountStatus': 'pending',
+          'isApproved': false,
+          'isSuspended': false,
         },
         SetOptions(merge: true),
       );
@@ -484,8 +526,9 @@ class RiderAuthService {
         );
       }
 
-      _currentRider = rider;
-      await _saveRiderToStorage(rider);
+      _currentRider = null;
+      await _clearRiderFromStorage();
+      _lastLoginBlockMessage = null;
       debugPrint('Rider registered: ${rider.name}');
       return rider;
     } catch (e) {
@@ -497,10 +540,12 @@ class RiderAuthService {
   /// Login existing rider
   Future<RiderModel?> loginRider(String phoneNumber) async {
     try {
+      _lastLoginBlockMessage = null;
+
       // Demo driver account: the reviewer logs in with 09090104355 but we
       // fetch details from the real account 09560288513.
       const _demoLoginPhone = '+639090104355';
-      const _demoRealPhone  = '+639560288513';
+      const _demoRealPhone = '+639560288513';
       final normalizedInput = _normalizePhoneNumber(phoneNumber);
       final normalizedPhoneNumber =
           normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
@@ -521,16 +566,32 @@ class RiderAuthService {
       data['riderId'] = normalizedPhoneNumber;
       data['phoneNumber'] = normalizedPhoneNumber;
 
+      final accessState = _resolveAccessState(data);
+      if (accessState != RiderAccessState.approved) {
+        _currentRider = null;
+        await _clearRiderFromStorage();
+        _lastLoginBlockMessage = _buildAccessBlockedMessage(accessState);
+        debugPrint(
+            'Rider login blocked for $normalizedPhoneNumber: ${accessState.name}');
+        return null;
+      }
+
       await riderDocRef.set(
         {
           ...data,
           'riderId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
+          'status': 'active',
+          'accountStatus': 'active',
+          'isApproved': true,
           'updatedAt': DateTime.now().toIso8601String(),
         },
         SetOptions(merge: true),
       );
 
+      data['status'] = 'active';
+      data['accountStatus'] = 'active';
+      data['isApproved'] = true;
       final rider = RiderModel.fromMap(data);
 
       _currentRider = rider;
@@ -547,7 +608,7 @@ class RiderAuthService {
   Future<bool> isPhoneRegistered(String phoneNumber) async {
     try {
       const _demoLoginPhone = '+639090104355';
-      const _demoRealPhone  = '+639560288513';
+      const _demoRealPhone = '+639560288513';
       final normalizedInput = _normalizePhoneNumber(phoneNumber);
       // Demo driver: remap to the real account for the Firestore lookup
       final normalizedPhoneNumber =
@@ -574,12 +635,9 @@ class RiderAuthService {
   /// Get current rider
   Future<RiderModel?> getCurrentRider() async {
     try {
-      if (_currentRider != null) return _currentRider;
-
       _loadRiderFromStorage();
-      if (_currentRider != null) return _currentRider;
-
-      final storedPhoneNumber = _storage.read('riderPhoneNumber') as String?;
+      final storedPhoneNumber = _currentRider?.phoneNumber ??
+          (_storage.read('riderPhoneNumber') as String?);
       if (storedPhoneNumber == null || storedPhoneNumber.isEmpty) {
         return null;
       }

@@ -599,6 +599,7 @@ class AdminRepository {
       final beforeData = _asMap(riderSnap.data());
 
       transaction.set(riderRef, {
+        'status': 'active',
         'accountStatus': 'active',
         'isApproved': true,
         'isSuspended': false,

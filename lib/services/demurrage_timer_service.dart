@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/demurrage_utils.dart';
 
 /// Demurrage Timer Service for CitiMovers
 /// Manages demurrage timer lifecycle with proper cleanup and persistence
@@ -309,14 +310,7 @@ class DemurrageTimerService {
   /// Calculate demurrage fee based on duration and base fare
   /// 25% of fare for every 4-hour block
   double _calculateDemurrageFee(Duration duration, double baseFare) {
-    final hours = duration.inHours;
-    final blocks = hours ~/ 4; // Integer division for 4-hour blocks
-
-    if (blocks <= 0) {
-      return 0.0;
-    }
-
-    return blocks * 0.25 * baseFare;
+    return DemurrageUtils.calculateFee(duration, baseFare);
   }
 
   /// Dispose resources

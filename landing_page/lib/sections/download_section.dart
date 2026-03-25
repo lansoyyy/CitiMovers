@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../utils/download_helpers.dart';
 
@@ -171,6 +173,48 @@ class _DownloadSectionState extends State<DownloadSection> {
                       ),
                     ],
                   ),
+
+                  const SizedBox(height: 48),
+
+                  // QR codes
+                  Text(
+                    'Scan to Download',
+                    style: GoogleFonts.poppins(
+                      fontSize: isMobile ? 16 : 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Point your phone camera at the QR code',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.65),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 32,
+                    runSpacing: 32,
+                    children: [
+                      _QrCard(
+                        label: 'Customers App',
+                        sublabel: 'Book deliveries',
+                        icon: Icons.person_rounded,
+                        url:
+                            'https://play.google.com/store/apps/details?id=com.algovision.citimovers',
+                      ),
+                      _QrCard(
+                        label: 'Drivers App',
+                        sublabel: 'Accept & manage trips',
+                        icon: Icons.local_shipping_rounded,
+                        url:
+                            'https://play.google.com/store/apps/details?id=com.algovision.citimovers_drivers',
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -238,6 +282,139 @@ class _StoreButton extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _QrCard extends StatefulWidget {
+  final String label;
+  final String sublabel;
+  final IconData icon;
+  final String url;
+
+  const _QrCard({
+    required this.label,
+    required this.sublabel,
+    required this.icon,
+    required this.url,
+  });
+
+  @override
+  State<_QrCard> createState() => _QrCardState();
+}
+
+class _QrCardState extends State<_QrCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () async {
+          final uri = Uri.parse(widget.url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          decoration: BoxDecoration(
+            color: _hovered ? Colors.white : Colors.white.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(_hovered ? 0.22 : 0.12),
+                blurRadius: _hovered ? 24 : 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // App label header
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1565C0).withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      widget.icon,
+                      size: 18,
+                      color: const Color(0xFF1565C0),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.label,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1565C0),
+                        ),
+                      ),
+                      Text(
+                        widget.sublabel,
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // QR code
+              QrImageView(
+                data: widget.url,
+                version: QrVersions.auto,
+                size: 160,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(
+                  eyeShape: QrEyeShape.square,
+                  color: Color(0xFF1565C0),
+                ),
+                dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square,
+                  color: Color(0xFF0D47A1),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.android_rounded,
+                    size: 13,
+                    color: Color(0xFF4CAF50),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Google Play',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.black45,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

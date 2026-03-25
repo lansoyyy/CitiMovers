@@ -83,16 +83,19 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
 
     // Check if user is logged in
     final authService = RiderAuthService();
-    final isLoggedIn = authService.isLoggedIn;
+    final hadStoredSession = authService.isLoggedIn;
+    final rider = await authService.getCurrentRider();
+    if (!mounted) return;
 
-    if (isLoggedIn) {
-      await authService.getCurrentRider();
-      if (!mounted) return;
+    if (rider == null &&
+        hadStoredSession &&
+        authService.lastLoginBlockMessage != null) {
+      UIHelpers.showInfoToast(authService.lastLoginBlockMessage!);
     }
 
     // Navigate to appropriate screen
     final destination =
-        isLoggedIn ? const RiderHomeScreen() : const RiderLoginScreen();
+        rider != null ? const RiderHomeScreen() : const RiderLoginScreen();
 
     Navigator.pushReplacement(
       context,

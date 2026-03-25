@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
+import 'rider_login_screen.dart';
 import '../rider_home_screen.dart';
 
 class RiderOTPVerificationScreen extends StatefulWidget {
@@ -165,7 +166,7 @@ class _RiderOTPVerificationScreenState
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
-              builder: (context) => const RiderHomeScreen(),
+              builder: (context) => const RiderLoginScreen(),
             ),
             (route) => false,
           );
@@ -190,7 +191,10 @@ class _RiderOTPVerificationScreenState
           );
         } else {
           setState(() => _isLoading = false);
-          UIHelpers.showErrorToast('Login failed. Please try again.');
+          UIHelpers.showErrorToast(
+            _authService.lastLoginBlockMessage ??
+                'Login failed. Please try again.',
+          );
         }
       }
     } else {

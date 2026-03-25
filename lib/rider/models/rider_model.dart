@@ -374,7 +374,7 @@ class RiderModel {
       vehicleModel: json['vehicleModel'] as String?,
       vehicleColor: json['vehicleColor'] as String?,
       vehiclePhotoUrl: json['vehiclePhotoUrl'] as String?,
-      status: (json['status'] ?? 'pending').toString(),
+      status: (json['accountStatus'] ?? json['status'] ?? 'pending').toString(),
       isOnline: (json['isOnline'] as bool?) ?? false,
       rating: parseDouble(json['rating']),
       totalDeliveries: parseInt(json['totalDeliveries']),

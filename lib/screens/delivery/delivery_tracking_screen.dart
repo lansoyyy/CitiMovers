@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart' hide Timestamp;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/demurrage_utils.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
@@ -375,9 +376,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   double _computeDemurrageFee(Duration duration, double baseFare) {
-    final blocks = duration.inHours ~/ 4;
-    if (blocks <= 0) return 0.0;
-    return blocks * 0.25 * baseFare;
+    return DemurrageUtils.calculateFee(duration, baseFare);
   }
 
   void _applyBookingUpdate(BookingModel booking) {
@@ -570,14 +569,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _calculateLoadingFee() {
-    // "Every 4 hours - 25% of the delivery fare"
-    int blocks = _loadingDuration.inHours ~/ 4;
-    if (blocks > 0) {
-      final baseFare = _baseFare;
-      _loadingDemurrageFee = blocks * 0.25 * baseFare;
-    } else {
-      _loadingDemurrageFee = 0.0;
-    }
+    _loadingDemurrageFee =
+        DemurrageUtils.calculateFee(_loadingDuration, _baseFare);
   }
 
   void _startUnloadingTimer() {
@@ -598,13 +591,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _calculateUnloadingFee() {
-    int blocks = _unloadingDuration.inHours ~/ 4;
-    if (blocks > 0) {
-      final baseFare = _baseFare;
-      _unloadingDemurrageFee = blocks * 0.25 * baseFare;
-    } else {
-      _unloadingDemurrageFee = 0.0;
-    }
+    _unloadingDemurrageFee =
+        DemurrageUtils.calculateFee(_unloadingDuration, _baseFare);
   }
 
   double _calculateRotation() {
@@ -1895,16 +1883,16 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   _getPhotoUrl('start_unloading').isNotEmpty
                       ? _getPhotoUrl('start_unloading')
                       : null,
-                  timestamp: _formatStepTime(
-                      _getPhotoUploadedAt('start_unloading'))),
+                  timestamp:
+                      _formatStepTime(_getPhotoUploadedAt('start_unloading'))),
               _buildSubStep(
                   'Finish Unloading Photo',
                   _getPhotoUrl('finish_unloading').isNotEmpty,
                   _getPhotoUrl('finish_unloading').isNotEmpty
                       ? _getPhotoUrl('finish_unloading')
                       : null,
-                  timestamp: _formatStepTime(
-                      _getPhotoUploadedAt('finish_unloading'))),
+                  timestamp:
+                      _formatStepTime(_getPhotoUploadedAt('finish_unloading'))),
             ],
           ),
 
