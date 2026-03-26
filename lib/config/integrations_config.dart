@@ -17,7 +17,6 @@ class IntegrationsConfig {
     // 'president@citimovers.net',
     'ceo@citimovers.net',
     'potohubsystem@gmail.com',
-    'Tyoinxmarie@gmail.com',
     'olanalans12345@gmail.com',
     'excel_gesite@yahoo.com'
   ];
