@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/booking_service.dart';
+import '../../services/booking_status_service.dart';
 import '../../models/booking_model.dart';
 
 /// Cancel Booking Dialog for Passengers
@@ -40,9 +41,7 @@ class _CancelBookingDialogState extends State<CancelBookingDialog> {
   }
 
   bool _canCancel() {
-    // Can only cancel if booking is pending or accepted
-    return widget.booking.status == 'pending' ||
-        widget.booking.status == 'accepted';
+    return BookingStatusService.canBeCancelled(widget.booking.status);
   }
 
   String _getFinalReason() {

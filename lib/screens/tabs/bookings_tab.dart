@@ -1622,8 +1622,9 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
                   const SizedBox(height: 12),
                 ],
 
-                // Cancel Booking Button (for pending bookings)
-                if (widget.booking.status == 'pending') ...[
+                // Cancel Booking Button
+                if (BookingStatusService.canBeCancelled(
+                    widget.booking.status)) ...[
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
