@@ -19,7 +19,7 @@ class OtpService {
   // These accounts bypass real SMS sending and OTP validation so that app
   // store reviewers can log in without receiving a real SMS.
   // ---------------------------------------------------------------------------
-  static const String _demoCustomerPhone = '+639639530422';
+  static const String _demoCustomerPhone = '+639639530423';
   // Demo driver login number (Play Store reviewer uses this to log in)
   static const String _demoDriverPhone = '+639090104355';
   static const String _demoOtp = '123456';
@@ -67,7 +67,7 @@ class OtpService {
       String semaphoreNumber, String otp) async {
     try {
       final message =
-          '$otp is your CitiMovers OTP. Valid for $_otpExpiryMinutes minutes. Do not share it.';
+          '$otp is your OTP from Citimovers. Valid for $_otpExpiryMinutes minutes. Do not share it.';
 
       // Pass body as a Map — the http package automatically encodes it as
       // application/x-www-form-urlencoded and sets the Content-Type header.
@@ -100,7 +100,8 @@ class OtpService {
 
       // Demo accounts: skip SMS and rate-limiting entirely
       if (_isDemoAccount(normalizedPhoneNumber)) {
-        debugPrint('[OTP] Demo account — skipping SMS for $normalizedPhoneNumber');
+        debugPrint(
+            '[OTP] Demo account — skipping SMS for $normalizedPhoneNumber');
         return true;
       }
 
@@ -183,7 +184,8 @@ class OtpService {
       // Demo accounts: accept the hardcoded OTP without any Firestore lookup
       if (_isDemoAccount(normalizedPhoneNumber)) {
         final valid = userOtp == _demoOtp;
-        debugPrint('[OTP] Demo account — verification ${valid ? 'passed' : 'failed'} for $normalizedPhoneNumber');
+        debugPrint(
+            '[OTP] Demo account — verification ${valid ? 'passed' : 'failed'} for $normalizedPhoneNumber');
         return valid;
       }
 
