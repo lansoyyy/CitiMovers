@@ -167,12 +167,17 @@ class AdminRepository {
 
   static List<String> _normalizeDeliveryPhotos(dynamic rawPhotos) {
     if (rawPhotos is Map) {
-      return rawPhotos.values
-          .map((entry) => entry?.toString().trim() ?? '')
-          .where((entry) => entry.isNotEmpty)
-          .toList();
+      return rawPhotos.values.map((entry) {
+        // Rider app stores photos as { 'url': '...', 'uploadedAt': ... }
+        if (entry is Map) {
+          return (entry['url'] ?? entry['imageUrl'] ?? '').toString().trim();
+        }
+        return entry?.toString().trim() ?? '';
+      }).where((url) => url.startsWith('http')).toList();
     }
-    return _asStringList(rawPhotos);
+    return _asStringList(rawPhotos)
+        .where((url) => url.startsWith('http'))
+        .toList();
   }
 
   static Map<String, dynamic> normalizeUserData(
@@ -751,6 +756,7 @@ class AdminRepository {
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
 
     await _db.runTransaction((transaction) async {
+      // ── Reads (must all happen before writes in a Firestore transaction) ──
       final bookingSnap = await transaction.get(bookingRef);
       final beforeData = normalizeBookingData(
         bookingId,
@@ -768,10 +774,29 @@ class AdminRepository {
         beforeData['paymentStatus'],
         fallback: 'pending',
       );
-      final reconciliationStatus = paymentStatus == 'held'
-          ? 'admin_review_required'
+      final shouldRefund = paymentStatus == 'held' && customerId.isNotEmpty;
+
+      // Read user doc for wallet refund (only if payment was on hold)
+      DocumentSnapshot? userSnap;
+      if (shouldRefund) {
+        userSnap = await transaction.get(
+          _db.collection(AdminConstants.colUsers).doc(customerId),
+        );
+      }
+
+      // ── Derive refund amount and reconciliation status ─────────────────────
+      final refundAmount = shouldRefund
+          ? _asDouble(
+              bookingSnap.data() != null
+                  ? (_asMap(bookingSnap.data())['estimatedFare'])
+                  : null,
+            )
+          : 0.0;
+      final reconciliationStatus = shouldRefund
+          ? 'reconciled'
           : _asString(beforeData['reconciliationStatus']);
 
+      // ── Writes ─────────────────────────────────────────────────────────────
       transaction.set(bookingRef, {
         'status': 'cancelled',
         'cancellationReason': reason,
@@ -779,14 +804,51 @@ class AdminRepository {
         'cancelledBy': AdminConstants.adminUsername,
         'issueStatus': 'flagged',
         'reconciliationStatus': reconciliationStatus,
+        'paymentStatus': shouldRefund ? 'refunded' : paymentStatus,
+        if (shouldRefund) 'paymentRefundedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
       transaction.set(deliveryRequestRef, {
         'bookingId': bookingId,
         'status': 'cancelled',
         'cancellationReason': reason,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      // Wallet refund when payment was on hold
+      if (shouldRefund && userSnap != null && refundAmount > 0) {
+        final userData = _asMap(userSnap.data());
+        final previousBalance = _asDouble(userData['walletBalance']);
+        final newBalance = previousBalance + refundAmount;
+        final userRef = _db
+            .collection(AdminConstants.colUsers)
+            .doc(customerId);
+        final walletRef = _db
+            .collection(AdminConstants.colWalletTransactions)
+            .doc();
+        transaction.set(userRef, {
+          'walletBalance': newBalance,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        transaction.set(walletRef, {
+          'userId': customerId,
+          'amount': refundAmount,
+          'balance': newBalance,
+          'newBalance': newBalance,
+          'previousBalance': previousBalance,
+          'type': 'refund',
+          'transactionType': 'refund',
+          'description': 'Refund for admin-cancelled booking #$bookingId',
+          'remarks': 'Refund for admin-cancelled booking #$bookingId',
+          'referenceId': bookingId,
+          'bookingId': bookingId,
+          'performedBy': AdminConstants.adminUsername,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
       if (customerId.isNotEmpty) {
         final notificationRef = _db
             .collection(AdminConstants.colNotifications)
@@ -796,9 +858,12 @@ class AdminRepository {
           'userId': customerId,
           'userType': 'customer',
           'title': 'Booking Cancelled by Admin',
-          'message':
-              'Your booking has been cancelled by support. Reason: $reason',
-          'body': 'Your booking has been cancelled by support. Reason: $reason',
+          'message': shouldRefund
+              ? 'Your booking has been cancelled by support and your fare has been refunded. Reason: $reason'
+              : 'Your booking has been cancelled by support. Reason: $reason',
+          'body': shouldRefund
+              ? 'Your booking has been cancelled by support and your fare has been refunded. Reason: $reason'
+              : 'Your booking has been cancelled by support. Reason: $reason',
           'type': 'booking',
           'referenceId': bookingId,
           'bookingId': bookingId,
@@ -836,13 +901,15 @@ class AdminRepository {
           before: {
             'status': beforeData['status'],
             'cancellationReason': beforeData['cancellationReason'],
-            'paymentStatus': beforeData['paymentStatus'],
+            'paymentStatus': paymentStatus,
           },
           after: {
             'status': 'cancelled',
             'cancellationReason': reason,
             'cancelledBy': AdminConstants.adminUsername,
+            'paymentStatus': shouldRefund ? 'refunded' : paymentStatus,
             'reconciliationStatus': reconciliationStatus,
+            if (shouldRefund) 'refundAmount': refundAmount,
           },
         ),
       );

@@ -80,12 +80,29 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         ) ??
         false;
 
-    if (!confirmed || reasonCtrl.text.trim().isEmpty) return;
+    if (!confirmed) return;
+    final reason = reasonCtrl.text.trim();
+    if (reason.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please provide a cancellation reason.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
 
     await AdminRepository.cancelBooking(
       bookingId: widget.bookingId,
-      reason: reasonCtrl.text.trim(),
+      reason: reason,
     );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Booking cancelled successfully.')),
+      );
+    }
     _loadBooking();
   }
 
@@ -126,6 +143,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Admin note added.')));
+      // Refresh booking data so issueNotesCount in the header updates
+      _loadBooking();
     }
   }
 
@@ -505,6 +524,21 @@ class _SupportNotesCard extends StatelessWidget {
             StreamBuilder<QuerySnapshot>(
               stream: AdminRepository.streamBookingAdminNotes(bookingId),
               builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Error loading issue history: ${snap.error}',
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  );
+                }
                 final docs = snap.data?.docs ?? [];
                 if (docs.isEmpty) {
                   if (cancellationReason.isEmpty) {

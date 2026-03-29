@@ -274,10 +274,10 @@ class _BookingsTabState extends State<BookingsTab>
   Widget _buildActiveBookingCard(BookingModel booking) {
     final statusColor = _getStatusColor(booking.status);
     final statusText = _getStatusText(booking.status);
+    final canCancel = BookingStatusService.canBeCancelled(booking.status);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
@@ -286,80 +286,70 @@ class _BookingsTabState extends State<BookingsTab>
           width: 1,
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DeliveryTrackingScreen(booking: booking),
-              ),
-            );
-          },
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Tappable card body — navigates to tracking screen
+          Material(
+            color: Colors.transparent,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: InkWell(
+              borderRadius: canCancel
+                  ? const BorderRadius.vertical(top: Radius.circular(12))
+                  : BorderRadius.circular(12),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        DeliveryTrackingScreen(booking: booking),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  statusText,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'Medium',
+                                    color: statusColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  booking.bookingId ?? 'Unknown',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                          child: Text(
-                            statusText,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontFamily: 'Medium',
-                              color: statusColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            booking.bookingId ?? 'Unknown',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Medium',
-                              color: AppColors.textSecondary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      booking.pickupLocation.address,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontFamily: 'Medium',
-                        color: AppColors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.arrow_forward,
-                          size: 14,
-                          color: AppColors.textHint,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            booking.dropoffLocation.address,
+                          const SizedBox(height: 8),
+                          Text(
+                            booking.pickupLocation.address,
                             style: const TextStyle(
                               fontSize: 13,
                               fontFamily: 'Medium',
@@ -368,20 +358,84 @@ class _BookingsTabState extends State<BookingsTab>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.arrow_forward,
+                                size: 14,
+                                color: AppColors.textHint,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  booking.dropoffLocation.address,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.textPrimary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: AppColors.textHint,
                     ),
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: AppColors.textHint,
-              ),
-            ],
+            ),
           ),
-        ),
+
+          // Cancel button — only shown for cancellable statuses (pending / accepted)
+          if (canCancel) ...[
+            const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
+            Material(
+              color: Colors.transparent,
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(12)),
+              child: InkWell(
+                borderRadius:
+                    const BorderRadius.vertical(bottom: Radius.circular(12)),
+                onTap: () async {
+                  await showCancelBookingDialog(context, booking);
+                  // The booking stream auto-refreshes; no manual setState needed.
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.cancel_outlined,
+                        size: 15,
+                        color: AppColors.error,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Cancel Booking',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'Medium',
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

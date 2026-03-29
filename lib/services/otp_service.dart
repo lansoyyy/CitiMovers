@@ -67,7 +67,7 @@ class OtpService {
       String semaphoreNumber, String otp) async {
     try {
       final message =
-          '$otp is your OTP from Citimovers. Valid for $_otpExpiryMinutes minutes. Do not share it.';
+          '$otp is your OTP from Citimovers.';
 
       // Pass body as a Map — the http package automatically encodes it as
       // application/x-www-form-urlencoded and sets the Content-Type header.
