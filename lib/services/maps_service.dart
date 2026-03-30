@@ -27,7 +27,7 @@ class MapsService {
   String? _currentSessionToken;
 
   // Fuel price per liter from Firestore configs/app (default matches Firestore seed value)
-  double _fuelPricePerLiter = 85.0;
+  double _fuelPricePerLiter = 130.0;
 
   /// Fetches the current fuel price per litre from Firestore `configs/app`
   /// and caches it in the singleton.  Safe to call multiple times.
@@ -292,39 +292,41 @@ class MapsService {
     required double distanceKm,
     required String vehicleType,
   }) {
-    // New fare calculation formula: Distance x 3 / 2.5 x 60
-    // With minimum rate of ₱12,000 for 10-wheeler wingvan
     double calculatedFare = 0.0;
 
     switch (vehicleType) {
-      case '10-Wheeler Wingvan':
-        // Formula: Distance x 3 / 2 x fuelPricePerLiter (Km/Liter ÷ 2, Fuel price/litre from Firestore)
-        // Minimum distance: 133.33km = ₱12,000
-        calculatedFare = (distanceKm * 3 / 2) * _fuelPricePerLiter;
-        // Apply minimum rate of ₱12,750 (first 100km × 3 ÷ 2 × 85)
-        if (calculatedFare < 12750) {
-          calculatedFare = 12750;
-        }
+      case 'Sedan':
+        calculatedFare = 150 + (distanceKm * 12);
         break;
       case 'AUV':
-        // Using existing rates for other vehicle types until new formulas are provided
         calculatedFare = 100 + (distanceKm * 15);
         break;
-      case '4-Wheeler':
+      case '4-Wheeler Closed Van':
         calculatedFare = 150 + (distanceKm * 20);
         break;
-      case '6-Wheeler':
+      case '6-Wheeler Closed Van':
         calculatedFare = 300 + (distanceKm * 35);
         break;
-      case 'Wingvan':
+      case '6-Wheeler Forward Wingvan':
         calculatedFare = 500 + (distanceKm * 50);
         break;
-      case 'Trailer':
-        calculatedFare = 800 + (distanceKm * 80);
+      case '10-Wheeler Wingvan':
+        // Formula: Distance × 3/2 × fuelPricePerLiter (from Firestore configs/app)
+        calculatedFare = (distanceKm * 3 / 2) * _fuelPricePerLiter;
+        if (calculatedFare < 19500) calculatedFare = 19500; // min at 100km × 130/L
+        break;
+      case '20-Footer Trailer':
+        // Formula: Distance × 3/2.5 × ₱130/L (fuel hardcoded per client spec)
+        calculatedFare = (distanceKm * 3 / 2.5) * 130.0;
+        if (calculatedFare < 15600) calculatedFare = 15600; // min at 100km
+        break;
+      case '40-Footer Trailer':
+        // Formula: Distance × 4/2.5 × ₱130/L (fuel hardcoded per client spec)
+        calculatedFare = (distanceKm * 4 / 2.5) * 130.0;
+        if (calculatedFare < 20800) calculatedFare = 20800; // min at 100km
         break;
       default:
-        // Default to AUV rates
-        calculatedFare = 100 + (distanceKm * 15);
+        calculatedFare = 150 + (distanceKm * 12);
     }
 
     // Add peak hour surcharge (20%) if needed

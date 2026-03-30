@@ -7,11 +7,11 @@ class VehiclesSection extends StatelessWidget {
 
   static final _vehicles = [
     _Vehicle(
-      icon: Icons.airport_shuttle_rounded,
-      name: 'AUV',
-      capacity: 'Small Items',
+      icon: Icons.directions_car_rounded,
+      name: 'Sedan',
+      capacity: '200 kg',
       description: 'Perfect for documents, small parcels and personal items.',
-      tag: 'Best for small loads',
+      tag: 'Small loads',
       tagColor: AppColors.success,
       gradient: const LinearGradient(
         colors: [Color(0xFF10B981), Color(0xFF059669)],
@@ -20,21 +20,20 @@ class VehiclesSection extends StatelessWidget {
       ),
     ),
     _Vehicle(
-      icon: Icons.local_shipping_rounded,
-      name: 'L300 Van',
-      capacity: '500 kg',
-      description:
-          'Versatile van for furniture, appliances, and business cargo.',
+      icon: Icons.airport_shuttle_rounded,
+      name: 'AUV',
+      capacity: '1,000 kg',
+      description: 'Versatile utility vehicle for medium cargo and reliable city deliveries.',
       tag: 'Most Popular',
       tagColor: AppColors.primary,
       gradient: AppColors.cardGradient,
     ),
     _Vehicle(
       icon: Icons.fire_truck_rounded,
-      name: '4-Wheeler',
-      capacity: '200 kg',
+      name: '4-Wheeler Closed Van',
+      capacity: '2,000 kg',
       description:
-          'Compact truck ideal for retail deliveries and small commercial loads.',
+          'Enclosed van ideal for retail deliveries and mid-size commercial loads.',
       tag: 'Light commercial',
       tagColor: const Color(0xFF7C3AED),
       gradient: const LinearGradient(
@@ -45,20 +44,20 @@ class VehiclesSection extends StatelessWidget {
     ),
     _Vehicle(
       icon: Icons.local_shipping,
-      name: '6-Wheeler',
-      capacity: '1,000 kg',
+      name: '6-Wheeler Closed Van',
+      capacity: '3,000 kg',
       description:
-          'Mid-size delivery truck for larger commercial and industrial cargo.',
+          'Mid-size enclosed delivery truck for larger commercial and industrial cargo.',
       tag: 'Heavy commercial',
       tagColor: const Color(0xFFE53935),
       gradient: AppColors.accentGradient,
     ),
     _Vehicle(
       icon: Icons.conveyor_belt,
-      name: 'Wingvan',
-      capacity: '2,000 kg',
+      name: '6-Wheeler Forward Wingvan',
+      capacity: '7,000 kg',
       description:
-          'Large enclosed panel van with wingdoors — perfect for bulk deliveries.',
+          'Large forward wingvan with side-opening doors — perfect for bulk deliveries.',
       tag: 'Bulk deliveries',
       tagColor: const Color(0xFFFF8C00),
       gradient: const LinearGradient(
@@ -68,11 +67,25 @@ class VehiclesSection extends StatelessWidget {
       ),
     ),
     _Vehicle(
-      icon: Icons.rv_hookup_rounded,
-      name: 'Trailer',
-      capacity: '5,000 kg',
+      icon: Icons.train_rounded,
+      name: '10-Wheeler Wingvan',
+      capacity: '12,000 kg',
       description:
-          'Heavy-duty trailer for construction materials and industrial equipment.',
+          'Maximum capacity wingvan for warehouse-to-warehouse and long-haul cargo.',
+      tag: 'Max capacity',
+      tagColor: AppColors.textDark,
+      gradient: const LinearGradient(
+        colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+    _Vehicle(
+      icon: Icons.rv_hookup_rounded,
+      name: '20-Footer Trailer',
+      capacity: '20,000 kg',
+      description:
+          'Heavy-duty 20-foot trailer for construction materials and large industrial equipment.',
       tag: 'Industrial',
       tagColor: const Color(0xFF0891B2),
       gradient: const LinearGradient(
@@ -82,15 +95,15 @@ class VehiclesSection extends StatelessWidget {
       ),
     ),
     _Vehicle(
-      icon: Icons.train_rounded,
-      name: '10-Wheeler Wingvan',
-      capacity: '8,000 kg',
+      icon: Icons.local_shipping_rounded,
+      name: '40-Footer Trailer',
+      capacity: '32,000 kg',
       description:
-          'Maximum capacity for warehouse-to-warehouse and long-haul cargo across Metro Manila.',
-      tag: 'Max capacity',
-      tagColor: AppColors.textDark,
+          'Maximum-capacity 40-foot trailer for the heaviest industrial and logistics loads.',
+      tag: 'Max payload',
+      tagColor: const Color(0xFF374151),
       gradient: const LinearGradient(
-        colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+        colors: [Color(0xFF374151), Color(0xFF1F2937)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),

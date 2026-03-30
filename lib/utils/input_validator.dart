@@ -245,13 +245,20 @@ class InputValidator {
 
     // Check for valid vehicle types
     final validTypes = [
+      'Sedan',
       'AUV',
+      '4-Wheeler Closed Van',
+      '6-Wheeler Closed Van',
+      '6-Wheeler Forward Wingvan',
+      '10-Wheeler Wingvan',
+      '20-Footer Trailer',
+      '40-Footer Trailer',
+      // legacy types for backward compatibility with existing bookings
       'L300',
       '4-Wheeler',
       '6-Wheeler',
       'Wingvan',
       'Trailer',
-      '10-Wheeler Wingvan',
       'motorcycle',
       'sedan',
       'van',

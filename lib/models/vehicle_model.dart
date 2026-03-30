@@ -4,7 +4,7 @@ class VehicleModel {
   final String id;
   final String name;
   final String
-      type; // 'AUV', 'L300', '4-Wheeler', '6-Wheeler', 'Wingvan', 'Trailer'
+      type; // 'Sedan', 'AUV', '4-Wheeler Closed Van', '6-Wheeler Closed Van', '6-Wheeler Forward Wingvan', '10-Wheeler Wingvan', '20-Footer Trailer', '40-Footer Trailer'
   final String description;
   final double baseFare;
   final double perKmRate;
@@ -111,15 +111,31 @@ class VehicleModel {
   static List<VehicleModel> getAvailableVehicles() {
     return [
       VehicleModel(
+        id: 'sedan_001',
+        name: 'Sedan',
+        type: 'Sedan',
+        description: 'Ideal for small cargo and document deliveries',
+        baseFare: 150,
+        perKmRate: 12,
+        capacity: 'Up to 200 kg',
+        features: [
+          'Small packages',
+          'Documents',
+          'City delivery',
+          'Air-conditioned',
+        ],
+        imageUrl: 'assets/images/sedan.png',
+      ),
+      VehicleModel(
         id: 'auv_001',
         name: 'AUV',
         type: 'AUV',
-        description: 'Perfect for small packages and quick deliveries',
+        description: 'Perfect for medium packages and reliable deliveries',
         baseFare: 100,
         perKmRate: 15,
-        capacity: 'Up to 50 kg',
+        capacity: 'Up to 1,000 kg',
         features: [
-          'Small items',
+          'Medium items',
           'Quick delivery',
           'City-friendly',
           'Fuel efficient',
@@ -127,38 +143,19 @@ class VehicleModel {
         imageUrl: 'assets/images/auv.png',
       ),
       VehicleModel(
-        id: 'l300_001',
-        name: 'L300',
-        type: 'L300',
-        description: 'Versatile vehicle for medium to large deliveries',
-        baseFare: 200,
-        perKmRate: 25,
-        first100kmRate: 25, // 25 per km for first 100km
-        after100kmRate: 20, // 20 per km after 100km
-        minimumFare100km: 2500, // Minimum 2500 for first 100km
-        capacity: 'Up to 500 kg',
-        features: [
-          'Medium to large items',
-          'Reliable',
-          'Cost-effective for long distances',
-          'Spacious cargo area',
-        ],
-        imageUrl: 'assets/images/l300.png',
-      ),
-      VehicleModel(
         id: '4wheeler_001',
-        name: '4-Wheeler',
-        type: '4-Wheeler',
-        description: 'Ideal for standard deliveries and medium-sized items',
+        name: '4-Wheeler Closed Van',
+        type: '4-Wheeler Closed Van',
+        description: 'Ideal for standard deliveries and medium-sized cargo',
         baseFare: 150,
         perKmRate: 20,
-        first100kmRate: 20, // 20 per km for first 100km
-        after100kmRate: 15, // 15 per km after 100km
-        minimumFare100km: 2000, // Minimum 2000 for first 100km
-        capacity: 'Up to 200 kg',
+        first100kmRate: 20,
+        after100kmRate: 15,
+        minimumFare100km: 2000,
+        capacity: 'Up to 2,000 kg',
         features: [
-          'Medium items',
-          'Comfortable ride',
+          'Medium cargo',
+          'Enclosed van',
           'Reliable',
           'Air-conditioned',
         ],
@@ -166,63 +163,50 @@ class VehicleModel {
       ),
       VehicleModel(
         id: '6wheeler_001',
-        name: '6-Wheeler',
-        type: '6-Wheeler',
-        description: 'Great for large items and furniture',
+        name: '6-Wheeler Closed Van',
+        type: '6-Wheeler Closed Van',
+        description: 'Great for large cargo and commercial deliveries',
         baseFare: 300,
         perKmRate: 35,
-        first100kmRate: 35, // 35 per km for first 100km
-        after100kmRate: 30, // 30 per km after 100km
-        minimumFare100km: 3500, // Minimum 3500 for first 100km
-        capacity: 'Up to 1,000 kg',
+        first100kmRate: 35,
+        after100kmRate: 30,
+        minimumFare100km: 3500,
+        capacity: 'Up to 3,000 kg',
         features: [
-          'Large items',
-          'Furniture delivery',
-          'Spacious',
+          'Large cargo',
+          'Commercial delivery',
+          'Enclosed van',
           'Professional drivers',
         ],
         imageUrl: 'assets/images/6wheeler.png',
       ),
       VehicleModel(
         id: 'wingvan_001',
-        name: 'Wingvan',
-        type: 'Wingvan',
-        description: 'Perfect for moving and bulk deliveries',
+        name: '6-Wheeler Forward Wingvan',
+        type: '6-Wheeler Forward Wingvan',
+        description: 'Perfect for bulk deliveries with side-opening wings',
         baseFare: 500,
         perKmRate: 50,
-        capacity: 'Up to 2,000 kg',
+        capacity: 'Up to 7,000 kg',
         features: [
-          'Moving services',
           'Bulk delivery',
-          'Extra spacious',
+          'Wing doors',
+          'Easy loading',
           'Helper available',
         ],
         imageUrl: 'assets/images/wingvan.png',
-      ),
-      VehicleModel(
-        id: 'trailer_001',
-        name: 'Trailer',
-        type: 'Trailer',
-        description: 'Heavy-duty transport for large cargo',
-        baseFare: 800,
-        perKmRate: 80,
-        capacity: 'Up to 5,000 kg',
-        features: [
-          'Heavy cargo',
-          'Long distance',
-          'Industrial use',
-          'Secure transport',
-        ],
-        imageUrl: 'assets/images/trailer.png',
       ),
       VehicleModel(
         id: '10wheeler_wingvan_001',
         name: '10-Wheeler Wingvan',
         type: '10-Wheeler Wingvan',
         description: 'Heavy-duty transport for large cargo and bulk deliveries',
-        baseFare: 12000, // Minimum base fare
-        perKmRate: 0, // Not used with new formula
-        capacity: 'Up to 8,000 kg',
+        baseFare: 0,
+        perKmRate: 0,
+        first100kmRate: 195, // distanceKm × 3/2 × ₱130/L
+        after100kmRate: 195,
+        minimumFare100km: 19500, // min at 100km
+        capacity: 'Up to 12,000 kg',
         features: [
           'Heavy cargo',
           'Bulk delivery',
@@ -232,6 +216,44 @@ class VehicleModel {
           'Secure transport',
         ],
         imageUrl: 'assets/images/10wheeler_wingvan.png',
+      ),
+      VehicleModel(
+        id: 'trailer_20ft_001',
+        name: '20-Footer Trailer',
+        type: '20-Footer Trailer',
+        description: 'Heavy-duty 20-foot trailer for industrial and bulk cargo',
+        baseFare: 0,
+        perKmRate: 156, // distanceKm × 3/2.5 × ₱130/L
+        first100kmRate: 156,
+        after100kmRate: 156,
+        minimumFare100km: 15600, // min at 100km
+        capacity: 'Up to 20,000 kg',
+        features: [
+          'Industrial cargo',
+          'Long distance',
+          'Heavy-duty',
+          'Secure transport',
+        ],
+        imageUrl: 'assets/images/trailer.png',
+      ),
+      VehicleModel(
+        id: 'trailer_40ft_001',
+        name: '40-Footer Trailer',
+        type: '40-Footer Trailer',
+        description: 'Maximum capacity 40-foot trailer for the heaviest loads',
+        baseFare: 0,
+        perKmRate: 208, // distanceKm × 4/2.5 × ₱130/L
+        first100kmRate: 208,
+        after100kmRate: 208,
+        minimumFare100km: 20800, // min at 100km
+        capacity: 'Up to 32,000 kg',
+        features: [
+          'Maximum capacity',
+          'Industrial grade',
+          'Long distance',
+          'Heavy-duty',
+        ],
+        imageUrl: 'assets/images/trailer.png',
       ),
     ];
   }

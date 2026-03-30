@@ -481,14 +481,14 @@ class FirestoreSchemaSeeder {
     await _firestore.collection('vehicles').doc('VEH001').set(
       {
         'id': 'VEH001',
-        'name': 'Motorcycle',
-        'type': 'motorcycle',
-        'description': 'Small motorcycle for quick deliveries',
-        'baseFare': 50.00,
-        'perKmRate': 15.00,
-        'capacity': 'Small (up to 20kg)',
-        'features': <String>['Quick', 'Affordable', 'Maneuverable'],
-        'imageUrl': 'https://example.com/vehicles/motorcycle.jpg',
+        'name': 'Sedan',
+        'type': 'Sedan',
+        'description': 'Ideal for small cargo and document deliveries',
+        'baseFare': 150.00,
+        'perKmRate': 12.00,
+        'capacity': 'Up to 200 kg',
+        'features': <String>['Small packages', 'Documents', 'City delivery', 'Air-conditioned'],
+        'imageUrl': 'assets/images/sedan.png',
         'isAvailable': true,
       },
     );
@@ -496,14 +496,14 @@ class FirestoreSchemaSeeder {
     await _firestore.collection('vehicles').doc('VEH002').set(
       {
         'id': 'VEH002',
-        'name': 'Sedan',
-        'type': 'sedan',
-        'description': 'Standard sedan for medium deliveries',
-        'baseFare': 150.00,
-        'perKmRate': 25.00,
-        'capacity': 'Medium (up to 200kg)',
-        'features': <String>['Comfortable', 'Air-conditioned', 'Secure'],
-        'imageUrl': 'https://example.com/vehicles/sedan.jpg',
+        'name': 'AUV',
+        'type': 'AUV',
+        'description': 'Perfect for medium packages and reliable deliveries',
+        'baseFare': 100.00,
+        'perKmRate': 15.00,
+        'capacity': 'Up to 1,000 kg',
+        'features': <String>['Medium items', 'Quick delivery', 'City-friendly', 'Fuel efficient'],
+        'imageUrl': 'assets/images/auv.png',
         'isAvailable': true,
       },
     );
@@ -511,14 +511,14 @@ class FirestoreSchemaSeeder {
     await _firestore.collection('vehicles').doc('VEH003').set(
       {
         'id': 'VEH003',
-        'name': '4-Wheeler',
-        'type': '4-wheeler',
-        'description': 'Light truck for larger deliveries',
-        'baseFare': 300.00,
-        'perKmRate': 45.00,
-        'capacity': 'Large (up to 1000kg)',
-        'features': <String>['Spacious', 'Reliable', 'Heavy-duty'],
-        'imageUrl': 'https://example.com/vehicles/4wheeler.jpg',
+        'name': '4-Wheeler Closed Van',
+        'type': '4-Wheeler Closed Van',
+        'description': 'Ideal for standard deliveries and medium-sized cargo',
+        'baseFare': 150.00,
+        'perKmRate': 20.00,
+        'capacity': 'Up to 2,000 kg',
+        'features': <String>['Medium cargo', 'Enclosed van', 'Reliable', 'Air-conditioned'],
+        'imageUrl': 'assets/images/4wheeler.png',
         'isAvailable': true,
       },
     );
@@ -526,14 +526,14 @@ class FirestoreSchemaSeeder {
     await _firestore.collection('vehicles').doc('VEH004').set(
       {
         'id': 'VEH004',
-        'name': '6-Wheeler',
-        'type': '6-wheeler',
-        'description': 'Medium truck for heavy deliveries',
-        'baseFare': 500.00,
-        'perKmRate': 65.00,
-        'capacity': 'Extra Large (up to 3000kg)',
-        'features': <String>['Heavy-duty', 'High capacity', 'Professional'],
-        'imageUrl': 'https://example.com/vehicles/6wheeler.jpg',
+        'name': '6-Wheeler Closed Van',
+        'type': '6-Wheeler Closed Van',
+        'description': 'Great for large cargo and commercial deliveries',
+        'baseFare': 300.00,
+        'perKmRate': 35.00,
+        'capacity': 'Up to 3,000 kg',
+        'features': <String>['Large cargo', 'Commercial delivery', 'Enclosed van', 'Professional drivers'],
+        'imageUrl': 'assets/images/6wheeler.png',
         'isAvailable': true,
       },
     );
@@ -541,14 +541,14 @@ class FirestoreSchemaSeeder {
     await _firestore.collection('vehicles').doc('VEH005').set(
       {
         'id': 'VEH005',
-        'name': 'Wingvan',
-        'type': 'wingvan',
-        'description': 'Large wing van for bulk deliveries',
-        'baseFare': 700.00,
-        'perKmRate': 80.00,
-        'capacity': 'Bulk (up to 5000kg)',
-        'features': <String>['Bulk capacity', 'Enclosed', 'Secure'],
-        'imageUrl': 'https://example.com/vehicles/wingvan.jpg',
+        'name': '6-Wheeler Forward Wingvan',
+        'type': '6-Wheeler Forward Wingvan',
+        'description': 'Perfect for bulk deliveries with side-opening wings',
+        'baseFare': 500.00,
+        'perKmRate': 50.00,
+        'capacity': 'Up to 7,000 kg',
+        'features': <String>['Bulk delivery', 'Wing doors', 'Easy loading', 'Helper available'],
+        'imageUrl': 'assets/images/wingvan.png',
         'isAvailable': true,
       },
     );
@@ -557,17 +557,43 @@ class FirestoreSchemaSeeder {
       {
         'id': 'VEH006',
         'name': '10-Wheeler Wingvan',
-        'type': '10-wheeler',
-        'description': 'Extra large wing van for industrial deliveries',
-        'baseFare': 1000.00,
-        'perKmRate': 120.00,
-        'capacity': 'Industrial (up to 10000kg)',
-        'features': <String>[
-          'Maximum capacity',
-          'Industrial grade',
-          'Heavy-duty'
-        ],
-        'imageUrl': 'https://example.com/vehicles/10wheeler.jpg',
+        'type': '10-Wheeler Wingvan',
+        'description': 'Heavy-duty transport for large cargo and bulk deliveries',
+        'baseFare': 0.00,
+        'perKmRate': 195.00, // distance × 3/2 × ₱130/L
+        'capacity': 'Up to 12,000 kg',
+        'features': <String>['Heavy cargo', 'Bulk delivery', 'Long distance', 'Professional drivers', 'Helper available'],
+        'imageUrl': 'assets/images/10wheeler_wingvan.png',
+        'isAvailable': true,
+      },
+    );
+
+    await _firestore.collection('vehicles').doc('VEH007').set(
+      {
+        'id': 'VEH007',
+        'name': '20-Footer Trailer',
+        'type': '20-Footer Trailer',
+        'description': 'Heavy-duty 20-foot trailer for industrial and bulk cargo',
+        'baseFare': 0.00,
+        'perKmRate': 156.00, // distance × 3/2.5 × ₱130/L
+        'capacity': 'Up to 20,000 kg',
+        'features': <String>['Industrial cargo', 'Long distance', 'Heavy-duty', 'Secure transport'],
+        'imageUrl': 'assets/images/trailer.png',
+        'isAvailable': true,
+      },
+    );
+
+    await _firestore.collection('vehicles').doc('VEH008').set(
+      {
+        'id': 'VEH008',
+        'name': '40-Footer Trailer',
+        'type': '40-Footer Trailer',
+        'description': 'Maximum capacity 40-foot trailer for the heaviest loads',
+        'baseFare': 0.00,
+        'perKmRate': 208.00, // distance × 4/2.5 × ₱130/L
+        'capacity': 'Up to 32,000 kg',
+        'features': <String>['Maximum capacity', 'Industrial grade', 'Long distance', 'Heavy-duty'],
+        'imageUrl': 'assets/images/trailer.png',
         'isAvailable': true,
       },
     );

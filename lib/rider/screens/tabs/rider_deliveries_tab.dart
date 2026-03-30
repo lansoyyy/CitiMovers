@@ -319,20 +319,25 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
       case 'AUV':
         packageType = 'Medium Package';
         break;
-      case '4-Wheeler':
+      case '4-Wheeler Closed Van':
+      case '4-Wheeler': // legacy
         packageType = 'Large Package';
         break;
-      case '6-Wheeler':
+      case '6-Wheeler Closed Van':
+      case '6-Wheeler': // legacy
         packageType = 'Extra Large Package';
         break;
-      case 'Wingvan':
+      case '6-Wheeler Forward Wingvan':
+      case 'Wingvan': // legacy
         packageType = 'Heavy Package';
-        break;
-      case 'Trailer':
-        packageType = 'Oversized Package';
         break;
       case '10-Wheeler Wingvan':
         packageType = 'Industrial Package';
+        break;
+      case '20-Footer Trailer':
+      case '40-Footer Trailer':
+      case 'Trailer': // legacy
+        packageType = 'Oversized Package';
         break;
       default:
         packageType = 'Standard Delivery';

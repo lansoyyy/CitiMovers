@@ -1360,16 +1360,21 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
         return 'Standard Package';
       case 'AUV':
         return 'Medium Package';
-      case '4-Wheeler':
+      case '4-Wheeler Closed Van':
+      case '4-Wheeler': // legacy
         return 'Large Package';
-      case '6-Wheeler':
+      case '6-Wheeler Closed Van':
+      case '6-Wheeler': // legacy
         return 'Extra Large Package';
-      case 'Wingvan':
+      case '6-Wheeler Forward Wingvan':
+      case 'Wingvan': // legacy
         return 'Heavy Package';
-      case 'Trailer':
-        return 'Oversized Package';
       case '10-Wheeler Wingvan':
         return 'Industrial Package';
+      case '20-Footer Trailer':
+      case '40-Footer Trailer':
+      case 'Trailer': // legacy
+        return 'Oversized Package';
       default:
         return 'Standard Delivery';
     }
@@ -1379,23 +1384,30 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
     // Weight based on vehicle type
     switch (widget.booking.vehicle.type) {
       case 'Motorcycle':
-        return 'Up to 10kg';
+        return 'Up to 10 kg';
       case 'Sedan':
-        return 'Up to 50kg';
+        return 'Up to 200 kg';
       case 'AUV':
-        return 'Up to 200kg';
-      case '4-Wheeler':
-        return 'Up to 500kg';
-      case '6-Wheeler':
-        return 'Up to 1000kg';
-      case 'Wingvan':
-        return 'Up to 2000kg';
-      case 'Trailer':
-        return 'Up to 5000kg';
+        return 'Up to 1,000 kg';
+      case '4-Wheeler Closed Van':
+      case '4-Wheeler': // legacy
+        return 'Up to 2,000 kg';
+      case '6-Wheeler Closed Van':
+      case '6-Wheeler': // legacy
+        return 'Up to 3,000 kg';
+      case '6-Wheeler Forward Wingvan':
+      case 'Wingvan': // legacy
+        return 'Up to 7,000 kg';
       case '10-Wheeler Wingvan':
-        return 'Up to 10000kg';
+        return 'Up to 12,000 kg';
+      case '20-Footer Trailer':
+        return 'Up to 20,000 kg';
+      case '40-Footer Trailer':
+        return 'Up to 32,000 kg';
+      case 'Trailer': // legacy
+        return 'Up to 5,000 kg';
       default:
-        return 'Up to 500kg';
+        return 'Up to 200 kg';
     }
   }
 
