@@ -2161,14 +2161,17 @@ class _RiderDeliveryProgressScreenState
       },
     );
 
+    final bookingDoc = await _getBookingDoc(widget.request.id);
+    final lockedFare = (bookingDoc?['estimatedFare'] as num?)?.toDouble() ??
+        double.tryParse(widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+        0.0;
+    final customerId = bookingDoc?['customerId'] as String?;
+
     // --- Wallet: add earnings to rider ---
     final riderId = _riderAuthService.currentRider?.riderId ?? '';
     if (riderId.isNotEmpty) {
-      final baseFare = double.tryParse(
-              widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
-          0.0;
       final totalEarnings =
-          baseFare + savedLoadingDemurrage + savedUnloadingDemurrage;
+          lockedFare + savedLoadingDemurrage + savedUnloadingDemurrage;
       if (totalEarnings > 0) {
         await _walletService.addEarnings(
           riderId: riderId,
@@ -2182,8 +2185,6 @@ class _RiderDeliveryProgressScreenState
     // --- Wallet: charge customer for demurrage (if any) ---
     final totalDemurrage = savedLoadingDemurrage + savedUnloadingDemurrage;
     if (totalDemurrage > 0) {
-      final bookingDoc = await _getBookingDoc(widget.request.id);
-      final customerId = bookingDoc?['customerId'] as String?;
       if (customerId != null && customerId.isNotEmpty) {
         await _walletService.deductFromWallet(
           userId: customerId,

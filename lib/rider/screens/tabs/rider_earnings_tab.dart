@@ -726,12 +726,7 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
       bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       for (final booking in bookings) {
-        final baseFare = (booking.finalFare != null && booking.finalFare! > 0)
-            ? booking.finalFare!
-            : booking.estimatedFare;
-        final loading = booking.loadingDemurrageFee ?? 0.0;
-        final unloading = booking.unloadingDemurrageFee ?? 0.0;
-        final earnings = baseFare + loading + unloading;
+        final earnings = booking.totalFare;
 
         totalDeliveries++;
 

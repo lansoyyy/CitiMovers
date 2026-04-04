@@ -5,7 +5,6 @@ import 'notification_service.dart';
 import 'booking_status_service.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
-import '../utils/app_constants.dart';
 
 /// Booking Service for CitiMovers
 /// Handles booking creation, updates, and management with Firebase Firestore
@@ -24,6 +23,45 @@ class BookingService {
       Duration(hours: 24);
   static const Duration _scheduledAutoContinueLeadWindow =
       Duration(minutes: 30);
+
+  double _readDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  double calculateFinalFare({
+    required double lockedFare,
+    double loadingDemurrageFee = 0.0,
+    double unloadingDemurrageFee = 0.0,
+    double tipAmount = 0.0,
+  }) {
+    return lockedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
+  }
+
+  double _calculateResolvedFinalFare(
+    Map<String, dynamic>? bookingData, {
+    double? loadingDemurrageFee,
+    double? unloadingDemurrageFee,
+    double? tipAmount,
+  }) {
+    final lockedFare = _readDouble(bookingData?['estimatedFare']);
+    final resolvedLoadingDemurrage =
+        loadingDemurrageFee ?? _readDouble(bookingData?['loadingDemurrageFee']);
+    final resolvedUnloadingDemurrage = unloadingDemurrageFee ??
+        _readDouble(bookingData?['unloadingDemurrageFee']);
+    final resolvedTip = tipAmount ?? _readDouble(bookingData?['tipAmount']);
+    final persistedFinalFare = _readDouble(bookingData?['finalFare']);
+    final computedFinalFare = calculateFinalFare(
+      lockedFare: lockedFare,
+      loadingDemurrageFee: resolvedLoadingDemurrage,
+      unloadingDemurrageFee: resolvedUnloadingDemurrage,
+      tipAmount: resolvedTip,
+    );
+    return persistedFinalFare > computedFinalFare
+        ? persistedFinalFare
+        : computedFinalFare;
+  }
 
   /// Create a new booking
   /// Uses Firestore transaction to ensure atomic creation of booking and delivery request
@@ -415,9 +453,14 @@ class BookingService {
     required DateTime completedAt,
   }) async {
     try {
+      final bookingDoc =
+          await _firestore.collection(_bookingsCollection).doc(bookingId).get();
+      final bookingData = bookingDoc.data();
+      final resolvedFinalFare = _calculateResolvedFinalFare(bookingData);
+
       await _firestore.collection(_bookingsCollection).doc(bookingId).update({
         'status': 'completed',
-        'finalFare': finalFare,
+        'finalFare': resolvedFinalFare > finalFare ? resolvedFinalFare : finalFare,
         'completedAt': completedAt.millisecondsSinceEpoch,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
@@ -443,8 +486,11 @@ class BookingService {
       final bookingData = bookingSnap.data()!;
       final currentStatus = bookingData['status'] as String?;
 
-      // Only cancel if still cancellable (pending or accepted)
-      if (currentStatus != 'pending' && currentStatus != 'accepted') {
+      // Only cancel if still in a customer-cancellable state.
+      if (currentStatus == null ||
+          !BookingStatusService.canBeCancelled(
+            BookingStatusService.normalizeStatus(currentStatus),
+          )) {
         debugPrint('Cannot cancel booking with status: $currentStatus');
         return false;
       }
@@ -648,6 +694,10 @@ class BookingService {
         'reviewId': reviewData['reviewId'],
         'rating': rating,
         'tipAmount': tipAmount,
+        'finalFare': _calculateResolvedFinalFare(
+          bookingData,
+          tipAmount: tipAmount ?? 0.0,
+        ),
         'reviewedAt': now.millisecondsSinceEpoch,
         'updatedAt': now.millisecondsSinceEpoch,
       });
@@ -825,8 +875,25 @@ class BookingService {
         updateData['deliveryPhotos'] = merged;
       }
 
+      final resolvedLoadingDemurrage =
+          loadingDemurrageFee ?? _readDouble(bookingData?['loadingDemurrageFee']);
+      final resolvedUnloadingDemurrage = unloadingDemurrageFee ??
+          _readDouble(bookingData?['unloadingDemurrageFee']);
+      final totalDemurrageFee =
+          resolvedLoadingDemurrage + resolvedUnloadingDemurrage;
+
+      if (loadingDemurrageFee != null || unloadingDemurrageFee != null) {
+        updateData['totalDemurrageFee'] = totalDemurrageFee;
+      }
+
       // Finalise payment when delivery is completed
       if (status == 'completed') {
+        updateData['finalFare'] = _calculateResolvedFinalFare(
+          bookingData,
+          loadingDemurrageFee: resolvedLoadingDemurrage,
+          unloadingDemurrageFee: resolvedUnloadingDemurrage,
+        );
+        updateData['totalDemurrageFee'] = totalDemurrageFee;
         updateData['paymentStatus'] = 'captured';
         updateData['paymentCapturedAt'] =
             DateTime.now().millisecondsSinceEpoch;
@@ -872,25 +939,39 @@ class BookingService {
           _firestore.collection(_bookingsCollection).doc(bookingId);
       final acceptedRequestRef =
           _firestore.collection('delivery_requests').doc(bookingId);
+      final riderRef = _firestore.collection('riders').doc(riderId);
 
       late Map<String, dynamic> bookingData;
+      late String riderName;
 
       final accepted = await _firestore.runTransaction<bool>((txn) async {
         final snap = await txn.get(bookingRef);
         if (!snap.exists) return false;
 
+        final riderSnap = await txn.get(riderRef);
+        if (!riderSnap.exists) return false;
+
         final data = snap.data() as Map<String, dynamic>;
         bookingData = data;
+        final riderData = riderSnap.data() as Map<String, dynamic>;
+        riderName = (riderData['name'] ?? riderData['fullName'] ?? 'Driver')
+            .toString();
 
         final currentStatus = data['status'] as String?;
         final currentDriverId = data['driverId'] as String?;
+        final canAccept = currentStatus == 'pending' ||
+            currentStatus == 'awaiting_payment' ||
+            currentStatus == 'payment_locked';
 
-        if (currentStatus != 'pending' || currentDriverId != null) {
+        if (!canAccept || currentDriverId != null) {
           return false;
         }
 
         txn.update(bookingRef, {
           'driverId': riderId,
+          'riderId': riderId,
+          'driverName': riderName,
+          'riderName': riderName,
           'status': 'accepted',
           'acceptedAt': nowMs,
           'updatedAt': nowMs,
@@ -903,6 +984,7 @@ class BookingService {
             'bookingId': bookingId,
             'customerId': data['customerId'],
             'riderId': riderId,
+            'riderName': riderName,
             'status': 'accepted',
             'acceptedAt': nowMs,
             'respondedAt': nowMs,
@@ -925,7 +1007,6 @@ class BookingService {
 
       final customerId = bookingData['customerId'] as String?;
       final customerName = bookingData['customerName'] as String?;
-      final riderName = bookingData['driverName'] as String?;
       final fare = (bookingData['estimatedFare'] as num?)?.toDouble() ?? 0.0;
 
       // Send notification to customer

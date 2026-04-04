@@ -40,6 +40,20 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   Future<void> _cancelBooking() async {
+    final status = (_bookingData?['status'] ?? '').toString();
+    final paymentStatus = (_bookingData?['paymentStatus'] ?? '').toString();
+    const lateCancellationStatuses = [
+      'arrived_at_pickup',
+      'loading',
+      'loading_complete',
+      'in_transit',
+      'arrived_at_dropoff',
+      'unloading',
+      'unloading_complete',
+    ];
+    final capturesHeldAmount =
+        paymentStatus == 'held' && lateCancellationStatuses.contains(status);
+    final willRefund = paymentStatus == 'held' && !capturesHeldAmount;
     final reasonCtrl = TextEditingController();
     final confirmed =
         await showDialog<bool>(
@@ -50,8 +64,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'This will cancel the booking and trigger a wallet refund if held.',
+                Text(
+                  capturesHeldAmount
+                      ? 'This will cancel the booking and keep the original held booking amount as the cancellation charge.'
+                      : willRefund
+                      ? 'This will cancel the booking and refund the held amount to the customer wallet.'
+                      : 'This will cancel the booking and keep the current payment state unchanged.',
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -104,6 +122,137 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       );
     }
     _loadBooking();
+  }
+
+  Future<void> _assignRider() async {
+    String? selectedRiderId = (_bookingData?['driverId'] ?? _bookingData?['riderId'])
+        ?.toString()
+        .trim();
+    final reasonCtrl = TextEditingController();
+    final actionLabel = selectedRiderId != null && selectedRiderId.isNotEmpty
+        ? 'Reassign Rider'
+        : 'Assign Rider';
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (dialogContext, setDialogState) => AlertDialog(
+              title: Text(actionLabel),
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    StreamBuilder<QuerySnapshot>(
+                      stream: AdminRepository.streamRiders(statusFilter: 'active'),
+                      builder: (context, snap) {
+                        final docs = snap.data?.docs ?? const [];
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        if (docs.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text('No active riders available.'),
+                          );
+                        }
+
+                        return DropdownButtonFormField<String>(
+                          value: docs.any((doc) => doc.id == selectedRiderId)
+                              ? selectedRiderId
+                              : null,
+                          decoration: const InputDecoration(
+                            labelText: 'Select rider',
+                          ),
+                          items: docs.map((doc) {
+                            final rider = AdminRepository.normalizeRiderData(
+                              doc.id,
+                              doc.data() as Map<String, dynamic>,
+                            );
+                            final label =
+                                '${rider['name'] ?? 'Unknown'} · ${rider['vehicleType'] ?? 'Vehicle'}${(rider['plateNumber'] ?? '').toString().isNotEmpty ? ' · ${rider['plateNumber']}' : ''}';
+                            return DropdownMenuItem<String>(
+                              value: doc.id,
+                              child: Text(
+                                label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              selectedRiderId = value;
+                            });
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: reasonCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Assignment reason (required)',
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: Text(actionLabel),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    final riderId = selectedRiderId?.trim() ?? '';
+    final reason = reasonCtrl.text.trim();
+    if (riderId.isEmpty || reason.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a rider and provide a reason.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await AdminRepository.assignRiderToBooking(
+        bookingId: widget.bookingId,
+        riderId: riderId,
+        reason: reason,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$actionLabel completed successfully.')),
+      );
+      _loadBooking();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _addNote() async {
@@ -159,6 +308,14 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
     final d = _bookingData!;
     final status = d['status'] ?? 'unknown';
+    final canAssign = const [
+      'pending',
+      'awaiting_payment',
+      'payment_locked',
+      'accepted',
+    ].contains(status);
+    final hasAssignedRider =
+        (d['driverId'] ?? d['riderId'] ?? '').toString().trim().isNotEmpty;
     final canCancel = ![
       'completed',
       'cancelled',
@@ -180,6 +337,21 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 label: const Text('Back to Bookings'),
               ),
               const Spacer(),
+              if (canAssign) ...[
+                OutlinedButton.icon(
+                  onPressed: _assignRider,
+                  icon: Icon(
+                    hasAssignedRider
+                        ? Icons.swap_horiz_outlined
+                        : Icons.person_add_alt_1_outlined,
+                    size: 16,
+                  ),
+                  label: Text(
+                    hasAssignedRider ? 'Reassign Rider' : 'Assign Rider',
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               OutlinedButton.icon(
                 onPressed: _addNote,
                 icon: const Icon(Icons.note_add_outlined, size: 16),

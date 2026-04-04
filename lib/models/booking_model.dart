@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'location_model.dart';
 import 'vehicle_model.dart';
+import '../services/booking_status_service.dart';
 
 /// Booking Model for CitiMovers
 /// Represents a delivery booking
@@ -308,7 +309,9 @@ class BookingModel {
 
   /// Check if booking can be cancelled
   bool get canBeCancelled {
-    return status == 'pending' || status == 'accepted';
+    return BookingStatusService.canBeCancelled(
+      BookingStatusService.normalizeStatus(status),
+    );
   }
 
   /// Check if booking is active
@@ -321,6 +324,19 @@ class BookingModel {
         status == 'in_progress' ||
         status == 'arrived_at_dropoff' ||
         status == 'unloading_complete';
+  }
+
+  double get lockedFare => estimatedFare;
+
+  double get totalDemurrageFee =>
+      (loadingDemurrageFee ?? 0.0) + (unloadingDemurrageFee ?? 0.0);
+
+  double get totalFare {
+    final computedTotal = lockedFare + totalDemurrageFee + (tipAmount ?? 0.0);
+    final persistedFinalFare = finalFare ?? 0.0;
+    return persistedFinalFare > computedTotal
+        ? persistedFinalFare
+        : computedTotal;
   }
 
   @override

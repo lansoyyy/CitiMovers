@@ -370,9 +370,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   double get _baseFare {
-    final finalFare = _booking.finalFare;
-    if (finalFare != null && finalFare > 0) return finalFare;
-    return _booking.estimatedFare;
+    return _booking.lockedFare;
   }
 
   double _computeDemurrageFee(Duration duration, double baseFare) {
@@ -401,9 +399,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     final unloadingActive =
         unloadingStartedAt != null && unloadingCompletedAt == null;
 
-    final baseFare = (booking.finalFare != null && booking.finalFare! > 0)
-        ? booking.finalFare!
-        : booking.estimatedFare;
+    final baseFare = booking.lockedFare;
 
     final loadingFee = booking.loadingDemurrageFee ??
         _computeDemurrageFee(loadingDuration, baseFare);
@@ -1441,8 +1437,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   Widget _buildActiveDeliveryActions() {
     final driverPhone = _driver?.phoneNumber ?? _rider?.phoneNumber ?? '';
     final driverName = _driver?.name ?? _rider?.name ?? 'Driver';
-    final canCancel =
-        _booking.status == 'pending' || _booking.status == 'accepted';
+    final canCancel = BookingStatusService.canBeCancelled(_booking.status);
 
     // Chat button is always enabled, call button is enabled when driver data is available
     final isLoading = _isLoadingDriver || _isLoadingRider;
@@ -2203,9 +2198,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   Widget _buildTripSummaryCard() {
-    final totalFare = (_booking.finalFare != null && _booking.finalFare! > 0)
-        ? _booking.finalFare!
-        : _booking.estimatedFare;
+    final totalFare = _booking.totalFare;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -2344,7 +2337,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Total Fare: P${((_booking.finalFare != null && _booking.finalFare! > 0) ? _booking.finalFare! : _booking.estimatedFare).toStringAsFixed(2)}',
+          'Total Fare: P${_booking.totalFare.toStringAsFixed(2)}',
           style: TextStyle(fontSize: 12, color: AppColors.textHint),
         ),
       ],

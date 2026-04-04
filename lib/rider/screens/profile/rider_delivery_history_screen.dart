@@ -206,7 +206,7 @@ class _RiderDeliveryHistoryScreenState
           to: booking.dropoffLocation.address,
           distance: distance,
           duration: duration,
-          fare: booking.finalFare ?? booking.estimatedFare,
+          fare: booking.totalFare,
           customerName: customerNames[booking.customerId] ??
               booking.customerName ??
               'Unknown',

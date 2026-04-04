@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../models/vehicle_model.dart';
 import '../../models/location_model.dart';
+import '../../services/maps_service.dart';
 import 'booking_summary_screen.dart';
 
 class VehicleSelectionScreen extends StatefulWidget {
@@ -22,7 +23,34 @@ class VehicleSelectionScreen extends StatefulWidget {
 
 class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   final List<VehicleModel> _vehicles = VehicleModel.getAvailableVehicles();
+  final MapsService _mapsService = MapsService();
+  final Map<String, double> _estimatedFares = <String, double>{};
   VehicleModel? _selectedVehicle;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEstimatedFares();
+  }
+
+  Future<void> _loadEstimatedFares() async {
+    await _mapsService.fetchFuelPrice();
+
+    final calculatedFares = <String, double>{};
+    for (final vehicle in _vehicles) {
+      calculatedFares[vehicle.id] = _mapsService.calculateFare(
+        distanceKm: widget.distance,
+        vehicleType: vehicle.name,
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _estimatedFares
+        ..clear()
+        ..addAll(calculatedFares);
+    });
+  }
 
   void _selectVehicle(VehicleModel vehicle) {
     setState(() {
@@ -115,7 +143,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
               itemBuilder: (context, index) {
                 final vehicle = _vehicles[index];
                 final isSelected = _selectedVehicle?.id == vehicle.id;
-                final estimatedFare = vehicle.getEstimatedFare(widget.distance);
+                final estimatedFare = _estimatedFares[vehicle.id];
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -212,18 +240,25 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          'P${estimatedFare.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontFamily: 'Bold',
-                            color: AppColors.primaryRed,
+                        if (estimatedFare == null)
+                          const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          Text(
+                            'P${estimatedFare.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontFamily: 'Bold',
+                              color: AppColors.primaryRed,
+                            ),
                           ),
-                        ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'Estimated',
-                          style: TextStyle(
+                        Text(
+                          estimatedFare == null ? 'Loading' : 'Estimated',
+                          style: const TextStyle(
                             fontSize: 11,
                             fontFamily: 'Regular',
                             color: AppColors.textSecondary,

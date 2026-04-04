@@ -27,6 +27,24 @@ class _RidersScreenState extends State<RidersScreen> {
     super.dispose();
   }
 
+  Future<void> _approveRider(String riderId) async {
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Approve Rider',
+      message:
+          'Approve this rider account? They will be able to receive bookings.',
+      confirmLabel: 'Approve',
+      confirmColor: AdminTheme.statusActive,
+    );
+    if (!confirmed) return;
+
+    await AdminRepository.approveRider(riderId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Rider approved.')),
+    );
+  }
+
   List<QueryDocumentSnapshot> _filter(List<QueryDocumentSnapshot> docs) {
     var result = docs;
     if (_searchQuery.isNotEmpty) {
@@ -170,6 +188,13 @@ class _RidersScreenState extends State<RidersScreen> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (status == 'pending') ...[
+                              TextButton(
+                                onPressed: () => _approveRider(doc.id),
+                                child: const Text('Approve'),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                             if (isOnline)
                               Container(
                                 margin: const EdgeInsets.only(right: 8),

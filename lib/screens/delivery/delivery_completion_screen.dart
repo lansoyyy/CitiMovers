@@ -62,9 +62,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   ];
 
   double get _totalFare {
-    final finalFare = widget.booking.finalFare;
-    if (finalFare != null && finalFare > 0) return finalFare;
-    return widget.booking.estimatedFare;
+    return widget.booking.totalFare;
   }
 
   late AnimationController _animationController;

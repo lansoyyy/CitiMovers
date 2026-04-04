@@ -281,6 +281,16 @@ class AdminRepository {
       raw['status'],
     ], fallback: 'pending');
     final deliveryPhotos = _normalizeDeliveryPhotos(raw['deliveryPhotos']);
+    final estimatedFare = _asDouble(raw['estimatedFare']);
+    final loadingDemurrageFee = _asDouble(raw['loadingDemurrageFee']);
+    final unloadingDemurrageFee = _asDouble(raw['unloadingDemurrageFee']);
+    final tipAmount = _asDouble(raw['tipAmount']);
+    final computedFinalFare =
+        estimatedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
+    final persistedFinalFare = _asDouble(raw['finalFare']);
+    final resolvedFinalFare = persistedFinalFare > computedFinalFare
+        ? persistedFinalFare
+        : computedFinalFare;
 
     return {
       ...raw,
@@ -323,9 +333,9 @@ class AdminRepository {
         _asMap(raw['vehicle'])['type'],
       ]),
       'distance': _asDouble(raw['distance']),
-      'estimatedFare': _asDouble(raw['estimatedFare']),
-      'finalFare': _asDouble(raw['finalFare'] ?? raw['estimatedFare']),
-      'tipAmount': _asDouble(raw['tipAmount']),
+      'estimatedFare': estimatedFare,
+      'finalFare': resolvedFinalFare,
+      'tipAmount': tipAmount,
       'paymentStatus': paymentStatus,
       'reconciliationStatus': _coalesceString([
         raw['reconciliationStatus'],
@@ -743,6 +753,193 @@ class AdminRepository {
     Map<String, dynamic> data,
   ) => _db.collection(AdminConstants.colBookings).doc(bookingId).update(data);
 
+  static Future<void> assignRiderToBooking({
+    required String bookingId,
+    required String riderId,
+    required String reason,
+  }) async {
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
+    final deliveryRequestRef = _db
+        .collection(AdminConstants.colDeliveryRequests)
+        .doc(bookingId);
+    final riderRef = _db.collection(AdminConstants.colRiders).doc(riderId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+
+    await _db.runTransaction((transaction) async {
+      final bookingSnap = await transaction.get(bookingRef);
+      if (!bookingSnap.exists) {
+        throw StateError('Booking not found.');
+      }
+
+      final riderSnap = await transaction.get(riderRef);
+      if (!riderSnap.exists) {
+        throw StateError('Rider not found.');
+      }
+
+      final beforeData = normalizeBookingData(
+        bookingId,
+        _asMap(bookingSnap.data()),
+      );
+      final riderData = normalizeRiderData(riderId, _asMap(riderSnap.data()));
+
+      final currentStatus = _asString(beforeData['status'], fallback: 'pending');
+      const assignableStatuses = [
+        'pending',
+        'awaiting_payment',
+        'payment_locked',
+        'accepted',
+      ];
+      if (!assignableStatuses.contains(currentStatus)) {
+        throw StateError(
+          'Only pending or accepted bookings can be assigned from admin.',
+        );
+      }
+
+      final riderStatus = _asString(
+        riderData['accountStatus'],
+        fallback: 'pending',
+      );
+      if (riderStatus != 'active') {
+        throw StateError('Only active riders can be assigned.');
+      }
+
+      final currentRiderId = _coalesceString([
+        beforeData['driverId'],
+        beforeData['riderId'],
+      ]);
+      if (currentRiderId == riderId) {
+        throw StateError('Booking is already assigned to this rider.');
+      }
+
+      final customerId = _coalesceString([
+        beforeData['customerId'],
+        beforeData['userId'],
+      ]);
+      final riderName = _asString(riderData['name'], fallback: 'Assigned Rider');
+      final shouldMarkAccepted = currentStatus != 'accepted';
+      final nextStatus = shouldMarkAccepted ? 'accepted' : currentStatus;
+      final wasReassigned = currentRiderId.isNotEmpty;
+
+      transaction.set(bookingRef, {
+        'driverId': riderId,
+        'riderId': riderId,
+        'driverName': riderName,
+        'riderName': riderName,
+        'status': nextStatus,
+        'assignmentReason': reason,
+        'assignedBy': AdminConstants.adminUsername,
+        'assignedAt': FieldValue.serverTimestamp(),
+        if (wasReassigned) 'reassignedAt': FieldValue.serverTimestamp(),
+        if (shouldMarkAccepted) 'acceptedAt': FieldValue.serverTimestamp(),
+        'lastAdminActionAt': FieldValue.serverTimestamp(),
+        'lastAdminActionBy': AdminConstants.adminUsername,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      transaction.set(deliveryRequestRef, {
+        'requestId': bookingId,
+        'bookingId': bookingId,
+        'customerId': customerId,
+        'riderId': riderId,
+        'riderName': riderName,
+        'status': 'accepted',
+        'acceptedAt': FieldValue.serverTimestamp(),
+        'respondedAt': FieldValue.serverTimestamp(),
+        'assignmentReason': reason,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'vehicleType': beforeData['vehicleType'],
+        'pickupLocation': _asMap(bookingSnap.data())['pickupLocation'],
+        'dropoffLocation': _asMap(bookingSnap.data())['dropoffLocation'],
+        'distance': beforeData['distance'],
+        'estimatedFare': beforeData['estimatedFare'],
+      }, SetOptions(merge: true));
+
+      if (customerId.isNotEmpty) {
+        final notificationRef = _db
+            .collection(AdminConstants.colNotifications)
+            .doc();
+        transaction.set(notificationRef, {
+          'id': notificationRef.id,
+          'userId': customerId,
+          'userType': 'customer',
+          'title': wasReassigned ? 'Rider Reassigned' : 'Rider Assigned',
+          'message': wasReassigned
+              ? 'Support reassigned your booking to $riderName.'
+              : 'Support assigned $riderName to your booking.',
+          'body': wasReassigned
+              ? 'Support reassigned your booking to $riderName.'
+              : 'Support assigned $riderName to your booking.',
+          'type': 'booking',
+          'referenceId': bookingId,
+          'bookingId': bookingId,
+          'isRead': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      final assignedRiderNotificationRef = _db
+          .collection(AdminConstants.colNotifications)
+          .doc();
+      transaction.set(assignedRiderNotificationRef, {
+        'id': assignedRiderNotificationRef.id,
+        'userId': riderId,
+        'userType': 'rider',
+        'title': wasReassigned ? 'Booking Reassigned to You' : 'Booking Assigned',
+        'message': 'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
+        'body': 'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
+        'type': 'booking',
+        'referenceId': bookingId,
+        'bookingId': bookingId,
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (wasReassigned && currentRiderId.isNotEmpty) {
+        final previousRiderNotificationRef = _db
+            .collection(AdminConstants.colNotifications)
+            .doc();
+        transaction.set(previousRiderNotificationRef, {
+          'id': previousRiderNotificationRef.id,
+          'userId': currentRiderId,
+          'userType': 'rider',
+          'title': 'Booking Reassigned',
+          'message': 'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
+          'body': 'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
+          'type': 'booking',
+          'referenceId': bookingId,
+          'bookingId': bookingId,
+          'isRead': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      transaction.set(
+        auditRef,
+        _buildAuditEntry(
+          action: AdminConstants.auditAssignBooking,
+          entityType: 'booking',
+          entityId: bookingId,
+          reason: reason,
+          before: {
+            'status': beforeData['status'],
+            'driverId': beforeData['driverId'],
+            'riderId': beforeData['riderId'],
+            'riderName': beforeData['riderName'],
+          },
+          after: {
+            'status': nextStatus,
+            'driverId': riderId,
+            'riderId': riderId,
+            'riderName': riderName,
+            'wasReassigned': wasReassigned,
+          },
+        ),
+      );
+    });
+  }
+
   static Future<void> cancelBooking({
     required String bookingId,
     required String reason,
@@ -774,7 +971,22 @@ class AdminRepository {
         beforeData['paymentStatus'],
         fallback: 'pending',
       );
-      final shouldRefund = paymentStatus == 'held' && customerId.isNotEmpty;
+      final currentStatus = _asString(beforeData['status'], fallback: 'pending');
+      const lateCancellationStatuses = [
+        'arrived_at_pickup',
+        'loading',
+        'loading_complete',
+        'in_transit',
+        'arrived_at_dropoff',
+        'unloading',
+        'unloading_complete',
+      ];
+      final shouldCaptureHeldAmount =
+          paymentStatus == 'held' &&
+          customerId.isNotEmpty &&
+          lateCancellationStatuses.contains(currentStatus);
+      final shouldRefund =
+          paymentStatus == 'held' && customerId.isNotEmpty && !shouldCaptureHeldAmount;
 
       // Read user doc for wallet refund (only if payment was on hold)
       DocumentSnapshot? userSnap;
@@ -792,7 +1004,14 @@ class AdminRepository {
                   : null,
             )
           : 0.0;
-      final reconciliationStatus = shouldRefund
+        final capturedAmount = shouldCaptureHeldAmount
+          ? _asDouble(
+            bookingSnap.data() != null
+              ? (_asMap(bookingSnap.data())['estimatedFare'])
+              : null,
+          )
+          : 0.0;
+        final reconciliationStatus = shouldRefund || shouldCaptureHeldAmount
           ? 'reconciled'
           : _asString(beforeData['reconciliationStatus']);
 
@@ -804,7 +1023,13 @@ class AdminRepository {
         'cancelledBy': AdminConstants.adminUsername,
         'issueStatus': 'flagged',
         'reconciliationStatus': reconciliationStatus,
-        'paymentStatus': shouldRefund ? 'refunded' : paymentStatus,
+        'paymentStatus': shouldRefund
+            ? 'refunded'
+            : shouldCaptureHeldAmount
+            ? 'captured'
+            : paymentStatus,
+        if (shouldCaptureHeldAmount)
+          'paymentCapturedAt': FieldValue.serverTimestamp(),
         if (shouldRefund) 'paymentRefundedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -858,11 +1083,15 @@ class AdminRepository {
           'userId': customerId,
           'userType': 'customer',
           'title': 'Booking Cancelled by Admin',
-          'message': shouldRefund
+            'message': shouldRefund
               ? 'Your booking has been cancelled by support and your fare has been refunded. Reason: $reason'
+              : shouldCaptureHeldAmount
+              ? 'Your booking was cancelled by support after dispatch. Your original booking amount was retained as the cancellation charge. Reason: $reason'
               : 'Your booking has been cancelled by support. Reason: $reason',
-          'body': shouldRefund
+            'body': shouldRefund
               ? 'Your booking has been cancelled by support and your fare has been refunded. Reason: $reason'
+              : shouldCaptureHeldAmount
+              ? 'Your booking was cancelled by support after dispatch. Your original booking amount was retained as the cancellation charge. Reason: $reason'
               : 'Your booking has been cancelled by support. Reason: $reason',
           'type': 'booking',
           'referenceId': bookingId,
@@ -907,9 +1136,14 @@ class AdminRepository {
             'status': 'cancelled',
             'cancellationReason': reason,
             'cancelledBy': AdminConstants.adminUsername,
-            'paymentStatus': shouldRefund ? 'refunded' : paymentStatus,
+            'paymentStatus': shouldRefund
+                ? 'refunded'
+                : shouldCaptureHeldAmount
+                ? 'captured'
+                : paymentStatus,
             'reconciliationStatus': reconciliationStatus,
             if (shouldRefund) 'refundAmount': refundAmount,
+            if (shouldCaptureHeldAmount) 'capturedAmount': capturedAmount,
           },
         ),
       );
