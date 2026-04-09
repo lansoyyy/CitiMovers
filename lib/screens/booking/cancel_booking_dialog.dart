@@ -87,7 +87,9 @@ class _CancelBookingDialogState extends State<CancelBookingDialog> {
       });
 
       if (success) {
-        UIHelpers.showSuccessToast('Booking cancelled successfully');
+        UIHelpers.showSuccessToast(
+          'Booking cancelled and refunded successfully',
+        );
         Navigator.pop(context, true);
       } else {
         UIHelpers.showErrorToast('Failed to cancel booking. Please try again.');
@@ -182,9 +184,8 @@ class _CancelBookingDialogState extends State<CancelBookingDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Cancelling this booking will forfeit your payment. '
-                      'The booking fare will be charged as a cancellation fee '
-                      'and will not be refunded.',
+                      'Cancelling this booking will release the booking hold '
+                      'and fully refund the amount back to your wallet.',
                       style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Regular',

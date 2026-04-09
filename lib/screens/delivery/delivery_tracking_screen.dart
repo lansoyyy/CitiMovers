@@ -4,11 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
 import 'package:cloud_firestore/cloud_firestore.dart' hide Timestamp;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/delivery_photo_resolver.dart';
 import '../../utils/demurrage_utils.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
@@ -802,7 +802,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                               ),
                             ),
                             Text(
-                              _isDelivered ? 'Completed' : 'Est. 30 mins',
+                              _getEtaSummaryText(),
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'Medium',
@@ -1343,94 +1343,57 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
-  String _extractDeliveryValueAsString(dynamic value) {
-    if (value is String) return value.trim();
-    if (value is Map) {
-      final url = value['url'];
-      if (url is String && url.trim().isNotEmpty) return url.trim();
-      final text = value['value'] ?? value['text'];
-      if (text is String && text.trim().isNotEmpty) return text.trim();
-    }
-    return '';
+  String? _getPhotoTimestampText(String key) {
+    return DeliveryPhotoResolver.resolvePhotoTimeText(
+      _booking.deliveryPhotos,
+      key,
+    );
   }
 
-  List<String> _photoKeyCandidates(String key) {
-    switch (key) {
-      case 'finish_loading':
-        return ['finish_loading', 'finished_loading', 'finish_loading_photo'];
-      case 'start_loading':
-        return ['start_loading', 'start_loading_photo'];
-      case 'finish_unloading':
-        return [
-          'finish_unloading',
-          'finished_unloading',
-          'finish_unloading_photo'
-        ];
-      case 'start_unloading':
-        return ['start_unloading', 'start_unloading_photo'];
-      case 'receiver_id':
-        return ['receiver_id', 'receiver_id_photo'];
-      case 'receiver_signature':
-        return ['receiver_signature', 'signature'];
-      case 'destination_arrival':
-        return ['destination_arrival', 'dropoff_arrival'];
-      default:
-        return [key];
-    }
+  DateTime? _getEstimatedArrivalTime() {
+    final estimatedDuration = _booking.estimatedDuration;
+    if (estimatedDuration == null || estimatedDuration <= 0) return null;
+
+    final baseTime = _booking.acceptedAt ?? _booking.createdAt;
+    return baseTime.add(Duration(minutes: estimatedDuration));
   }
 
-  /// Returns the `uploadedAt` DateTime for a delivery photo stage, or null.
-  DateTime? _getPhotoUploadedAt(String key) {
-    final photos = _booking.deliveryPhotos;
-    if (photos == null) return null;
-    for (final candidate in _photoKeyCandidates(key)) {
-      final entry = photos[candidate];
-      if (entry is! Map) continue;
-      final raw = entry['uploadedAt'];
-      if (raw == null) continue;
-      if (raw is Timestamp) return raw.toDate();
-      if (raw is int) return DateTime.fromMillisecondsSinceEpoch(raw);
-      if (raw is num) return DateTime.fromMillisecondsSinceEpoch(raw.toInt());
-      if (raw is String && raw.isNotEmpty) {
-        final parsed = DateTime.tryParse(raw);
-        if (parsed != null) return parsed;
-      }
+  String _getEtaSummaryText() {
+    if (_isDelivered) return 'Completed';
+
+    final eta = _getEstimatedArrivalTime();
+    if (eta != null) {
+      return 'ETA ${DateFormat('h:mm a').format(eta)}';
     }
-    return null;
+
+    final estimatedDuration = _booking.estimatedDuration;
+    if (estimatedDuration != null && estimatedDuration > 0) {
+      return 'Est. $estimatedDuration mins';
+    }
+
+    return 'ETA unavailable';
   }
 
-  /// Formats a DateTime as `h:mm a` in 12-hour time (e.g. "2:32 PM"), or null.
-  String? _formatStepTime(DateTime? dt) {
-    if (dt == null) return null;
-    return DateFormat('h:mm a').format(dt);
+  String _getEtaDetailText() {
+    final eta = _getEstimatedArrivalTime();
+    final estimatedDuration = _booking.estimatedDuration;
+
+    if (eta != null && estimatedDuration != null && estimatedDuration > 0) {
+      return 'Estimated arrival: ${DateFormat('h:mm a').format(eta)} ($estimatedDuration mins)';
+    }
+    if (eta != null) {
+      return 'Estimated arrival: ${DateFormat('h:mm a').format(eta)}';
+    }
+    if (estimatedDuration != null && estimatedDuration > 0) {
+      return 'Est. Time: $estimatedDuration mins';
+    }
+    return 'ETA unavailable';
   }
 
   String _getPhotoUrl(String key) {
-    final photos = _booking.deliveryPhotos;
-    if (photos == null) return '';
-
-    for (final candidate in _photoKeyCandidates(key)) {
-      final resolved = _extractDeliveryValueAsString(photos[candidate]);
-      if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
-        return resolved;
-      }
-    }
-
-    if (key == 'service_invoice') {
-      final invoiceEntries = photos.entries
-          .where((entry) => entry.key.startsWith('service_invoice_'))
-          .toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
-
-      for (final entry in invoiceEntries) {
-        final resolved = _extractDeliveryValueAsString(entry.value);
-        if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
-          return resolved;
-        }
-      }
-    }
-
-    return '';
+    return DeliveryPhotoResolver.resolvePhotoUrl(
+            _booking.deliveryPhotos, key) ??
+        '';
   }
 
   /// Build action buttons for active delivery (Chat and Call)
@@ -1622,20 +1585,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   String _getDeliveryMetadataText(String key) {
-    final photos = _booking.deliveryPhotos;
-    if (photos == null) return '';
-
-    final keys = [key];
-    if (key == 'destination_arrival_remarks') {
-      keys.add('dropoff_arrival_remarks');
-    }
-
-    for (final candidate in keys) {
-      final resolved = _extractDeliveryValueAsString(photos[candidate]);
-      if (resolved.isNotEmpty) return resolved;
-    }
-
-    return '';
+    return DeliveryPhotoResolver.resolveMetadataText(
+        _booking.deliveryPhotos, key);
   }
 
   void _viewImageFullScreen(String? imageUrl, String title) {
@@ -1814,24 +1765,21 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   _getPhotoUrl('warehouse_arrival').isNotEmpty
                       ? _getPhotoUrl('warehouse_arrival')
                       : null,
-                  timestamp: _formatStepTime(
-                      _getPhotoUploadedAt('warehouse_arrival'))),
+                  timestamp: _getPhotoTimestampText('warehouse_arrival')),
               _buildSubStep(
                   'Start Loading Photo',
                   _getPhotoUrl('start_loading').isNotEmpty,
                   _getPhotoUrl('start_loading').isNotEmpty
                       ? _getPhotoUrl('start_loading')
                       : null,
-                  timestamp:
-                      _formatStepTime(_getPhotoUploadedAt('start_loading'))),
+                  timestamp: _getPhotoTimestampText('start_loading')),
               _buildSubStep(
                   'Finish Loading Photo',
                   _getPhotoUrl('finish_loading').isNotEmpty,
                   _getPhotoUrl('finish_loading').isNotEmpty
                       ? _getPhotoUrl('finish_loading')
                       : null,
-                  timestamp:
-                      _formatStepTime(_getPhotoUploadedAt('finish_loading'))),
+                  timestamp: _getPhotoTimestampText('finish_loading')),
             ],
           ),
 
@@ -1863,8 +1811,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           ? _getPhotoUrl('destination_arrival')
                           : _getPhotoUrl('dropoff_arrival'))
                       : null,
-                  timestamp: _formatStepTime(
-                      _getPhotoUploadedAt('destination_arrival'))),
+                  timestamp: _getPhotoTimestampText('destination_arrival')),
               _buildSubStep(
                   'Arrival Remarks',
                   _getDeliveryMetadataText('destination_arrival_remarks')
@@ -1878,16 +1825,14 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                   _getPhotoUrl('start_unloading').isNotEmpty
                       ? _getPhotoUrl('start_unloading')
                       : null,
-                  timestamp:
-                      _formatStepTime(_getPhotoUploadedAt('start_unloading'))),
+                  timestamp: _getPhotoTimestampText('start_unloading')),
               _buildSubStep(
                   'Finish Unloading Photo',
                   _getPhotoUrl('finish_unloading').isNotEmpty,
                   _getPhotoUrl('finish_unloading').isNotEmpty
                       ? _getPhotoUrl('finish_unloading')
                       : null,
-                  timestamp:
-                      _formatStepTime(_getPhotoUploadedAt('finish_unloading'))),
+                  timestamp: _getPhotoTimestampText('finish_unloading')),
             ],
           ),
 
@@ -1911,8 +1856,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           ? _getPhotoUrl('receiver_id')
                           : _getPhotoUrl('receiver_id_photo'))
                       : null,
-                  timestamp:
-                      _formatStepTime(_getPhotoUploadedAt('receiver_id'))),
+                  timestamp: _getPhotoTimestampText('receiver_id')),
               _buildSubStep(
                   'Digital Signature',
                   _getPhotoUrl('receiver_signature').isNotEmpty,
@@ -1921,8 +1865,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           ? _getPhotoUrl('receiver_signature')
                           : _getPhotoUrl('signature'))
                       : null,
-                  timestamp: _formatStepTime(
-                      _getPhotoUploadedAt('receiver_signature'))),
+                  timestamp: _getPhotoTimestampText('receiver_signature')),
             ],
           ),
 
@@ -2394,7 +2337,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Est. Time: 30 mins',
+          _getEtaDetailText(),
           style: TextStyle(fontSize: 12, color: AppColors.textHint),
         ),
       ],

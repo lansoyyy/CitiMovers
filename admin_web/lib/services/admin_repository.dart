@@ -4,6 +4,9 @@ import '../config/app_constants.dart';
 class AdminRepository {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
   static const int _batchWriteLimit = 400;
+  static const double _partnerNetRate = 0.80;
+  static const double _adminFeeRate = 0.20;
+  static const double _vatRate = 0.02;
 
   static bool _isMissing(dynamic value) {
     if (value == null) return true;
@@ -46,7 +49,85 @@ class AdminRepository {
         (!_isMissing(raw['driverId']) && _isMissing(raw['riderId'])) ||
         !raw.containsKey('issueNotesCount') ||
         !raw.containsKey('issueStatus') ||
-        !raw.containsKey('reconciliationStatus');
+        !raw.containsKey('reconciliationStatus') ||
+        _isMissing(raw['tripNumber']) ||
+        _isMissing(raw['tripDateKey']) ||
+        _asInt(raw['tripSequence']) <= 0 ||
+        raw['grossAmount'] == null ||
+        raw['partnerNetRate'] == null ||
+        raw['partnerNetAmount'] == null ||
+        raw['adminFeeRate'] == null ||
+        raw['adminFeeAmount'] == null ||
+        raw['vatRate'] == null ||
+        raw['vatAmount'] == null ||
+        raw['adminNetAmount'] == null;
+  }
+
+  static String _dateKey(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  static String _buildTripNumber(String dateKey, int sequence) {
+    return '$dateKey-${sequence.toString().padLeft(5, '0')}';
+  }
+
+  static Map<String, dynamic> _resolveBookingAccountingFields(
+    String bookingId,
+    Map<String, dynamic> raw,
+  ) {
+    final createdAt =
+        parseTimestamp(raw['createdAt']) ??
+        parseTimestamp(raw['scheduledDateTime']) ??
+        DateTime.now();
+    final tripDateKey = _coalesceString([
+      raw['tripDateKey'],
+      _dateKey(createdAt),
+    ]);
+    final tripSequence = _asInt(raw['tripSequence']);
+    final estimatedFare = _asDouble(raw['estimatedFare']);
+    final loadingDemurrageFee = _asDouble(raw['loadingDemurrageFee']);
+    final unloadingDemurrageFee = _asDouble(raw['unloadingDemurrageFee']);
+    final tipAmount = _asDouble(raw['tipAmount']);
+    final computedFinalFare =
+        estimatedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
+    final persistedFinalFare = _asDouble(raw['finalFare']);
+    final persistedGrossAmount = _asDouble(raw['grossAmount']);
+    final resolvedGrossAmount = [
+      computedFinalFare,
+      persistedFinalFare,
+      persistedGrossAmount,
+    ].reduce((a, b) => a > b ? a : b);
+    final adminFeeAmount = raw['adminFeeAmount'] != null
+        ? _asDouble(raw['adminFeeAmount'])
+        : resolvedGrossAmount * _adminFeeRate;
+    final vatAmount = raw['vatAmount'] != null
+        ? _asDouble(raw['vatAmount'])
+        : resolvedGrossAmount * _vatRate;
+    final partnerNetAmount = raw['partnerNetAmount'] != null
+        ? _asDouble(raw['partnerNetAmount'])
+        : resolvedGrossAmount * _partnerNetRate;
+
+    return {
+      'tripDateKey': tripDateKey,
+      'tripSequence': tripSequence,
+      'tripNumber': _coalesceString([
+        raw['tripNumber'],
+        raw['trip_number'],
+        tripSequence > 0 ? _buildTripNumber(tripDateKey, tripSequence) : '',
+        bookingId,
+      ]),
+      'grossAmount': resolvedGrossAmount,
+      'partnerNetRate': raw['partnerNetRate'] ?? _partnerNetRate,
+      'partnerNetAmount': partnerNetAmount,
+      'adminFeeRate': raw['adminFeeRate'] ?? _adminFeeRate,
+      'adminFeeAmount': adminFeeAmount,
+      'vatRate': raw['vatRate'] ?? _vatRate,
+      'vatAmount': vatAmount,
+      'adminNetAmount': raw['adminNetAmount'] ?? (adminFeeAmount - vatAmount),
+    };
   }
 
   // ─── Timestamp normalization ─────────────────────────────────────────────
@@ -167,17 +248,22 @@ class AdminRepository {
 
   static List<String> _normalizeDeliveryPhotos(dynamic rawPhotos) {
     if (rawPhotos is Map) {
-      return rawPhotos.values.map((entry) {
-        // Rider app stores photos as { 'url': '...', 'uploadedAt': ... }
-        if (entry is Map) {
-          return (entry['url'] ?? entry['imageUrl'] ?? '').toString().trim();
-        }
-        return entry?.toString().trim() ?? '';
-      }).where((url) => url.startsWith('http')).toList();
+      return rawPhotos.values
+          .map((entry) {
+            // Rider app stores photos as { 'url': '...', 'uploadedAt': ... }
+            if (entry is Map) {
+              return (entry['url'] ?? entry['imageUrl'] ?? '')
+                  .toString()
+                  .trim();
+            }
+            return entry?.toString().trim() ?? '';
+          })
+          .where((url) => url.startsWith('http'))
+          .toList();
     }
-    return _asStringList(rawPhotos)
-        .where((url) => url.startsWith('http'))
-        .toList();
+    return _asStringList(
+      rawPhotos,
+    ).where((url) => url.startsWith('http')).toList();
   }
 
   static Map<String, dynamic> normalizeUserData(
@@ -282,20 +368,17 @@ class AdminRepository {
     ], fallback: 'pending');
     final deliveryPhotos = _normalizeDeliveryPhotos(raw['deliveryPhotos']);
     final estimatedFare = _asDouble(raw['estimatedFare']);
-    final loadingDemurrageFee = _asDouble(raw['loadingDemurrageFee']);
-    final unloadingDemurrageFee = _asDouble(raw['unloadingDemurrageFee']);
     final tipAmount = _asDouble(raw['tipAmount']);
-    final computedFinalFare =
-        estimatedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
-    final persistedFinalFare = _asDouble(raw['finalFare']);
-    final resolvedFinalFare = persistedFinalFare > computedFinalFare
-        ? persistedFinalFare
-        : computedFinalFare;
+    final accountingFields = _resolveBookingAccountingFields(bookingId, raw);
+    final resolvedFinalFare = accountingFields['grossAmount'] as double;
 
     return {
       ...raw,
       'id': bookingId,
       'bookingId': bookingId,
+      'tripNumber': accountingFields['tripNumber'],
+      'tripDateKey': accountingFields['tripDateKey'],
+      'tripSequence': accountingFields['tripSequence'],
       'status': status,
       'customerId': _coalesceString([raw['customerId'], raw['userId']]),
       'userId': _coalesceString([raw['userId'], raw['customerId']]),
@@ -334,8 +417,16 @@ class AdminRepository {
       ]),
       'distance': _asDouble(raw['distance']),
       'estimatedFare': estimatedFare,
+      'grossAmount': accountingFields['grossAmount'],
       'finalFare': resolvedFinalFare,
       'tipAmount': tipAmount,
+      'partnerNetRate': accountingFields['partnerNetRate'],
+      'partnerNetAmount': accountingFields['partnerNetAmount'],
+      'adminFeeRate': accountingFields['adminFeeRate'],
+      'adminFeeAmount': accountingFields['adminFeeAmount'],
+      'vatRate': accountingFields['vatRate'],
+      'vatAmount': accountingFields['vatAmount'],
+      'adminNetAmount': accountingFields['adminNetAmount'],
       'paymentStatus': paymentStatus,
       'reconciliationStatus': _coalesceString([
         raw['reconciliationStatus'],
@@ -349,6 +440,10 @@ class AdminRepository {
       'updatedAt': parseTimestamp(raw['updatedAt']),
       'cancelledAt': parseTimestamp(raw['cancelledAt']),
       'cancellationReason': _asString(raw['cancellationReason']),
+      'paymentRefundedAt': parseTimestamp(raw['paymentRefundedAt']),
+      'refundedAmount': _asDouble(
+        raw['refundedAmount'] ?? raw['paymentRefundedAmount'],
+      ),
     };
   }
 
@@ -784,7 +879,10 @@ class AdminRepository {
       );
       final riderData = normalizeRiderData(riderId, _asMap(riderSnap.data()));
 
-      final currentStatus = _asString(beforeData['status'], fallback: 'pending');
+      final currentStatus = _asString(
+        beforeData['status'],
+        fallback: 'pending',
+      );
       const assignableStatuses = [
         'pending',
         'awaiting_payment',
@@ -817,7 +915,10 @@ class AdminRepository {
         beforeData['customerId'],
         beforeData['userId'],
       ]);
-      final riderName = _asString(riderData['name'], fallback: 'Assigned Rider');
+      final riderName = _asString(
+        riderData['name'],
+        fallback: 'Assigned Rider',
+      );
       final shouldMarkAccepted = currentStatus != 'accepted';
       final nextStatus = shouldMarkAccepted ? 'accepted' : currentStatus;
       final wasReassigned = currentRiderId.isNotEmpty;
@@ -886,9 +987,13 @@ class AdminRepository {
         'id': assignedRiderNotificationRef.id,
         'userId': riderId,
         'userType': 'rider',
-        'title': wasReassigned ? 'Booking Reassigned to You' : 'Booking Assigned',
-        'message': 'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
-        'body': 'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
+        'title': wasReassigned
+            ? 'Booking Reassigned to You'
+            : 'Booking Assigned',
+        'message':
+            'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
+        'body':
+            'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
         'type': 'booking',
         'referenceId': bookingId,
         'bookingId': bookingId,
@@ -905,8 +1010,10 @@ class AdminRepository {
           'userId': currentRiderId,
           'userType': 'rider',
           'title': 'Booking Reassigned',
-          'message': 'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
-          'body': 'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
+          'message':
+              'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
+          'body':
+              'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
           'type': 'booking',
           'referenceId': bookingId,
           'bookingId': bookingId,
@@ -971,7 +1078,10 @@ class AdminRepository {
         beforeData['paymentStatus'],
         fallback: 'pending',
       );
-      final currentStatus = _asString(beforeData['status'], fallback: 'pending');
+      final currentStatus = _asString(
+        beforeData['status'],
+        fallback: 'pending',
+      );
       const lateCancellationStatuses = [
         'arrived_at_pickup',
         'loading',
@@ -986,7 +1096,9 @@ class AdminRepository {
           customerId.isNotEmpty &&
           lateCancellationStatuses.contains(currentStatus);
       final shouldRefund =
-          paymentStatus == 'held' && customerId.isNotEmpty && !shouldCaptureHeldAmount;
+          paymentStatus == 'held' &&
+          customerId.isNotEmpty &&
+          !shouldCaptureHeldAmount;
 
       // Read user doc for wallet refund (only if payment was on hold)
       DocumentSnapshot? userSnap;
@@ -1004,14 +1116,14 @@ class AdminRepository {
                   : null,
             )
           : 0.0;
-        final capturedAmount = shouldCaptureHeldAmount
+      final capturedAmount = shouldCaptureHeldAmount
           ? _asDouble(
-            bookingSnap.data() != null
-              ? (_asMap(bookingSnap.data())['estimatedFare'])
-              : null,
-          )
+              bookingSnap.data() != null
+                  ? (_asMap(bookingSnap.data())['estimatedFare'])
+                  : null,
+            )
           : 0.0;
-        final reconciliationStatus = shouldRefund || shouldCaptureHeldAmount
+      final reconciliationStatus = shouldRefund || shouldCaptureHeldAmount
           ? 'reconciled'
           : _asString(beforeData['reconciliationStatus']);
 
@@ -1046,9 +1158,7 @@ class AdminRepository {
         final userData = _asMap(userSnap.data());
         final previousBalance = _asDouble(userData['walletBalance']);
         final newBalance = previousBalance + refundAmount;
-        final userRef = _db
-            .collection(AdminConstants.colUsers)
-            .doc(customerId);
+        final userRef = _db.collection(AdminConstants.colUsers).doc(customerId);
         final walletRef = _db
             .collection(AdminConstants.colWalletTransactions)
             .doc();
@@ -1083,12 +1193,12 @@ class AdminRepository {
           'userId': customerId,
           'userType': 'customer',
           'title': 'Booking Cancelled by Admin',
-            'message': shouldRefund
+          'message': shouldRefund
               ? 'Your booking has been cancelled by support and your fare has been refunded. Reason: $reason'
               : shouldCaptureHeldAmount
               ? 'Your booking was cancelled by support after dispatch. Your original booking amount was retained as the cancellation charge. Reason: $reason'
               : 'Your booking has been cancelled by support. Reason: $reason',
-            'body': shouldRefund
+          'body': shouldRefund
               ? 'Your booking has been cancelled by support and your fare has been refunded. Reason: $reason'
               : shouldCaptureHeldAmount
               ? 'Your booking was cancelled by support after dispatch. Your original booking amount was retained as the cancellation charge. Reason: $reason'
@@ -1488,11 +1598,20 @@ class AdminRepository {
 
   static Future<int> runBookingsBackfill() async {
     final snap = await _db.collection(AdminConstants.colBookings).get();
+    final docs = snap.docs.toList()
+      ..sort((a, b) {
+        final aDate =
+            parseTimestamp(_asMap(a.data())['createdAt']) ?? DateTime(1970);
+        final bDate =
+            parseTimestamp(_asMap(b.data())['createdAt']) ?? DateTime(1970);
+        return aDate.compareTo(bDate);
+      });
     var batch = _db.batch();
     var opCount = 0;
     var updated = 0;
+    final touchedTripCounters = <String, int>{};
 
-    for (final doc in snap.docs) {
+    for (final doc in docs) {
       final raw = _asMap(doc.data());
       if (!_needsBookingBackfill(raw)) continue;
 
@@ -1520,6 +1639,7 @@ class AdminRepository {
           : (normalized['paymentStatus'] == 'held' && isCancelled)
           ? 'admin_review_required'
           : '';
+      final accountingFields = _resolveBookingAccountingFields(doc.id, raw);
 
       final payload = <String, dynamic>{};
       if (_isMissing(raw['customerId'])) {
@@ -1543,12 +1663,76 @@ class AdminRepository {
       if (!raw.containsKey('reconciliationStatus')) {
         payload['reconciliationStatus'] = derivedReconciliationStatus;
       }
+      if (_isMissing(raw['tripNumber']) ||
+          _isMissing(raw['tripDateKey']) ||
+          _asInt(raw['tripSequence']) <= 0) {
+        final tripDate =
+            parseTimestamp(raw['createdAt']) ??
+            parseTimestamp(raw['scheduledDateTime']) ??
+            DateTime.now();
+        final tripDateKey = _dateKey(tripDate);
+        if (!touchedTripCounters.containsKey(tripDateKey)) {
+          final counterSnap = await _db
+              .collection(AdminConstants.colTripCounters)
+              .doc(tripDateKey)
+              .get();
+          touchedTripCounters[tripDateKey] =
+              (counterSnap.data()?['lastSequence'] as num?)?.toInt() ?? 0;
+        }
+        final nextSequence = touchedTripCounters[tripDateKey]! + 1;
+        touchedTripCounters[tripDateKey] = nextSequence;
+        payload['tripDateKey'] = tripDateKey;
+        payload['tripSequence'] = nextSequence;
+        payload['tripNumber'] = _buildTripNumber(tripDateKey, nextSequence);
+      }
+      if (raw['grossAmount'] == null) {
+        payload['grossAmount'] = accountingFields['grossAmount'];
+      }
+      if (raw['partnerNetRate'] == null) {
+        payload['partnerNetRate'] = accountingFields['partnerNetRate'];
+      }
+      if (raw['partnerNetAmount'] == null) {
+        payload['partnerNetAmount'] = accountingFields['partnerNetAmount'];
+      }
+      if (raw['adminFeeRate'] == null) {
+        payload['adminFeeRate'] = accountingFields['adminFeeRate'];
+      }
+      if (raw['adminFeeAmount'] == null) {
+        payload['adminFeeAmount'] = accountingFields['adminFeeAmount'];
+      }
+      if (raw['vatRate'] == null) {
+        payload['vatRate'] = accountingFields['vatRate'];
+      }
+      if (raw['vatAmount'] == null) {
+        payload['vatAmount'] = accountingFields['vatAmount'];
+      }
+      if (raw['adminNetAmount'] == null) {
+        payload['adminNetAmount'] = accountingFields['adminNetAmount'];
+      }
       if (payload.isEmpty) continue;
 
       payload['updatedAt'] = FieldValue.serverTimestamp();
       batch.set(bookingRef, payload, SetOptions(merge: true));
       opCount++;
       updated++;
+
+      if (opCount >= _batchWriteLimit) {
+        await batch.commit();
+        batch = _db.batch();
+        opCount = 0;
+      }
+    }
+
+    for (final entry in touchedTripCounters.entries) {
+      final counterRef = _db
+          .collection(AdminConstants.colTripCounters)
+          .doc(entry.key);
+      batch.set(counterRef, {
+        'dateKey': entry.key,
+        'lastSequence': entry.value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      opCount++;
 
       if (opCount >= _batchWriteLimit) {
         await batch.commit();
@@ -1564,7 +1748,8 @@ class AdminRepository {
         action: AdminConstants.auditRunBackfill,
         entityType: 'bookings',
         entityId: 'bookings',
-        reason: 'Backfilled booking issue and reconciliation metadata',
+        reason:
+            'Backfilled booking issue, reconciliation, trip number, and accounting metadata',
         after: {'documentsUpdated': updated},
       ),
     );

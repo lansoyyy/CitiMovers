@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/delivery_photo_resolver.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
@@ -168,19 +169,11 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   }
 
   Map<String, dynamic>? _normalizePhotosMap(Map<String, dynamic>? raw) {
-    if (raw == null) return null;
-    return raw.map((key, value) => MapEntry(key.toString(), value));
+    return DeliveryPhotoResolver.normalizePhotosMap(raw);
   }
 
   String _extractDeliveryValueAsString(dynamic value) {
-    if (value is String) return value.trim();
-    if (value is Map) {
-      final url = value['url'];
-      if (url is String && url.trim().isNotEmpty) return url.trim();
-      final text = value['value'] ?? value['text'];
-      if (text is String && text.trim().isNotEmpty) return text.trim();
-    }
-    return '';
+    return DeliveryPhotoResolver.extractString(value);
   }
 
   String? _firstNonEmptyPhotoUrl(List<String> keys) {
@@ -194,53 +187,11 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   }
 
   String _getMetadataText(String key) {
-    final value = _extractDeliveryValueAsString(_deliveryPhotos?[key]);
-    return value;
+    return DeliveryPhotoResolver.resolveMetadataText(_deliveryPhotos, key);
   }
 
   String? _getPhotoUrl(String key) {
-    switch (key) {
-      case 'start_loading':
-        return _firstNonEmptyPhotoUrl(['start_loading', 'start_loading_photo']);
-      case 'finish_loading':
-        return _firstNonEmptyPhotoUrl(
-            ['finish_loading', 'finished_loading', 'finish_loading_photo']);
-      case 'start_unloading':
-        return _firstNonEmptyPhotoUrl(
-            ['start_unloading', 'start_unloading_photo']);
-      case 'finish_unloading':
-        return _firstNonEmptyPhotoUrl([
-          'finish_unloading',
-          'finished_unloading',
-          'finish_unloading_photo'
-        ]);
-      case 'destination_arrival':
-        return _firstNonEmptyPhotoUrl(
-            ['destination_arrival', 'dropoff_arrival']);
-      case 'receiver_id':
-        return _firstNonEmptyPhotoUrl(['receiver_id', 'receiver_id_photo']);
-      case 'receiver_signature':
-        return _firstNonEmptyPhotoUrl(['receiver_signature', 'signature']);
-      case 'damage_photo':
-        return _firstNonEmptyPhotoUrl(
-            ['damage_photo', 'damaged_boxes', 'empty_truck']);
-      case 'service_invoice':
-        final photos = _deliveryPhotos;
-        if (photos == null) return null;
-        final invoiceEntries = photos.entries
-            .where((entry) => entry.key.startsWith('service_invoice_'))
-            .toList()
-          ..sort((a, b) => a.key.compareTo(b.key));
-        for (final entry in invoiceEntries) {
-          final url = _extractDeliveryValueAsString(entry.value);
-          if (url.startsWith('http://') || url.startsWith('https://')) {
-            return url;
-          }
-        }
-        return _firstNonEmptyPhotoUrl(['service_invoice']);
-      default:
-        return _firstNonEmptyPhotoUrl([key]);
-    }
+    return DeliveryPhotoResolver.resolvePhotoUrl(_deliveryPhotos, key);
   }
 
   void _viewSignatureFullScreen(String? imageUrl, String title) {

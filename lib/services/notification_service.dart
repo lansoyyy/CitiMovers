@@ -258,7 +258,7 @@ class NotificationService {
   Future<bool> createPaymentNotification({
     required String userId,
     required String userType,
-    required String paymentType, // 'top_up', 'payment', 'earning'
+    required String paymentType, // 'top_up', 'payment', 'earning', 'refund'
     required String message,
     String? referenceId,
   }) async {
@@ -272,6 +272,9 @@ class NotificationService {
         break;
       case 'earning':
         title = 'Earning Added';
+        break;
+      case 'refund':
+        title = 'Refund Processed';
         break;
       default:
         title = 'Payment Update';
@@ -394,6 +397,12 @@ class NotificationService {
         customerMessage =
             'The rider has cancelled your booking. We apologize for the inconvenience.';
         riderMessage = 'You have cancelled this booking.';
+        break;
+      case 'cancelled_by_customer':
+        title = 'Booking Cancelled by Customer';
+        customerMessage =
+            'Your booking has been cancelled and your payment hold has been fully refunded.';
+        riderMessage = 'The customer cancelled this booking.';
         break;
       case 'rejected':
         title = 'Booking Rejected';

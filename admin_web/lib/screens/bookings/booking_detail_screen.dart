@@ -125,9 +125,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   Future<void> _assignRider() async {
-    String? selectedRiderId = (_bookingData?['driverId'] ?? _bookingData?['riderId'])
-        ?.toString()
-        .trim();
+    String? selectedRiderId =
+        (_bookingData?['driverId'] ?? _bookingData?['riderId'])
+            ?.toString()
+            .trim();
     final reasonCtrl = TextEditingController();
     final actionLabel = selectedRiderId != null && selectedRiderId.isNotEmpty
         ? 'Reassign Rider'
@@ -146,7 +147,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     StreamBuilder<QuerySnapshot>(
-                      stream: AdminRepository.streamRiders(statusFilter: 'active'),
+                      stream: AdminRepository.streamRiders(
+                        statusFilter: 'active',
+                      ),
                       builder: (context, snap) {
                         final docs = snap.data?.docs ?? const [];
                         if (snap.connectionState == ConnectionState.waiting) {
@@ -314,8 +317,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       'payment_locked',
       'accepted',
     ].contains(status);
-    final hasAssignedRider =
-        (d['driverId'] ?? d['riderId'] ?? '').toString().trim().isNotEmpty;
+    final hasAssignedRider = (d['driverId'] ?? d['riderId'] ?? '')
+        .toString()
+        .trim()
+        .isNotEmpty;
     final canCancel = ![
       'completed',
       'cancelled',
@@ -429,6 +434,8 @@ class _BookingInfoCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+            if ((d['tripNumber'] ?? '').toString().isNotEmpty)
+              _Row('Trip Number', d['tripNumber'].toString()),
             _Row('ID', bookingId),
             if (created != null)
               _Row(
@@ -601,7 +608,13 @@ class _PaymentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final estimated = (d['estimatedFare'] ?? 0) as num;
     final final_ = (d['finalFare'] ?? 0) as num;
+    final gross = (d['grossAmount'] ?? d['finalFare'] ?? 0) as num;
     final tip = (d['tipAmount'] ?? 0) as num;
+    final partnerNet = (d['partnerNetAmount'] ?? 0) as num;
+    final adminFee = (d['adminFeeAmount'] ?? 0) as num;
+    final vat = (d['vatAmount'] ?? 0) as num;
+    final adminNet = (d['adminNetAmount'] ?? 0) as num;
+    final refunded = (d['refundedAmount'] ?? 0) as num;
     final payStatus = d['paymentStatus'] ?? '—';
     final reconciliationStatus = d['reconciliationStatus'] ?? '';
 
@@ -614,8 +627,15 @@ class _PaymentCard extends StatelessWidget {
             const SectionHeader(title: 'Payment'),
             const SizedBox(height: 12),
             _FRow('Estimated Fare', '₱ ${estimated.toStringAsFixed(2)}'),
+            _FRow('Gross Amount', '₱ ${gross.toStringAsFixed(2)}'),
             _FRow('Final Fare', '₱ ${final_.toStringAsFixed(2)}', bold: true),
             _FRow('Tip', '₱ ${tip.toStringAsFixed(2)}'),
+            _FRow('Partner Net (80%)', '₱ ${partnerNet.toStringAsFixed(2)}'),
+            _FRow('Admin Fee (20%)', '₱ ${adminFee.toStringAsFixed(2)}'),
+            _FRow('VAT (inside 20%)', '₱ ${vat.toStringAsFixed(2)}'),
+            _FRow('Admin Net After VAT', '₱ ${adminNet.toStringAsFixed(2)}'),
+            if (refunded > 0)
+              _FRow('Refunded Amount', '₱ ${refunded.toStringAsFixed(2)}'),
             _FRow('Payment Method', d['paymentMethod'] ?? '—'),
             _FRow('Payment Status', payStatus),
             if (reconciliationStatus.toString().isNotEmpty)

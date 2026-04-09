@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_model.dart';
 import 'notification_service.dart';
 import 'booking_status_service.dart';
+import 'booking_finance_service.dart';
+import 'trip_number_service.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
 
@@ -16,6 +18,7 @@ class BookingService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final NotificationService _notificationService = NotificationService();
+  final TripNumberService _tripNumberService = TripNumberService();
   static const String _bookingsCollection = 'bookings';
 
   static const Duration _autoContinueActiveStaleThreshold = Duration(hours: 72);
@@ -36,7 +39,33 @@ class BookingService {
     double unloadingDemurrageFee = 0.0,
     double tipAmount = 0.0,
   }) {
-    return lockedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
+    return BookingFinanceService.resolveGrossAmount(
+      estimatedFare: lockedFare,
+      loadingDemurrageFee: loadingDemurrageFee,
+      unloadingDemurrageFee: unloadingDemurrageFee,
+      tipAmount: tipAmount,
+    );
+  }
+
+  BookingFinanceBreakdown _buildFinanceBreakdown(
+    Map<String, dynamic>? bookingData, {
+    double? estimatedFare,
+    double? loadingDemurrageFee,
+    double? unloadingDemurrageFee,
+    double? tipAmount,
+    double? persistedFinalFare,
+  }) {
+    return BookingFinanceService.calculate(
+      estimatedFare:
+          estimatedFare ?? _readDouble(bookingData?['estimatedFare']),
+      loadingDemurrageFee: loadingDemurrageFee ??
+          _readDouble(bookingData?['loadingDemurrageFee']),
+      unloadingDemurrageFee: unloadingDemurrageFee ??
+          _readDouble(bookingData?['unloadingDemurrageFee']),
+      tipAmount: tipAmount ?? _readDouble(bookingData?['tipAmount']),
+      persistedFinalFare:
+          persistedFinalFare ?? _readDouble(bookingData?['finalFare']),
+    );
   }
 
   double _calculateResolvedFinalFare(
@@ -51,16 +80,13 @@ class BookingService {
     final resolvedUnloadingDemurrage = unloadingDemurrageFee ??
         _readDouble(bookingData?['unloadingDemurrageFee']);
     final resolvedTip = tipAmount ?? _readDouble(bookingData?['tipAmount']);
-    final persistedFinalFare = _readDouble(bookingData?['finalFare']);
-    final computedFinalFare = calculateFinalFare(
-      lockedFare: lockedFare,
+    return BookingFinanceService.resolveGrossAmount(
+      estimatedFare: lockedFare,
       loadingDemurrageFee: resolvedLoadingDemurrage,
       unloadingDemurrageFee: resolvedUnloadingDemurrage,
       tipAmount: resolvedTip,
+      persistedFinalFare: _readDouble(bookingData?['finalFare']),
     );
-    return persistedFinalFare > computedFinalFare
-        ? persistedFinalFare
-        : computedFinalFare;
   }
 
   /// Create a new booking
@@ -93,25 +119,11 @@ class BookingService {
             'Payment method "$paymentMethod" requested but payments are currently enforced to "$enforcedPaymentMethod".');
       }
 
-      final booking = BookingModel(
-        bookingId: bookingId,
-        customerId: customerId,
-        driverId: null, // Will be set when rider accepts
-        pickupLocation: pickupLocation,
-        dropoffLocation: dropoffLocation,
-        vehicle: vehicle,
-        bookingType: bookingType,
-        scheduledDateTime: scheduledDateTime,
-        distance: distance,
+      final initialFinance = BookingFinanceService.calculate(
         estimatedFare: estimatedFare,
-        finalFare: estimatedFare, // Initially same as estimated
-        status: initialStatus,
-        paymentMethod: enforcedPaymentMethod,
-        notes: notes,
-        createdAt: now,
-        completedAt: null,
-        cancellationReason: null,
+        persistedFinalFare: estimatedFare,
       );
+      late BookingModel booking;
 
       // Use Firestore transaction to ensure atomic creation of booking and delivery request
       final bookingRef =
@@ -120,8 +132,46 @@ class BookingService {
           _firestore.collection('delivery_requests').doc(bookingId);
       final userRef = _firestore.collection('users').doc(customerId);
       final walletTxnRef = _firestore.collection('wallet_transactions').doc();
+      final tripCounterDate = scheduledDateTime ?? now;
 
       await _firestore.runTransaction((transaction) async {
+        final tripAllocation = await _tripNumberService.allocateTripNumber(
+          transaction: transaction,
+          firestore: _firestore,
+          date: tripCounterDate,
+        );
+
+        booking = BookingModel(
+          bookingId: bookingId,
+          tripNumber: tripAllocation.tripNumber,
+          tripDateKey: tripAllocation.dateKey,
+          tripSequence: tripAllocation.sequence,
+          customerId: customerId,
+          driverId: null,
+          pickupLocation: pickupLocation,
+          dropoffLocation: dropoffLocation,
+          vehicle: vehicle,
+          bookingType: bookingType,
+          scheduledDateTime: scheduledDateTime,
+          distance: distance,
+          estimatedFare: estimatedFare,
+          finalFare: initialFinance.grossAmount,
+          grossAmount: initialFinance.grossAmount,
+          partnerNetRate: initialFinance.partnerNetRate,
+          partnerNetAmount: initialFinance.partnerNetAmount,
+          adminFeeRate: initialFinance.adminFeeRate,
+          adminFeeAmount: initialFinance.adminFeeAmount,
+          vatRate: initialFinance.vatRate,
+          vatAmount: initialFinance.vatAmount,
+          adminNetAmount: initialFinance.adminNetAmount,
+          status: initialStatus,
+          paymentMethod: enforcedPaymentMethod,
+          notes: notes,
+          createdAt: now,
+          completedAt: null,
+          cancellationReason: null,
+        );
+
         // Check if booking already exists
         final bookingSnapshot = await transaction.get(bookingRef);
         if (bookingSnapshot.exists) {
@@ -155,6 +205,11 @@ class BookingService {
             'estimatedDuration': estimatedDurationMinutes,
           if (reportRecipients != null && reportRecipients.trim().isNotEmpty)
             'reportRecipients': reportRecipients.trim(),
+          'userId': customerId,
+          'riderId': null,
+          'issueNotesCount': 0,
+          'issueStatus': '',
+          'reconciliationStatus': '',
           'paymentHeldAt': now.millisecondsSinceEpoch,
           'paymentCapturedAmount': estimatedFare,
           'paymentCapturedFromBalance': currentBalance,
@@ -457,10 +512,17 @@ class BookingService {
           await _firestore.collection(_bookingsCollection).doc(bookingId).get();
       final bookingData = bookingDoc.data();
       final resolvedFinalFare = _calculateResolvedFinalFare(bookingData);
+      final appliedFinalFare =
+          resolvedFinalFare > finalFare ? resolvedFinalFare : finalFare;
+      final financeBreakdown = _buildFinanceBreakdown(
+        bookingData,
+        persistedFinalFare: appliedFinalFare,
+      );
 
       await _firestore.collection(_bookingsCollection).doc(bookingId).update({
         'status': 'completed',
-        'finalFare': resolvedFinalFare > finalFare ? resolvedFinalFare : finalFare,
+        'finalFare': appliedFinalFare,
+        ...financeBreakdown.toMap(),
         'completedAt': completedAt.millisecondsSinceEpoch,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
@@ -471,8 +533,8 @@ class BookingService {
     }
   }
 
-  /// Cancel booking by customer — the held fare is captured as a cancellation
-  /// fee and is NOT refunded to the customer's wallet.
+  /// Cancel booking by customer and fully refund the held amount to the
+  /// customer's wallet.
   Future<bool> cancelBooking(String bookingId, String reason) async {
     try {
       final now = DateTime.now();
@@ -485,6 +547,11 @@ class BookingService {
 
       final bookingData = bookingSnap.data()!;
       final currentStatus = bookingData['status'] as String?;
+      final customerId = (bookingData['customerId'] as String?)?.trim() ?? '';
+      final riderId =
+          ((bookingData['driverId'] ?? bookingData['riderId']) as String?)
+                  ?.trim() ??
+              '';
 
       // Only cancel if still in a customer-cancellable state.
       if (currentStatus == null ||
@@ -495,24 +562,83 @@ class BookingService {
         return false;
       }
 
-      final capturedAmount =
+      final refundAmount =
           (bookingData['paymentCapturedAmount'] as num?)?.toDouble() ??
               (bookingData['estimatedFare'] as num?)?.toDouble() ??
               0.0;
+      final userRef = _firestore.collection('users').doc(customerId);
+      final deliveryRequestRef =
+          _firestore.collection('delivery_requests').doc(bookingId);
+      final walletTxnRef = _firestore.collection('wallet_transactions').doc();
 
-      // Capture the held amount as a cancellation fee — no wallet refund.
-      await bookingRef.update({
-        'status': 'cancelled',
-        'cancellationReason': reason,
-        'updatedAt': now.millisecondsSinceEpoch,
-        'cancelledAt': now.millisecondsSinceEpoch,
-        'paymentStatus': 'captured',
-        'paymentCapturedAt': now.millisecondsSinceEpoch,
+      await _firestore.runTransaction((txn) async {
+        final userSnap = customerId.isNotEmpty ? await txn.get(userRef) : null;
+        final previousBalance =
+            (userSnap?.data()?['walletBalance'] as num?)?.toDouble() ?? 0.0;
+        final newBalance = previousBalance + refundAmount;
+
+        txn.update(bookingRef, {
+          'status': BookingStatusService.STATUS_CANCELLED_BY_CUSTOMER,
+          'cancellationReason': reason,
+          'updatedAt': now.millisecondsSinceEpoch,
+          'cancelledAt': now.millisecondsSinceEpoch,
+          'paymentStatus': 'refunded',
+          'paymentRefundedAt': now.millisecondsSinceEpoch,
+          'paymentRefundedAmount': refundAmount,
+          'refundedAmount': refundAmount,
+          'refundedAt': now.millisecondsSinceEpoch,
+          'reconciliationStatus': 'refunded',
+        });
+
+        txn.set(
+            deliveryRequestRef,
+            {
+              'bookingId': bookingId,
+              'status': 'cancelled',
+              'cancellationReason': reason,
+              'updatedAt': now.millisecondsSinceEpoch,
+            },
+            SetOptions(merge: true));
+
+        if (customerId.isNotEmpty && refundAmount > 0) {
+          txn.update(userRef, {
+            'walletBalance': newBalance,
+            'updatedAt': now.toIso8601String(),
+          });
+
+          txn.set(walletTxnRef, {
+            'id': walletTxnRef.id,
+            'userId': customerId,
+            'type': 'refund',
+            'amount': refundAmount,
+            'previousBalance': previousBalance,
+            'newBalance': newBalance,
+            'description': 'Booking refund — cancelled by customer',
+            'referenceId': bookingId,
+            'createdAt': Timestamp.fromDate(now),
+          });
+        }
       });
 
-      debugPrint(
-          'Booking $bookingId cancelled by customer — '
-          'P$capturedAmount held amount captured as cancellation fee.');
+      if (customerId.isNotEmpty) {
+        await _notificationService.createBookingStatusNotification(
+          bookingId: bookingId,
+          status: BookingStatusService.STATUS_CANCELLED_BY_CUSTOMER,
+          customerId: customerId,
+          riderId: riderId.isNotEmpty ? riderId : null,
+        );
+        await _notificationService.createPaymentNotification(
+          userId: customerId,
+          userType: 'customer',
+          paymentType: 'refund',
+          message:
+              'Your booking payment hold of P${refundAmount.toStringAsFixed(2)} has been refunded to your wallet.',
+          referenceId: bookingId,
+        );
+      }
+
+      debugPrint('Booking $bookingId cancelled by customer — '
+          'P$refundAmount refunded to customer wallet.');
       return true;
     } catch (e) {
       debugPrint('Error cancelling booking: $e');
@@ -534,12 +660,15 @@ class BookingService {
 
       final bookingData = bookingSnap.data()!;
       final customerId = bookingData['customerId'] as String?;
+      final riderName = bookingData['driverName'] as String?;
       final capturedAmount =
           (bookingData['paymentCapturedAmount'] as num?)?.toDouble() ??
               (bookingData['estimatedFare'] as num?)?.toDouble() ??
               0.0;
 
       final userRef = _firestore.collection('users').doc(customerId);
+      final deliveryRequestRef =
+          _firestore.collection('delivery_requests').doc(bookingId);
       final walletTxnRef = _firestore.collection('wallet_transactions').doc();
 
       await _firestore.runTransaction((txn) async {
@@ -550,6 +679,16 @@ class BookingService {
           'cancelledAt': now.millisecondsSinceEpoch,
           'paymentStatus': 'refunded',
         });
+
+        txn.set(
+            deliveryRequestRef,
+            {
+              'bookingId': bookingId,
+              'status': 'cancelled',
+              'cancellationReason': reason,
+              'updatedAt': now.millisecondsSinceEpoch,
+            },
+            SetOptions(merge: true));
 
         if (customerId != null && customerId.isNotEmpty && capturedAmount > 0) {
           final userSnap = await txn.get(userRef);
@@ -576,8 +715,25 @@ class BookingService {
         }
       });
 
-      debugPrint(
-          'Booking $bookingId cancelled by rider $riderId — '
+      await _notificationService.createBookingStatusNotification(
+        bookingId: bookingId,
+        status: BookingStatusService.STATUS_CANCELLED_BY_RIDER,
+        customerId: customerId,
+        riderId: riderId,
+        riderName: riderName,
+      );
+      if (customerId != null && customerId.isNotEmpty && capturedAmount > 0) {
+        await _notificationService.createPaymentNotification(
+          userId: customerId,
+          userType: 'customer',
+          paymentType: 'refund',
+          message:
+              'Your booking payment hold of P${capturedAmount.toStringAsFixed(2)} has been refunded to your wallet.',
+          referenceId: bookingId,
+        );
+      }
+
+      debugPrint('Booking $bookingId cancelled by rider $riderId — '
           'P$capturedAmount refunded to customer.');
       return true;
     } catch (e) {
@@ -689,15 +845,18 @@ class BookingService {
 
       await _firestore.collection('reviews').add(reviewData);
 
+      final financeBreakdown = _buildFinanceBreakdown(
+        bookingData,
+        tipAmount: tipAmount ?? 0.0,
+      );
+
       // Update booking with review reference
       await _firestore.collection(_bookingsCollection).doc(bookingId).update({
         'reviewId': reviewData['reviewId'],
         'rating': rating,
         'tipAmount': tipAmount,
-        'finalFare': _calculateResolvedFinalFare(
-          bookingData,
-          tipAmount: tipAmount ?? 0.0,
-        ),
+        'finalFare': financeBreakdown.grossAmount,
+        ...financeBreakdown.toMap(),
         'reviewedAt': now.millisecondsSinceEpoch,
         'updatedAt': now.millisecondsSinceEpoch,
       });
@@ -875,8 +1034,8 @@ class BookingService {
         updateData['deliveryPhotos'] = merged;
       }
 
-      final resolvedLoadingDemurrage =
-          loadingDemurrageFee ?? _readDouble(bookingData?['loadingDemurrageFee']);
+      final resolvedLoadingDemurrage = loadingDemurrageFee ??
+          _readDouble(bookingData?['loadingDemurrageFee']);
       final resolvedUnloadingDemurrage = unloadingDemurrageFee ??
           _readDouble(bookingData?['unloadingDemurrageFee']);
       final totalDemurrageFee =
@@ -884,19 +1043,27 @@ class BookingService {
 
       if (loadingDemurrageFee != null || unloadingDemurrageFee != null) {
         updateData['totalDemurrageFee'] = totalDemurrageFee;
-      }
-
-      // Finalise payment when delivery is completed
-      if (status == 'completed') {
-        updateData['finalFare'] = _calculateResolvedFinalFare(
+        final financeBreakdown = _buildFinanceBreakdown(
           bookingData,
           loadingDemurrageFee: resolvedLoadingDemurrage,
           unloadingDemurrageFee: resolvedUnloadingDemurrage,
         );
+        updateData['finalFare'] = financeBreakdown.grossAmount;
+        updateData.addAll(financeBreakdown.toMap());
+      }
+
+      // Finalise payment when delivery is completed
+      if (status == 'completed') {
+        final financeBreakdown = _buildFinanceBreakdown(
+          bookingData,
+          loadingDemurrageFee: resolvedLoadingDemurrage,
+          unloadingDemurrageFee: resolvedUnloadingDemurrage,
+        );
+        updateData['finalFare'] = financeBreakdown.grossAmount;
+        updateData.addAll(financeBreakdown.toMap());
         updateData['totalDemurrageFee'] = totalDemurrageFee;
         updateData['paymentStatus'] = 'captured';
-        updateData['paymentCapturedAt'] =
-            DateTime.now().millisecondsSinceEpoch;
+        updateData['paymentCapturedAt'] = DateTime.now().millisecondsSinceEpoch;
       }
 
       await _firestore
@@ -954,8 +1121,8 @@ class BookingService {
         final data = snap.data() as Map<String, dynamic>;
         bookingData = data;
         final riderData = riderSnap.data() as Map<String, dynamic>;
-        riderName = (riderData['name'] ?? riderData['fullName'] ?? 'Driver')
-            .toString();
+        riderName =
+            (riderData['name'] ?? riderData['fullName'] ?? 'Driver').toString();
 
         final currentStatus = data['status'] as String?;
         final currentDriverId = data['driverId'] as String?;

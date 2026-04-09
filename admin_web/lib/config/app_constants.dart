@@ -10,6 +10,7 @@ class AdminConstants {
   static const String colUsers = 'users';
   static const String colRiders = 'riders';
   static const String colBookings = 'bookings';
+  static const String colTripCounters = 'trip_counters';
   static const String colDeliveryRequests = 'delivery_requests';
   static const String colWalletTransactions = 'wallet_transactions';
   static const String colPayments = 'payments';

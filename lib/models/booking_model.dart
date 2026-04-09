@@ -8,10 +8,15 @@ import '../services/booking_status_service.dart';
 /// Represents a delivery booking
 class BookingModel {
   final String? bookingId;
+  final String? tripNumber;
+  final String? tripDateKey;
+  final int? tripSequence;
   final String customerId;
   final String? customerName;
   final String? customerPhone;
   final String? driverId;
+  final String? partnerId;
+  final String? partnerName;
   final LocationModel pickupLocation;
   final LocationModel dropoffLocation;
   final VehicleModel vehicle;
@@ -21,6 +26,14 @@ class BookingModel {
   final double distance;
   final double estimatedFare;
   final double? finalFare;
+  final double? grossAmount;
+  final double? partnerNetRate;
+  final double? partnerNetAmount;
+  final double? adminFeeRate;
+  final double? adminFeeAmount;
+  final double? vatRate;
+  final double? vatAmount;
+  final double? adminNetAmount;
   final String
       status; // 'pending', 'accepted', 'in_progress', 'completed', 'cancelled'
   final String paymentMethod; // 'Gcash', 'Maya', 'Debit Card', 'Credit Card'
@@ -39,6 +52,8 @@ class BookingModel {
   final List<dynamic>? picklistItems;
   final DateTime? completedAt;
   final String? cancellationReason;
+  final double? refundedAmount;
+  final DateTime? refundedAt;
 
   // Review & Tip fields
   final String? reviewId;
@@ -48,10 +63,15 @@ class BookingModel {
 
   BookingModel({
     this.bookingId,
+    this.tripNumber,
+    this.tripDateKey,
+    this.tripSequence,
     required this.customerId,
     this.customerName,
     this.customerPhone,
     this.driverId,
+    this.partnerId,
+    this.partnerName,
     required this.pickupLocation,
     required this.dropoffLocation,
     required this.vehicle,
@@ -61,6 +81,14 @@ class BookingModel {
     required this.distance,
     required this.estimatedFare,
     this.finalFare,
+    this.grossAmount,
+    this.partnerNetRate,
+    this.partnerNetAmount,
+    this.adminFeeRate,
+    this.adminFeeAmount,
+    this.vatRate,
+    this.vatAmount,
+    this.adminNetAmount,
     this.status = 'pending',
     required this.paymentMethod,
     this.notes,
@@ -78,6 +106,8 @@ class BookingModel {
     this.picklistItems,
     this.completedAt,
     this.cancellationReason,
+    this.refundedAmount,
+    this.refundedAt,
     this.reviewId,
     this.rating,
     this.tipAmount,
@@ -117,10 +147,15 @@ class BookingModel {
   factory BookingModel.fromMap(Map<String, dynamic> map) {
     return BookingModel(
       bookingId: map['bookingId'] as String?,
+      tripNumber: map['tripNumber'] as String?,
+      tripDateKey: map['tripDateKey'] as String?,
+      tripSequence: _parseFirestoreInt(map['tripSequence']),
       customerId: map['customerId'] as String,
       customerName: map['customerName'] as String?,
       customerPhone: map['customerPhone'] as String?,
       driverId: map['driverId'] as String?,
+      partnerId: map['partnerId'] as String?,
+      partnerName: map['partnerName'] as String?,
       pickupLocation:
           LocationModel.fromMap(map['pickupLocation'] as Map<String, dynamic>),
       dropoffLocation:
@@ -134,6 +169,14 @@ class BookingModel {
       finalFare: map['finalFare'] != null
           ? (map['finalFare'] as num).toDouble()
           : null,
+      grossAmount: (map['grossAmount'] as num?)?.toDouble(),
+      partnerNetRate: (map['partnerNetRate'] as num?)?.toDouble(),
+      partnerNetAmount: (map['partnerNetAmount'] as num?)?.toDouble(),
+      adminFeeRate: (map['adminFeeRate'] as num?)?.toDouble(),
+      adminFeeAmount: (map['adminFeeAmount'] as num?)?.toDouble(),
+      vatRate: (map['vatRate'] as num?)?.toDouble(),
+      vatAmount: (map['vatAmount'] as num?)?.toDouble(),
+      adminNetAmount: (map['adminNetAmount'] as num?)?.toDouble(),
       status: map['status'] as String,
       paymentMethod: map['paymentMethod'] as String,
       notes: map['notes'] as String?,
@@ -151,6 +194,8 @@ class BookingModel {
       picklistItems: map['picklistItems'] as List<dynamic>?,
       completedAt: _parseFirestoreDate(map['completedAt']),
       cancellationReason: map['cancellationReason'] as String?,
+      refundedAmount: (map['refundedAmount'] as num?)?.toDouble(),
+      refundedAt: _parseFirestoreDate(map['refundedAt']),
       reviewId: map['reviewId'] as String?,
       rating: (map['rating'] as num?)?.toDouble(),
       tipAmount: (map['tipAmount'] as num?)?.toDouble(),
@@ -162,10 +207,15 @@ class BookingModel {
   Map<String, dynamic> toMap() {
     return {
       'bookingId': bookingId,
+      'tripNumber': tripNumber,
+      'tripDateKey': tripDateKey,
+      'tripSequence': tripSequence,
       'customerId': customerId,
       'customerName': customerName,
       'customerPhone': customerPhone,
       'driverId': driverId,
+      'partnerId': partnerId,
+      'partnerName': partnerName,
       'pickupLocation': pickupLocation.toMap(),
       'dropoffLocation': dropoffLocation.toMap(),
       'vehicle': vehicle.toMap(),
@@ -175,6 +225,14 @@ class BookingModel {
       'distance': distance,
       'estimatedFare': estimatedFare,
       'finalFare': finalFare,
+      'grossAmount': grossAmount,
+      'partnerNetRate': partnerNetRate,
+      'partnerNetAmount': partnerNetAmount,
+      'adminFeeRate': adminFeeRate,
+      'adminFeeAmount': adminFeeAmount,
+      'vatRate': vatRate,
+      'vatAmount': vatAmount,
+      'adminNetAmount': adminNetAmount,
       'status': status,
       'paymentMethod': paymentMethod,
       'notes': notes,
@@ -192,6 +250,8 @@ class BookingModel {
       'picklistItems': picklistItems,
       'completedAt': completedAt?.millisecondsSinceEpoch,
       'cancellationReason': cancellationReason,
+      'refundedAmount': refundedAmount,
+      'refundedAt': refundedAt?.millisecondsSinceEpoch,
       'reviewId': reviewId,
       'rating': rating,
       'tipAmount': tipAmount,
@@ -202,10 +262,15 @@ class BookingModel {
   /// Create a copy with updated fields
   BookingModel copyWith({
     String? bookingId,
+    String? tripNumber,
+    String? tripDateKey,
+    int? tripSequence,
     String? customerId,
     String? customerName,
     String? customerPhone,
     String? driverId,
+    String? partnerId,
+    String? partnerName,
     LocationModel? pickupLocation,
     LocationModel? dropoffLocation,
     VehicleModel? vehicle,
@@ -215,6 +280,14 @@ class BookingModel {
     double? distance,
     double? estimatedFare,
     double? finalFare,
+    double? grossAmount,
+    double? partnerNetRate,
+    double? partnerNetAmount,
+    double? adminFeeRate,
+    double? adminFeeAmount,
+    double? vatRate,
+    double? vatAmount,
+    double? adminNetAmount,
     String? status,
     String? reviewId,
     double? rating,
@@ -236,13 +309,20 @@ class BookingModel {
     List<dynamic>? picklistItems,
     DateTime? completedAt,
     String? cancellationReason,
+    double? refundedAmount,
+    DateTime? refundedAt,
   }) {
     return BookingModel(
       bookingId: bookingId ?? this.bookingId,
+      tripNumber: tripNumber ?? this.tripNumber,
+      tripDateKey: tripDateKey ?? this.tripDateKey,
+      tripSequence: tripSequence ?? this.tripSequence,
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
       driverId: driverId ?? this.driverId,
+      partnerId: partnerId ?? this.partnerId,
+      partnerName: partnerName ?? this.partnerName,
       pickupLocation: pickupLocation ?? this.pickupLocation,
       dropoffLocation: dropoffLocation ?? this.dropoffLocation,
       vehicle: vehicle ?? this.vehicle,
@@ -252,6 +332,14 @@ class BookingModel {
       distance: distance ?? this.distance,
       estimatedFare: estimatedFare ?? this.estimatedFare,
       finalFare: finalFare ?? this.finalFare,
+      grossAmount: grossAmount ?? this.grossAmount,
+      partnerNetRate: partnerNetRate ?? this.partnerNetRate,
+      partnerNetAmount: partnerNetAmount ?? this.partnerNetAmount,
+      adminFeeRate: adminFeeRate ?? this.adminFeeRate,
+      adminFeeAmount: adminFeeAmount ?? this.adminFeeAmount,
+      vatRate: vatRate ?? this.vatRate,
+      vatAmount: vatAmount ?? this.vatAmount,
+      adminNetAmount: adminNetAmount ?? this.adminNetAmount,
       status: status ?? this.status,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       notes: notes ?? this.notes,
@@ -270,6 +358,8 @@ class BookingModel {
       picklistItems: picklistItems ?? this.picklistItems,
       completedAt: completedAt ?? this.completedAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
+      refundedAmount: refundedAmount ?? this.refundedAmount,
+      refundedAt: refundedAt ?? this.refundedAt,
       reviewId: reviewId ?? this.reviewId,
       rating: rating ?? this.rating,
       tipAmount: tipAmount ?? this.tipAmount,
@@ -333,11 +423,18 @@ class BookingModel {
 
   double get totalFare {
     final computedTotal = lockedFare + totalDemurrageFee + (tipAmount ?? 0.0);
+    final persistedGrossAmount = grossAmount ?? 0.0;
     final persistedFinalFare = finalFare ?? 0.0;
+    if (persistedGrossAmount > computedTotal &&
+        persistedGrossAmount > persistedFinalFare) {
+      return persistedGrossAmount;
+    }
     return persistedFinalFare > computedTotal
         ? persistedFinalFare
         : computedTotal;
   }
+
+  String get bookingReference => tripNumber ?? bookingId ?? 'Unknown';
 
   @override
   String toString() {
