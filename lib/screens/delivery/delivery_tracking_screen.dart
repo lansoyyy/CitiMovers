@@ -23,6 +23,7 @@ import '../../services/maps_service.dart';
 import 'delivery_completion_screen.dart';
 import 'crew_profile_screen.dart';
 import '../chat/chat_screen.dart';
+import '../booking/booking_start_screen.dart';
 import '../booking/cancel_booking_dialog.dart';
 
 enum DeliveryStep {
@@ -356,17 +357,26 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     _lastPersistedBookingStatus = normalized;
 
     if (BookingStatusService.isFinalStatus(normalized)) {
-      _authService.clearActiveBookingState();
+      _authService.clearActiveBookingState(bookingId: bookingId);
       return;
     }
 
     if (BookingStatusService.isPending(normalized) ||
         BookingStatusService.isActive(normalized)) {
-      _authService.saveActiveBookingState(
+      _authService.saveFocusedBookingState(
         bookingId: bookingId,
         status: normalized,
       );
     }
+  }
+
+  Future<void> _openBookAdditionalFlow() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const BookingStartScreen(),
+      ),
+    );
   }
 
   double get _baseFare {
@@ -677,6 +687,14 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Book Additional',
+            icon: const Icon(
+              Icons.add_box_outlined,
+              color: AppColors.textPrimary,
+            ),
+            onPressed: _openBookAdditionalFlow,
+          ),
           IconButton(
             icon: const Icon(Icons.center_focus_strong,
                 color: AppColors.textPrimary),
@@ -1559,7 +1577,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     final result = await showCancelBookingDialog(context, _booking);
     if (!mounted) return;
     if (result == true) {
-      await _authService.clearActiveBookingState();
+      await _authService.clearActiveBookingState(
+        bookingId: _booking.bookingId,
+      );
       // Booking was cancelled, navigate back
       if (!mounted) return;
       Navigator.pop(context);

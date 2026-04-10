@@ -12,6 +12,9 @@ import 'storage_service.dart';
 /// Handles user registration, login, and session management
 class AuthService {
   static final AuthService _instance = AuthService._internal();
+  static const String _legacyActiveBookingStateKey = 'activeBookingState';
+  static const String _focusedBookingStateKey = 'focusedBookingState';
+
   factory AuthService() => _instance;
   AuthService._internal() {
     _loadUserFromStorage();
@@ -138,11 +141,30 @@ class AuthService {
     await _storage.remove('userUpdatedAt');
     await _storage.remove('userWalletBalance');
     await _storage.remove('userFavoriteLocations');
-    await _storage.remove('activeBookingState');
+    await _storage.remove(_legacyActiveBookingStateKey);
+    await _storage.remove(_focusedBookingStateKey);
   }
 
-  /// Save current active booking state for resume after reopen/login.
-  Future<void> saveActiveBookingState({
+  Map<String, dynamic>? _readStoredBookingState(String storageKey) {
+    final state = _storage.read(storageKey);
+    if (state is! Map || state.isEmpty) return null;
+
+    final normalized = Map<String, dynamic>.from(state);
+    final savedAt = normalized['savedAt'] as int?;
+    if (savedAt != null) {
+      final savedTime = DateTime.fromMillisecondsSinceEpoch(savedAt);
+      if (DateTime.now().difference(savedTime).inHours > 24) {
+        _storage.remove(storageKey);
+        return null;
+      }
+    }
+
+    return normalized;
+  }
+
+  /// Save the booking currently in customer focus without assuming it is the
+  /// only active booking owned by the account.
+  Future<void> saveFocusedBookingState({
     required String bookingId,
     required String status,
   }) async {
@@ -152,44 +174,62 @@ class AuthService {
         'status': status,
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       };
-      await _storage.write('activeBookingState', state);
-      debugPrint('Active booking state saved: $bookingId - $status');
+      await _storage.write(_focusedBookingStateKey, state);
+      await _storage.write(_legacyActiveBookingStateKey, state);
+      debugPrint('Focused booking state saved: $bookingId - $status');
     } catch (e) {
-      debugPrint('Error saving active booking state: $e');
+      debugPrint('Error saving focused booking state: $e');
     }
   }
 
-  /// Get saved active booking state.
-  Map<String, dynamic>? getActiveBookingState() {
+  /// Get the booking currently in customer focus.
+  Map<String, dynamic>? getFocusedBookingState() {
     try {
-      final state = _storage.read('activeBookingState');
-      if (state is Map && state.isNotEmpty) {
-        final savedAt = state['savedAt'] as int?;
-        if (savedAt != null) {
-          final savedTime = DateTime.fromMillisecondsSinceEpoch(savedAt);
-          final now = DateTime.now();
-          if (now.difference(savedTime).inHours > 24) {
-            clearActiveBookingState();
-            return null;
-          }
-        }
-        return Map<String, dynamic>.from(state);
+      final focusedState = _readStoredBookingState(_focusedBookingStateKey);
+      return focusedState ??
+          _readStoredBookingState(_legacyActiveBookingStateKey);
+    } catch (e) {
+      debugPrint('Error getting focused booking state: $e');
+      return null;
+    }
+  }
+
+  /// Clear the stored booking focus. When a bookingId is provided, the focus is
+  /// only cleared if it currently belongs to that booking.
+  Future<void> clearFocusedBookingState({String? bookingId}) async {
+    try {
+      final state = getFocusedBookingState();
+      final savedBookingId = state?['bookingId']?.toString() ?? '';
+      if (bookingId != null &&
+          savedBookingId.isNotEmpty &&
+          savedBookingId != bookingId) {
+        return;
       }
-      return null;
+
+      await _storage.remove(_focusedBookingStateKey);
+      await _storage.remove(_legacyActiveBookingStateKey);
+      debugPrint('Focused booking state cleared');
     } catch (e) {
-      debugPrint('Error getting active booking state: $e');
-      return null;
+      debugPrint('Error clearing focused booking state: $e');
     }
   }
 
-  /// Clear saved active booking state.
-  Future<void> clearActiveBookingState() async {
-    try {
-      await _storage.remove('activeBookingState');
-      debugPrint('Active booking state cleared');
-    } catch (e) {
-      debugPrint('Error clearing active booking state: $e');
-    }
+  /// Backward-compatible wrapper used by existing tracking flow code.
+  Future<void> saveActiveBookingState({
+    required String bookingId,
+    required String status,
+  }) {
+    return saveFocusedBookingState(bookingId: bookingId, status: status);
+  }
+
+  /// Backward-compatible wrapper used by existing home flow code.
+  Map<String, dynamic>? getActiveBookingState() {
+    return getFocusedBookingState();
+  }
+
+  /// Backward-compatible wrapper used by existing tracking flow code.
+  Future<void> clearActiveBookingState({String? bookingId}) {
+    return clearFocusedBookingState(bookingId: bookingId);
   }
 
   /// Send OTP to phone number

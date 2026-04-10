@@ -417,6 +417,30 @@ class BookingService {
     });
   }
 
+  /// Pending or in-progress bookings that are still eligible for quick resume.
+  Stream<List<BookingModel>> getAutoContinueEligibleUserBookings(
+    String customerId,
+  ) {
+    return _firestore
+        .collection(_bookingsCollection)
+        .where('customerId', isEqualTo: customerId)
+        .snapshots()
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => BookingModel.fromMap({
+                ...doc.data(),
+                'bookingId': doc.id,
+              }))
+          .where((booking) {
+        final normalized = BookingStatusService.normalizeStatus(booking.status);
+        final isLive = _isPendingStatusForAutoContinue(normalized) ||
+            _isActiveStatusForAutoContinue(normalized);
+        return isLive && isBookingEligibleForAutoContinue(booking);
+      }).toList();
+      return _sortMostRecent(bookings);
+    });
+  }
+
   /// Active bookings for driver.
   Stream<List<BookingModel>> getActiveDriverBookings(String driverId) {
     return _firestore

@@ -25,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool _hasCheckedActiveBooking = false;
   bool _isCheckingActiveBooking = false;
+  bool _hasShownMultipleBookingsNotice = false;
   String? _lastResumedBookingId;
   DateTime? _lastResumeAt;
 
@@ -70,8 +71,8 @@ class _HomeScreenState extends State<HomeScreen>
 
       BookingModel? bookingToResume;
 
-      // Fast-path: restore from saved active state if possible.
-      final savedState = _authService.getActiveBookingState();
+      // Fast-path: restore the booking the coordinator last focused on.
+      final savedState = _authService.getFocusedBookingState();
       final savedBookingId = savedState?['bookingId']?.toString() ?? '';
       if (savedBookingId.isNotEmpty) {
         final fromSaved = await _bookingService.getBookingById(savedBookingId);
@@ -80,11 +81,13 @@ class _HomeScreenState extends State<HomeScreen>
             _bookingService.isBookingEligibleForAutoContinue(fromSaved)) {
           bookingToResume = fromSaved;
         } else {
-          await _authService.clearActiveBookingState();
+          await _authService.clearFocusedBookingState(
+              bookingId: savedBookingId);
         }
       }
 
       if (bookingToResume != null) {
+        _hasShownMultipleBookingsNotice = false;
         final normalized =
             BookingStatusService.normalizeStatus(bookingToResume.status);
         final message = BookingStatusService.isPending(normalized)
@@ -94,23 +97,43 @@ class _HomeScreenState extends State<HomeScreen>
         return;
       }
 
-      final activeBooking =
-          await _bookingService.getMostRecentActiveUserBooking(user.userId);
-      if (activeBooking != null) {
-        await _resumeBooking(activeBooking,
-            message: 'Resuming your active delivery...');
+      final liveBookings = await _bookingService
+          .getAutoContinueEligibleUserBookings(user.userId)
+          .first;
+
+      if (liveBookings.isEmpty) {
+        _hasShownMultipleBookingsNotice = false;
+        await _authService.clearFocusedBookingState();
         return;
       }
 
-      final pendingBooking =
-          await _bookingService.getMostRecentPendingUserBooking(user.userId);
-      if (pendingBooking != null) {
-        await _resumeBooking(pendingBooking,
-            message: 'Resuming your booking search...');
+      if (liveBookings.length == 1) {
+        _hasShownMultipleBookingsNotice = false;
+        final booking = liveBookings.first;
+        final normalized = BookingStatusService.normalizeStatus(booking.status);
+        await _resumeBooking(
+          booking,
+          message: BookingStatusService.isPending(normalized)
+              ? 'Resuming your booking search...'
+              : 'Resuming your active delivery...',
+        );
         return;
       }
 
-      await _authService.clearActiveBookingState();
+      _tabController.animateTo(1);
+      if (!_hasShownMultipleBookingsNotice && mounted) {
+        _hasShownMultipleBookingsNotice = true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.primaryBlue,
+            content: Text(
+              'You have ${liveBookings.length} live bookings. Choose one in Bookings or tap Book Additional to create another.',
+              style: const TextStyle(color: Colors.white),
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('Error checking active booking: $e');
     } finally {
@@ -126,8 +149,9 @@ class _HomeScreenState extends State<HomeScreen>
 
     _lastResumedBookingId = bookingId;
     _lastResumeAt = DateTime.now();
+    _hasShownMultipleBookingsNotice = false;
 
-    await _authService.saveActiveBookingState(
+    await _authService.saveFocusedBookingState(
       bookingId: bookingId,
       status: booking.status,
     );
@@ -161,6 +185,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void deactivate() {
     _hasCheckedActiveBooking = false;
+    _hasShownMultipleBookingsNotice = false;
     super.deactivate();
   }
 

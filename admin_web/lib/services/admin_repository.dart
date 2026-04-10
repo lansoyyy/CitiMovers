@@ -157,6 +157,13 @@ class AdminRepository {
     return 0;
   }
 
+  static double? _asOptionalDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
   static int _asInt(dynamic value) {
     if (value is int) return value;
     if (value is num) return value.toInt();
@@ -203,6 +210,25 @@ class AdminRepository {
       if (resolved.isNotEmpty) return resolved;
     }
     return fallback;
+  }
+
+  static String resolveRiderUnitName(Map<String, dynamic> raw) {
+    final vehicle = _asMap(raw['vehicle']);
+    return _coalesceString([
+      raw['unitName'],
+      raw['unitLabel'],
+      raw['partnerName'],
+      raw['companyName'],
+      raw['fleetName'],
+      raw['warehouseName'],
+      raw['warehouse'],
+      raw['groupName'],
+      raw['teamName'],
+      raw['operatorName'],
+      vehicle['unitName'],
+      vehicle['fleetName'],
+      vehicle['companyName'],
+    ], fallback: 'Independent Units');
   }
 
   static Map<String, dynamic> _normalizeRiderDocuments(dynamic rawDocuments) {
@@ -308,6 +334,19 @@ class AdminRepository {
     String riderId,
     Map<String, dynamic> raw,
   ) {
+    final currentLocation = _asMap(raw['currentLocation']);
+    final currentLatitude =
+        _asOptionalDouble(currentLocation['latitude']) ??
+        _asOptionalDouble(raw['currentLatitude']) ??
+        _asOptionalDouble(raw['latitude']);
+    final currentLongitude =
+        _asOptionalDouble(currentLocation['longitude']) ??
+        _asOptionalDouble(raw['currentLongitude']) ??
+        _asOptionalDouble(raw['longitude']);
+    final locationUpdatedAt =
+        parseTimestamp(currentLocation['updatedAt']) ??
+        parseTimestamp(raw['lastActive']) ??
+        parseTimestamp(raw['updatedAt']);
     final isApproved = _asBool(raw['isApproved']);
     final isSuspended =
         _asBool(raw['isSuspended']) ||
@@ -336,6 +375,7 @@ class AdminRepository {
         _asMap(raw['vehicle'])['name'],
         _asMap(raw['vehicle'])['type'],
       ]),
+      'unitName': resolveRiderUnitName(raw),
       'plateNumber': _coalesceString([
         raw['plateNumber'],
         raw['vehiclePlateNumber'],
@@ -343,6 +383,17 @@ class AdminRepository {
       'accountStatus': accountStatus,
       'isApproved': isApproved,
       'isSuspended': isSuspended,
+      'isOnline': _asBool(raw['isOnline']) || _asBool(raw['online']),
+      'currentLatitude': currentLatitude,
+      'currentLongitude': currentLongitude,
+      'locationAddress': _coalesceString([
+        currentLocation['address'],
+        currentLocation['label'],
+        raw['currentAddress'],
+        raw['address'],
+      ]),
+      'locationUpdatedAt': locationUpdatedAt,
+      'hasLiveLocation': currentLatitude != null && currentLongitude != null,
       'documents': _normalizeRiderDocuments(raw['documents']),
       'averageRating': _asDouble(raw['averageRating'] ?? raw['rating']),
       'rating': _asDouble(raw['rating'] ?? raw['averageRating']),
@@ -433,6 +484,13 @@ class AdminRepository {
         raw['paymentReconciliationStatus'],
       ]),
       'issueStatus': issueStatus,
+      'issueOwner': _coalesceString([
+        raw['issueOwner'],
+        raw['issueAssignedTo'],
+      ]),
+      'issueAssignedAt':
+          parseTimestamp(raw['issueAssignedAt']) ??
+          parseTimestamp(raw['issueClaimedAt']),
       'issueNotesCount': issueNotesCount,
       'deliveryPhotos': deliveryPhotos,
       'createdAt':
@@ -679,6 +737,45 @@ class AdminRepository {
     return query.orderBy('createdAt', descending: true).limit(200).snapshots();
   }
 
+  static Stream<List<Map<String, dynamic>>> streamDispatchableRiders({
+    int limit = 300,
+  }) {
+    return _db
+        .collection(AdminConstants.colRiders)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+          final riders = snapshot.docs
+              .map((doc) => normalizeRiderData(doc.id, _asMap(doc.data())))
+              .where(
+                (rider) =>
+                    _asString(rider['accountStatus'], fallback: 'pending') ==
+                        'active' &&
+                    rider['isSuspended'] != true,
+              )
+              .toList();
+
+          riders.sort((a, b) {
+            final unitCompare = _asString(
+              a['unitName'],
+            ).toLowerCase().compareTo(_asString(b['unitName']).toLowerCase());
+            if (unitCompare != 0) return unitCompare;
+
+            final onlineCompare =
+                (_asBool(b['isOnline']) ? 1 : 0) -
+                (_asBool(a['isOnline']) ? 1 : 0);
+            if (onlineCompare != 0) return onlineCompare;
+
+            return _asString(
+              a['name'],
+            ).toLowerCase().compareTo(_asString(b['name']).toLowerCase());
+          });
+
+          return riders;
+        });
+  }
+
   static Future<DocumentSnapshot> getRider(String riderId) =>
       _db.collection(AdminConstants.colRiders).doc(riderId).get();
 
@@ -830,6 +927,74 @@ class AdminRepository {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots();
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamDispatchQueue({
+    int limit = 120,
+  }) {
+    const assignableStatuses = [
+      'pending',
+      'awaiting_payment',
+      'payment_locked',
+      'accepted',
+    ];
+
+    return _db
+        .collection(AdminConstants.colBookings)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs
+              .map((doc) => normalizeBookingData(doc.id, _asMap(doc.data())))
+              .where((booking) {
+                final riderId = _coalesceString([
+                  booking['driverId'],
+                  booking['riderId'],
+                ]);
+                return riderId.isEmpty &&
+                    assignableStatuses.contains(
+                      _asString(booking['status'], fallback: 'pending'),
+                    );
+              })
+              .toList();
+        });
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamActiveAssignedBookings({
+    int limit = 200,
+  }) {
+    const activeStatuses = [
+      'accepted',
+      'arrived_at_pickup',
+      'loading',
+      'loading_complete',
+      'in_transit',
+      'arrived_at_dropoff',
+      'unloading',
+      'unloading_complete',
+    ];
+
+    return _db
+        .collection(AdminConstants.colBookings)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs
+              .map((doc) => normalizeBookingData(doc.id, _asMap(doc.data())))
+              .where((booking) {
+                final riderId = _coalesceString([
+                  booking['driverId'],
+                  booking['riderId'],
+                ]);
+                return riderId.isNotEmpty &&
+                    activeStatuses.contains(
+                      _asString(booking['status'], fallback: 'pending'),
+                    );
+              })
+              .toList();
+        });
   }
 
   static Future<DocumentSnapshot> getBooking(String bookingId) =>
@@ -1062,6 +1227,10 @@ class AdminRepository {
     await _db.runTransaction((transaction) async {
       // ── Reads (must all happen before writes in a Firestore transaction) ──
       final bookingSnap = await transaction.get(bookingRef);
+      if (!bookingSnap.exists) {
+        throw StateError('Booking not found.');
+      }
+
       final beforeData = normalizeBookingData(
         bookingId,
         _asMap(bookingSnap.data()),
@@ -1082,6 +1251,15 @@ class AdminRepository {
         beforeData['status'],
         fallback: 'pending',
       );
+      if ({
+        'completed',
+        'cancelled',
+        'cancelled_by_rider',
+        'cancelled_by_customer',
+      }.contains(currentStatus)) {
+        throw StateError('This booking can no longer be cancelled.');
+      }
+
       const lateCancellationStatuses = [
         'arrived_at_pickup',
         'loading',
@@ -1134,6 +1312,8 @@ class AdminRepository {
         'cancelledAt': FieldValue.serverTimestamp(),
         'cancelledBy': AdminConstants.adminUsername,
         'issueStatus': 'flagged',
+        'issueOwner': AdminConstants.adminUsername,
+        'issueAssignedAt': FieldValue.serverTimestamp(),
         'reconciliationStatus': reconciliationStatus,
         'paymentStatus': shouldRefund
             ? 'refunded'
@@ -1142,7 +1322,13 @@ class AdminRepository {
             : paymentStatus,
         if (shouldCaptureHeldAmount)
           'paymentCapturedAt': FieldValue.serverTimestamp(),
+        if (shouldCaptureHeldAmount) 'paymentCapturedAmount': capturedAmount,
         if (shouldRefund) 'paymentRefundedAt': FieldValue.serverTimestamp(),
+        if (shouldRefund) 'paymentRefundedAmount': refundAmount,
+        if (shouldRefund) 'refundedAmount': refundAmount,
+        if (shouldRefund) 'refundedAt': FieldValue.serverTimestamp(),
+        'lastAdminActionAt': FieldValue.serverTimestamp(),
+        'lastAdminActionBy': AdminConstants.adminUsername,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -1246,6 +1432,7 @@ class AdminRepository {
             'status': 'cancelled',
             'cancellationReason': reason,
             'cancelledBy': AdminConstants.adminUsername,
+            'issueOwner': AdminConstants.adminUsername,
             'paymentStatus': shouldRefund
                 ? 'refunded'
                 : shouldCaptureHeldAmount
@@ -1291,6 +1478,8 @@ class AdminRepository {
       });
       transaction.set(bookingRef, {
         'issueStatus': 'flagged',
+        'issueOwner': AdminConstants.adminUsername,
+        'issueAssignedAt': FieldValue.serverTimestamp(),
         'issueNotesCount': currentNotesCount + 1,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -1304,9 +1493,90 @@ class AdminRepository {
           before: {'issueNotesCount': currentNotesCount},
           after: {
             'issueStatus': 'flagged',
+            'issueOwner': AdminConstants.adminUsername,
             'issueNotesCount': currentNotesCount + 1,
             'notePreview': note,
           },
+        ),
+      );
+    });
+  }
+
+  static Future<void> claimBookingIssue(String bookingId) async {
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+
+    await _db.runTransaction((transaction) async {
+      final bookingSnap = await transaction.get(bookingRef);
+      if (!bookingSnap.exists) {
+        throw StateError('Booking not found.');
+      }
+
+      final beforeData = normalizeBookingData(
+        bookingId,
+        _asMap(bookingSnap.data()),
+      );
+
+      transaction.set(bookingRef, {
+        'issueStatus': 'flagged',
+        'issueOwner': AdminConstants.adminUsername,
+        'issueAssignedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      transaction.set(
+        auditRef,
+        _buildAuditEntry(
+          action: AdminConstants.auditClaimBookingIssue,
+          entityType: 'booking',
+          entityId: bookingId,
+          before: {
+            'issueStatus': beforeData['issueStatus'],
+            'issueOwner': beforeData['issueOwner'],
+          },
+          after: {
+            'issueStatus': 'flagged',
+            'issueOwner': AdminConstants.adminUsername,
+          },
+        ),
+      );
+    });
+  }
+
+  static Future<void> releaseBookingIssue(String bookingId) async {
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+
+    await _db.runTransaction((transaction) async {
+      final bookingSnap = await transaction.get(bookingRef);
+      if (!bookingSnap.exists) {
+        throw StateError('Booking not found.');
+      }
+
+      final beforeData = normalizeBookingData(
+        bookingId,
+        _asMap(bookingSnap.data()),
+      );
+
+      transaction.set(bookingRef, {
+        'issueOwner': '',
+        'issueAssignedAt': null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      transaction.set(
+        auditRef,
+        _buildAuditEntry(
+          action: AdminConstants.auditReleaseBookingIssue,
+          entityType: 'booking',
+          entityId: bookingId,
+          before: {
+            'issueStatus': beforeData['issueStatus'],
+            'issueOwner': beforeData['issueOwner'],
+          },
+          after: {'issueStatus': beforeData['issueStatus'], 'issueOwner': ''},
         ),
       );
     });

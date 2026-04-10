@@ -156,6 +156,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                       final rider = d['riderName'] ?? '—';
                       final fare = (d['finalFare'] ?? d['estimatedFare'] ?? 0);
                       final issueStatus = (d['issueStatus'] ?? '').toString();
+                      final issueOwner = (d['issueOwner'] ?? '').toString();
                       final noteCount = (d['issueNotesCount'] ?? 0) as int;
                       final reconciliationStatus =
                           (d['reconciliationStatus'] ?? '').toString();
@@ -177,6 +178,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                         ),
                         subtitle: Text(
                           '#$shortId  ·  $customer  →  $rider'
+                          '${issueOwner.isNotEmpty ? '  ·  Owner: $issueOwner' : ''}'
                           '${ts != null ? '  ·  ${DateFormat('MMM d, h:mm a').format(ts)}' : ''}',
                           style: GoogleFonts.inter(
                             fontSize: 11,

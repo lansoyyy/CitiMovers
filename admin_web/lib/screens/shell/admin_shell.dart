@@ -42,6 +42,7 @@ final _navItems = [
   _NavItem('Customers', Icons.people_outlined, '/customers'),
   _NavItem('Riders', Icons.local_shipping_outlined, '/riders'),
   _NavItem('Bookings', Icons.receipt_long_outlined, '/bookings'),
+  _NavItem('Dispatch Board', Icons.map_outlined, '/dispatch'),
   _NavItem('Finance', Icons.account_balance_wallet_outlined, '/finance'),
   _NavItem('Notifications', Icons.notifications_outlined, '/notifications'),
   _NavItem('Promo Banners', Icons.campaign_outlined, '/promos'),
@@ -196,6 +197,8 @@ class _TopBar extends StatelessWidget {
         return 'Riders';
       case '/bookings':
         return 'Bookings';
+      case '/dispatch':
+        return 'Dispatch Board';
       case '/finance':
         return 'Finance & Reconciliation';
       case '/notifications':

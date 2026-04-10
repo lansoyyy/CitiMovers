@@ -8,7 +8,6 @@ import '../../utils/app_constants.dart';
 import '../../utils/ui_helpers.dart';
 import '../delivery/delivery_tracking_screen.dart';
 import '../booking/booking_start_screen.dart';
-import '../../models/location_model.dart';
 import '../../models/booking_model.dart';
 import '../../models/saved_location_model.dart' as app_models;
 import '../../models/promo_banner_model.dart';
@@ -39,10 +38,6 @@ class _HomeTabState extends State<HomeTab> {
   // Firebase data streams
   Stream<List<PromoBanner>> get _promoBannersStream =>
       PromoBannerService.instance.getActivePromoBanners();
-  Stream<List<app_models.SavedLocation>> get _savedLocationsStream =>
-      SavedLocationService.instance.getUserSavedLocations(
-        _authService.currentUser?.userId ?? '',
-      );
   Stream<List<BookingModel>> get _recentBookingsStream =>
       BookingService().getCustomerBookings(
         _authService.currentUser?.userId ?? '',
@@ -637,11 +632,21 @@ class _HomeTabState extends State<HomeTab> {
                                 from: booking.pickupLocation.address,
                                 to: booking.dropoffLocation.address,
                                 fare: 'P${booking.estimatedFare.toInt()}',
-                                onTap: () {
+                                onTap: () async {
+                                  final bookingId = booking.bookingId;
+                                  if (bookingId != null &&
+                                      bookingId.isNotEmpty) {
+                                    await _authService.saveFocusedBookingState(
+                                      bookingId: bookingId,
+                                      status: booking.status,
+                                    );
+                                  }
+                                  if (!mounted) return;
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => DeliveryTrackingScreen(
+                                      builder: (context) =>
+                                          DeliveryTrackingScreen(
                                         booking: booking,
                                       ),
                                     ),
@@ -2012,8 +2017,7 @@ class _RecentBookingCard extends StatelessWidget {
             width: 1,
           ),
         ),
-        child: Column(
-        children: [
+        child: Column(children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/auth_service.dart';
@@ -8,6 +9,7 @@ import '../../models/booking_model.dart';
 import '../../models/driver_model.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
+import '../booking/booking_start_screen.dart';
 import '../delivery/delivery_tracking_screen.dart';
 import '../booking/cancel_booking_dialog.dart';
 
@@ -23,6 +25,7 @@ class _BookingsTabState extends State<BookingsTab>
   late TabController _tabController;
   final _authService = AuthService();
   final _bookingService = BookingService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -40,6 +43,95 @@ class _BookingsTabState extends State<BookingsTab>
 
   void _onTabChanged() {
     // Tab changed - StreamBuilder will handle badge updates
+  }
+
+  void _openBookingStart() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const BookingStartScreen(),
+      ),
+    );
+  }
+
+  Future<void> _openBookingTracking(BookingModel booking) async {
+    final bookingId = booking.bookingId;
+    if (bookingId != null && bookingId.isNotEmpty) {
+      await _authService.saveFocusedBookingState(
+        bookingId: bookingId,
+        status: booking.status,
+      );
+    }
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DeliveryTrackingScreen(booking: booking),
+      ),
+    );
+  }
+
+  BookingModel? _findFocusedBooking(List<BookingModel> bookings) {
+    final focusedBookingId =
+        _authService.getFocusedBookingState()?['bookingId']?.toString() ?? '';
+    if (focusedBookingId.isEmpty) return null;
+
+    for (final booking in bookings) {
+      if (booking.bookingId == focusedBookingId) {
+        return booking;
+      }
+    }
+
+    return null;
+  }
+
+  Future<String?> _getAssignedPlateNumber(String driverId) async {
+    final riderDoc = await _firestore.collection('riders').doc(driverId).get();
+    final riderPlate = (riderDoc.data()?['plateNumber'] ??
+            riderDoc.data()?['vehiclePlateNumber'] ??
+            '')
+        .toString()
+        .trim();
+    if (riderPlate.isNotEmpty) return riderPlate;
+
+    final driverDoc =
+        await _firestore.collection('drivers').doc(driverId).get();
+    final driverPlate = (driverDoc.data()?['plateNumber'] ??
+            driverDoc.data()?['vehiclePlateNumber'] ??
+            '')
+        .toString()
+        .trim();
+    return driverPlate.isEmpty ? null : driverPlate;
+  }
+
+  Widget _buildActiveInfoChip({
+    required IconData icon,
+    required String label,
+    Color? color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: (color ?? AppColors.primaryRed).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color ?? AppColors.primaryRed),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontFamily: 'Medium',
+              color: color ?? AppColors.primaryRed,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -166,11 +258,21 @@ class _BookingsTabState extends State<BookingsTab>
 
         final bookings = snapshot.data ?? [];
         final filteredBookings = _filterBookingsByStatus(bookings, status);
-        final listBookings = status == 'active' && filteredBookings.length > 3
-            ? filteredBookings.skip(3).toList()
-            : status == 'active'
-                ? const <BookingModel>[]
-                : filteredBookings;
+        final focusedBooking =
+            status == 'active' ? _findFocusedBooking(filteredBookings) : null;
+        final otherActiveBookings = status == 'active'
+            ? filteredBookings
+                .where(
+                    (booking) => booking.bookingId != focusedBooking?.bookingId)
+                .toList()
+            : const <BookingModel>[];
+        final activePreviewCount = focusedBooking != null ? 2 : 3;
+        final previewSkipCount = otherActiveBookings.length < activePreviewCount
+            ? otherActiveBookings.length
+            : activePreviewCount;
+        final listBookings = status == 'active'
+            ? otherActiveBookings.skip(previewSkipCount).toList()
+            : filteredBookings;
 
         if (filteredBookings.isEmpty) {
           return _buildEmptyState(status);
@@ -180,7 +282,11 @@ class _BookingsTabState extends State<BookingsTab>
           children: [
             // Active Bookings Section (prominent display at top)
             if (status == 'active' && filteredBookings.isNotEmpty)
-              _buildActiveBookingsSection(filteredBookings),
+              _buildActiveBookingsSection(
+                filteredBookings,
+                focusedBooking: focusedBooking,
+                otherBookings: otherActiveBookings,
+              ),
             // Bookings List
             Expanded(
               child: ListView.builder(
@@ -199,7 +305,16 @@ class _BookingsTabState extends State<BookingsTab>
   }
 
   /// Build prominent active bookings section at top of active tab
-  Widget _buildActiveBookingsSection(List<BookingModel> bookings) {
+  Widget _buildActiveBookingsSection(
+    List<BookingModel> bookings, {
+    BookingModel? focusedBooking,
+    List<BookingModel>? otherBookings,
+  }) {
+    final remainingBookings = otherBookings ?? bookings;
+    final previewCount = focusedBooking != null ? 2 : 3;
+    final previewBookings = remainingBookings.take(previewCount).toList();
+    final hiddenCount = remainingBookings.length - previewBookings.length;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
@@ -249,32 +364,94 @@ class _BookingsTabState extends State<BookingsTab>
                   ],
                 ),
               ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: _openBookingStart,
+                icon: const Icon(Icons.add_circle_outline, size: 16),
+                label: const Text(
+                  'Book Additional',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Medium',
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryRed,
+                  side: BorderSide(
+                    color: AppColors.primaryRed.withOpacity(0.25),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
           Text(
-            'Tap on any booking to continue tracking',
+            focusedBooking != null
+                ? 'Monitor your current focus, jump to other live trips, or book another delivery without losing visibility.'
+                : 'Tap any live booking to continue tracking or use Book Additional to create another trip.',
             style: const TextStyle(
               fontSize: 13,
               fontFamily: 'Regular',
               color: AppColors.textSecondary,
             ),
           ),
-          const SizedBox(height: 12),
-          // Show up to 3 most recent active bookings
-          ...bookings
-              .take(3)
-              .map((booking) => _buildActiveBookingCard(booking)),
+          if (focusedBooking != null) ...[
+            const SizedBox(height: 14),
+            const Text(
+              'Current Focus',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Bold',
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _buildActiveBookingCard(focusedBooking, isFocused: true),
+          ],
+          if (previewBookings.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              focusedBooking != null ? 'Other Active' : 'Live Bookings',
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Bold',
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...previewBookings
+                .map((booking) => _buildActiveBookingCard(booking)),
+          ],
+          if (hiddenCount > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              '$hiddenCount more live booking${hiddenCount == 1 ? '' : 's'} listed below',
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Medium',
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   /// Build compact active booking card for the prominent section
-  Widget _buildActiveBookingCard(BookingModel booking) {
+  Widget _buildActiveBookingCard(BookingModel booking,
+      {bool isFocused = false}) {
     final statusColor = _getStatusColor(booking.status);
     final statusText = _getStatusText(booking.status);
     final canCancel = BookingStatusService.canBeCancelled(booking.status);
+    final driverId = (booking.driverId ?? '').trim();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -297,15 +474,7 @@ class _BookingsTabState extends State<BookingsTab>
               borderRadius: canCancel
                   ? const BorderRadius.vertical(top: Radius.circular(12))
                   : BorderRadius.circular(12),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        DeliveryTrackingScreen(booking: booking),
-                  ),
-                );
-              },
+              onTap: () => _openBookingTracking(booking),
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Row(
@@ -316,6 +485,26 @@ class _BookingsTabState extends State<BookingsTab>
                         children: [
                           Row(
                             children: [
+                              if (isFocused) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        AppColors.primaryRed.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Focused',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontFamily: 'Bold',
+                                      color: AppColors.primaryRed,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
@@ -335,7 +524,7 @@ class _BookingsTabState extends State<BookingsTab>
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  booking.bookingId ?? 'Unknown',
+                                  booking.bookingReference,
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontFamily: 'Medium',
@@ -348,11 +537,20 @@ class _BookingsTabState extends State<BookingsTab>
                             ],
                           ),
                           const SizedBox(height: 8),
+                          const Text(
+                            'Destination',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'Medium',
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
                           Text(
-                            booking.pickupLocation.address,
+                            booking.dropoffLocation.address,
                             style: const TextStyle(
                               fontSize: 13,
-                              fontFamily: 'Medium',
+                              fontFamily: 'Bold',
                               color: AppColors.textPrimary,
                             ),
                             maxLines: 1,
@@ -361,24 +559,50 @@ class _BookingsTabState extends State<BookingsTab>
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(
-                                Icons.arrow_forward,
-                                size: 14,
-                                color: AppColors.textHint,
-                              ),
-                              const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  booking.dropoffLocation.address,
+                                  'Pickup: ${booking.pickupLocation.address}',
                                   style: const TextStyle(
-                                    fontSize: 13,
-                                    fontFamily: 'Medium',
-                                    color: AppColors.textPrimary,
+                                    fontSize: 12,
+                                    fontFamily: 'Regular',
+                                    color: AppColors.textSecondary,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildActiveInfoChip(
+                                icon: Icons.confirmation_number_outlined,
+                                label: 'Trip ${booking.bookingReference}',
+                                color: AppColors.primaryRed,
+                              ),
+                              _buildActiveInfoChip(
+                                icon: Icons.local_shipping_outlined,
+                                label: booking.vehicle.type,
+                                color: AppColors.primaryBlue,
+                              ),
+                              if (driverId.isNotEmpty)
+                                FutureBuilder<String?>(
+                                  future: _getAssignedPlateNumber(driverId),
+                                  builder: (context, snapshot) {
+                                    final plate = snapshot.data?.trim() ?? '';
+                                    if (plate.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return _buildActiveInfoChip(
+                                      icon: Icons.badge_outlined,
+                                      label: 'Plate $plate',
+                                      color: AppColors.success,
+                                    );
+                                  },
+                                ),
                             ],
                           ),
                         ],
@@ -406,7 +630,13 @@ class _BookingsTabState extends State<BookingsTab>
                 borderRadius:
                     const BorderRadius.vertical(bottom: Radius.circular(12)),
                 onTap: () async {
-                  await showCancelBookingDialog(context, booking);
+                  final cancelled =
+                      await showCancelBookingDialog(context, booking);
+                  if (cancelled == true) {
+                    await _authService.clearFocusedBookingState(
+                      bookingId: booking.bookingId,
+                    );
+                  }
                   // The booking stream auto-refreshes; no manual setState needed.
                 },
                 child: Padding(
@@ -533,9 +763,7 @@ class _BookingsTabState extends State<BookingsTab>
           const SizedBox(height: 24),
           if (status == 'active')
             ElevatedButton(
-              onPressed: () {
-                UIHelpers.showInfoToast('Navigate to booking screen');
-              },
+              onPressed: _openBookingStart,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryRed,
                 foregroundColor: AppColors.white,
@@ -1234,6 +1462,7 @@ class BookingDetailsBottomSheet extends StatefulWidget {
 
 class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
   final DriverService _driverService = DriverService.instance;
+  final AuthService _authService = AuthService();
   DriverModel? _driver;
 
   @override
@@ -1628,7 +1857,15 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
+                        final bookingId = widget.booking.bookingId;
+                        if (bookingId != null && bookingId.isNotEmpty) {
+                          await _authService.saveFocusedBookingState(
+                            bookingId: bookingId,
+                            status: widget.booking.status,
+                          );
+                        }
+                        if (!mounted) return;
                         Navigator.pop(context);
                         Navigator.push(
                           context,

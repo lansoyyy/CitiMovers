@@ -101,16 +101,10 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
   }
 
   void _listenToAvailableDeliveries() {
-    _availableSubscription =
-        _authService.getAvailableDeliveryRequests().listen((bookings) {
-      if (mounted) {
-        setState(() {
-          _availableDeliveries = bookings
-              .map((booking) =>
-                  _bookingToDeliveryData(booking['bookingId'], booking))
-              .toList();
-        });
-      }
+    _availableSubscription?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _availableDeliveries = [];
     });
   }
 
@@ -440,7 +434,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                         Tab(text: 'Active'),
                         Tab(text: 'Completed'),
                         Tab(text: 'Cancelled'),
-                        Tab(text: 'Available'),
+                        Tab(text: 'Dispatch'),
                       ],
                     ),
                   ),
@@ -492,7 +486,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
             ),
             const SizedBox(height: 8),
             const Text(
-              'Go online to start receiving delivery requests',
+              'Stay online. Assigned trips will appear here automatically after dispatch.',
               style: TextStyle(
                 fontSize: 14,
                 fontFamily: 'Regular',
@@ -681,7 +675,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
             ),
             const SizedBox(height: 16),
             const Text(
-              'No Available Deliveries',
+              'Dispatch Controlled',
               style: TextStyle(
                 fontSize: 18,
                 fontFamily: 'Bold',
@@ -690,7 +684,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
             ),
             const SizedBox(height: 8),
             const Text(
-              'New delivery requests will appear here',
+              'Open bookings are no longer rider-selectable. Wait for the coordinator to assign your next trip.',
               style: TextStyle(
                 fontSize: 14,
                 fontFamily: 'Regular',

@@ -9,6 +9,7 @@ import '../screens/riders/riders_screen.dart';
 import '../screens/riders/rider_detail_screen.dart';
 import '../screens/bookings/bookings_screen.dart';
 import '../screens/bookings/booking_detail_screen.dart';
+import '../screens/dispatch/dispatch_board_screen.dart';
 import '../screens/finance/finance_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/promos/promos_screen.dart';
@@ -21,12 +22,12 @@ final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 GoRouter buildRouter(AdminAuthService auth) => GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: '/dashboard',
+  initialLocation: '/dispatch',
   redirect: (context, state) {
     final isLoggedIn = auth.isAuthenticated;
     final isLoginRoute = state.matchedLocation == '/login';
     if (!isLoggedIn && !isLoginRoute) return '/login';
-    if (isLoggedIn && isLoginRoute) return '/dashboard';
+    if (isLoggedIn && isLoginRoute) return '/dispatch';
     return null;
   },
   routes: [
@@ -34,7 +35,7 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
     ShellRoute(
       navigatorKey: _shellNavigatorKey,
       builder: (context, state, child) =>
-          AdminShell(child: child, currentPath: state.matchedLocation),
+          AdminShell(currentPath: state.matchedLocation, child: child),
       routes: [
         GoRoute(
           path: '/dashboard',
@@ -61,6 +62,10 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
         GoRoute(
           path: '/bookings',
           builder: (context, state) => const BookingsScreen(),
+        ),
+        GoRoute(
+          path: '/dispatch',
+          builder: (context, state) => const DispatchBoardScreen(),
         ),
         GoRoute(
           path: '/bookings/:id',

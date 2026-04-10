@@ -28,19 +28,6 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
   final _authService = RiderAuthService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  DateTime _parseDateTime(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
-    return DateTime.now();
-  }
-
-  double _parseDouble(dynamic value, {double fallback = 0.0}) {
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? fallback;
-    return fallback;
-  }
-
   bool _isOnline = true;
   int _todayDeliveries = 0;
   List<DeliveryRequest> _deliveryRequests = [];
@@ -108,97 +95,11 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
   }
 
   void _listenToDeliveryRequests() {
-    // Listen to bookings with status 'pending' and no driver assigned
-    _requestsSubscription = _firestore
-        .collection('bookings')
-        .where('status', isEqualTo: 'pending')
-        .where('driverId', isNull: true)
-        .limit(50)
-        .snapshots()
-        .listen((snapshot) {
-      if (mounted) {
-        setState(() {
-          final docs = snapshot.docs.toList();
-          docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
-              .compareTo(_parseDateTime(a.data()['createdAt'])));
-          _deliveryRequests = docs
-              .take(10)
-              .map((doc) => _bookingToDeliveryRequest(doc.id, doc.data()))
-              .toList();
-        });
-      }
+    _requestsSubscription?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _deliveryRequests = [];
     });
-  }
-
-  DeliveryRequest _bookingToDeliveryRequest(
-      String bookingId, Map<String, dynamic> data) {
-    // Calculate request time
-    final createdAt = _parseDateTime(data['createdAt']);
-    final now = DateTime.now();
-    final difference = now.difference(createdAt);
-
-    String requestTime;
-    if (difference.inMinutes < 1) {
-      requestTime = 'Just now';
-    } else if (difference.inMinutes < 60) {
-      requestTime = '${difference.inMinutes} mins ago';
-    } else if (difference.inHours < 24) {
-      requestTime = '${difference.inHours} hours ago';
-    } else {
-      requestTime = '${difference.inDays} days ago';
-    }
-
-    // Get customer info
-    final customerName = data['customerName'] as String? ?? 'Unknown';
-    final customerPhone = data['customerPhone'] as String? ?? 'N/A';
-
-    // Get locations
-    final pickupLocationRaw = data['pickupLocation'];
-    final dropoffLocationRaw = data['dropoffLocation'];
-    final pickupLocation = pickupLocationRaw is Map
-        ? (pickupLocationRaw['address'] ?? '').toString()
-        : (pickupLocationRaw ?? '').toString();
-    final deliveryLocation = dropoffLocationRaw is Map
-        ? (dropoffLocationRaw['address'] ?? '').toString()
-        : (dropoffLocationRaw ?? '').toString();
-
-    // Get distance and time
-    final distance = _parseDouble(data['distance']);
-    final estimatedDuration = _parseDouble(data['estimatedDuration']);
-
-    // Get fare
-    final fare = _parseDouble(data['finalFare']) > 0
-        ? _parseDouble(data['finalFare'])
-        : _parseDouble(data['estimatedFare']);
-
-    // Get package info
-    final vehicleRaw = data['vehicle'];
-    final vehicleType =
-        vehicleRaw is Map ? (vehicleRaw['type'] ?? '').toString() : '';
-    final vehicleCapacity =
-        vehicleRaw is Map ? (vehicleRaw['capacity'] ?? '').toString() : '';
-    final packageType = vehicleType.isNotEmpty ? vehicleType : 'Standard';
-    final weight = vehicleCapacity.isNotEmpty ? vehicleCapacity : 'N/A';
-    final specialInstructions = data['notes'] as String? ?? 'None';
-
-    // Get urgency
-    final urgency = data['urgency'] as String? ?? 'Normal';
-
-    return DeliveryRequest(
-      id: bookingId,
-      customerName: customerName,
-      customerPhone: customerPhone,
-      pickupLocation: pickupLocation,
-      deliveryLocation: deliveryLocation,
-      distance: '${distance.toStringAsFixed(1)} km',
-      estimatedTime: '${estimatedDuration.toStringAsFixed(0)} mins',
-      fare: 'P${fare.toStringAsFixed(0)}',
-      packageType: packageType,
-      weight: weight,
-      urgency: urgency,
-      specialInstructions: specialInstructions,
-      requestTime: requestTime,
-    );
   }
 
   void _showDeliveryDetailsBottomSheet(
@@ -618,7 +519,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
 
               const SizedBox(height: 28),
 
-              // Delivery Requests (if any)
+              // Dispatch Status
               if (_isOnline)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -638,8 +539,8 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                           const SizedBox(width: 12),
                           Text(
                             _deliveryRequests.isEmpty
-                                ? 'Waiting for Delivery Request'
-                                : 'Available Delivery Requests (${_deliveryRequests.length})',
+                                ? 'Waiting for Dispatch'
+                                : 'Dispatch Updates (${_deliveryRequests.length})',
                             style: const TextStyle(
                               fontSize: 20,
                               fontFamily: 'Bold',
@@ -679,7 +580,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Looking for nearby deliveries...',
+                                      'Waiting for coordinator assignment',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontFamily: 'Bold',
@@ -688,7 +589,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                                     ),
                                     SizedBox(height: 4),
                                     Text(
-                                      'You\'ll be notified when a new delivery request arrives',
+                                      'Stay online. Dispatch will assign your next trip from the admin panel, and the rider app will open it automatically.',
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontFamily: 'Regular',

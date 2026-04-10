@@ -56,6 +56,8 @@ class AdminConstants {
   static const String auditAssignBooking = 'assign_booking';
   static const String auditCancelBooking = 'cancel_booking';
   static const String auditAddBookingNote = 'add_booking_note';
+  static const String auditClaimBookingIssue = 'claim_booking_issue';
+  static const String auditReleaseBookingIssue = 'release_booking_issue';
   static const String auditUpdateReconciliation = 'update_reconciliation';
   static const String auditPublishBanner = 'publish_promo_banner';
   static const String auditDeleteBanner = 'delete_promo_banner';
