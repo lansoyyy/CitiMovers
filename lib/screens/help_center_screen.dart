@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/ui_helpers.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'support/support_tickets_screen.dart';
 
 class HelpCenterScreen extends StatelessWidget {
   const HelpCenterScreen({super.key});
@@ -132,6 +134,11 @@ class HelpCenterScreen extends StatelessWidget {
                 child: _buildFAQItem(context, faq, index),
               );
             }).toList(),
+
+            const SizedBox(height: 32),
+
+            // My Support Tickets entry
+            _SupportTicketsTile(),
 
             const SizedBox(height: 32),
 
@@ -343,7 +350,8 @@ class HelpCenterScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildContactButton(BuildContext context, String title, IconData icon, VoidCallback onTap) {
+  Widget _buildContactButton(
+      BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return Container(
       height: 48,
       decoration: BoxDecoration(
@@ -612,22 +620,111 @@ final List<HelpCategory> _helpCategories = [
 final List<FAQ> _faqs = [
   FAQ(
     question: 'How do I book a delivery?',
-    answer: 'To book a delivery, simply open the app, select "Book Delivery", enter your pickup and drop-off locations, choose your vehicle type, and confirm your booking. You can track your delivery in real-time once it\'s assigned to a driver.',
+    answer:
+        'To book a delivery, simply open the app, select "Book Delivery", enter your pickup and drop-off locations, choose your vehicle type, and confirm your booking. You can track your delivery in real-time once it\'s assigned to a driver.',
   ),
   FAQ(
     question: 'What payment methods are accepted?',
-    answer: 'CitiMovers accepts cash on delivery, credit/debit cards, and digital wallets like GCash and PayMaya. You can select your preferred payment method during the booking process.',
+    answer:
+        'CitiMovers accepts cash on delivery, credit/debit cards, and digital wallets like GCash and PayMaya. You can select your preferred payment method during the booking process.',
   ),
   FAQ(
     question: 'How can I track my delivery?',
-    answer: 'Once your booking is confirmed and a driver is assigned, you can track your delivery in real-time through the app. Go to "My Bookings" and tap on your active booking to see the live tracking map.',
+    answer:
+        'Once your booking is confirmed and a driver is assigned, you can track your delivery in real-time through the app. Go to "My Bookings" and tap on your active booking to see the live tracking map.',
   ),
   FAQ(
     question: 'What if I need to cancel my booking?',
-    answer: 'You can cancel your booking free of charge up to 5 minutes after confirmation. After that, a cancellation fee may apply. Go to "My Bookings", select the booking you want to cancel, and tap "Cancel Booking".',
+    answer:
+        'You can cancel your booking free of charge up to 5 minutes after confirmation. After that, a cancellation fee may apply. Go to "My Bookings", select the booking you want to cancel, and tap "Cancel Booking".',
   ),
   FAQ(
     question: 'Are my items insured during delivery?',
-    answer: 'Yes, all deliveries through CitiMovers include basic insurance coverage up to ₱5,000. You can purchase additional insurance for high-value items during the booking process.',
+    answer:
+        'Yes, all deliveries through CitiMovers include basic insurance coverage up to ₱5,000. You can purchase additional insurance for high-value items during the booking process.',
   ),
 ];
+
+class _SupportTicketsTile extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        final user = AuthService().currentUser;
+        if (user == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Please log in to view support tickets.')),
+          );
+          return;
+        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const SupportTicketsScreen(),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryRed.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.support_agent,
+                color: AppColors.primaryRed,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'My Support Tickets',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'View and track all your reported concerns',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              size: 14,
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -13,6 +13,7 @@ import '../profile/rider_documents_screen.dart';
 import '../profile/rider_payment_methods_screen.dart';
 import '../profile/rider_settings_screen.dart';
 import '../reports/rider_reports_screen.dart';
+import '../support/rider_support_screen.dart';
 
 class RiderProfileTab extends StatefulWidget {
   const RiderProfileTab({super.key});
@@ -802,6 +803,18 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                       title: 'Help & Support',
                       onTap: () {
                         _showHelpSupportBottomSheet(context);
+                      },
+                    ),
+                    _MenuTile(
+                      icon: FontAwesomeIcons.ticket,
+                      title: 'Support Tickets',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const RiderSupportScreen(),
+                          ),
+                        );
                       },
                     ),
                     _MenuTile(

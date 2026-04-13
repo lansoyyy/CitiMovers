@@ -94,6 +94,7 @@ class _RiderDeliveryProgressScreenState
   Timer? _loadingTimer;
   Duration _loadingDuration = Duration.zero;
   double _loadingDemurrageFee = 0.0;
+  DateTime? _loadingStartTime; // wall-clock start for accurate elapsed time
   File? _startLoadingPhoto;
   File? _finishLoadingPhoto;
 
@@ -101,6 +102,7 @@ class _RiderDeliveryProgressScreenState
   Timer? _unloadingTimer;
   Duration _unloadingDuration = Duration.zero;
   double _unloadingDemurrageFee = 0.0;
+  DateTime? _unloadingStartTime; // wall-clock start for accurate elapsed time
   File? _startUnloadingPhoto;
   File? _finishUnloadingPhoto;
 
@@ -573,6 +575,10 @@ class _RiderDeliveryProgressScreenState
             DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
         _unloadingDemurrageFee =
             DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
+        // Store wall-clock start times so timer uses DateTime.now().difference
+        // instead of accumulating ticks — survives app backgrounding
+        if (loadingActive) _loadingStartTime = loadingStartedAt;
+        if (unloadingActive) _unloadingStartTime = unloadingStartedAt;
       });
 
       if (loadingActive) {
@@ -904,6 +910,7 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
+      _loadingStartTime = DateTime.now();
       _startLoadingTimer();
     });
 
@@ -1345,8 +1352,14 @@ class _RiderDeliveryProgressScreenState
   void _startLoadingTimer() {
     _loadingTimer?.cancel();
     _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() {
-        _loadingDuration += const Duration(seconds: 1);
+        _loadingDuration = _loadingStartTime != null
+            ? DateTime.now().difference(_loadingStartTime!)
+            : _loadingDuration + const Duration(seconds: 1);
         _loadingDemurrageFee =
             DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
       });
@@ -1587,6 +1600,7 @@ class _RiderDeliveryProgressScreenState
     setState(() {
       _currentStep = DeliveryStep.unloading;
       _unloadingSubStep = UnloadingSubStep.arrived;
+      _unloadingStartTime = DateTime.now();
       _startUnloadingTimer();
     });
 
@@ -2047,8 +2061,14 @@ class _RiderDeliveryProgressScreenState
   void _startUnloadingTimer() {
     _unloadingTimer?.cancel();
     _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() {
-        _unloadingDuration += const Duration(seconds: 1);
+        _unloadingDuration = _unloadingStartTime != null
+            ? DateTime.now().difference(_unloadingStartTime!)
+            : _unloadingDuration + const Duration(seconds: 1);
         _unloadingDemurrageFee =
             DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
       });
@@ -2163,7 +2183,8 @@ class _RiderDeliveryProgressScreenState
 
     final bookingDoc = await _getBookingDoc(widget.request.id);
     final lockedFare = (bookingDoc?['estimatedFare'] as num?)?.toDouble() ??
-        double.tryParse(widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+        double.tryParse(
+            widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
         0.0;
     final customerId = bookingDoc?['customerId'] as String?;
 

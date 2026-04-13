@@ -278,27 +278,38 @@ class _BookingsTabState extends State<BookingsTab>
           return _buildEmptyState(status);
         }
 
-        return Column(
-          children: [
-            // Active Bookings Section (prominent display at top)
-            if (status == 'active' && filteredBookings.isNotEmpty)
-              _buildActiveBookingsSection(
-                filteredBookings,
-                focusedBooking: focusedBooking,
-                otherBookings: otherActiveBookings,
+        // Active tab: put the header section AND any overflow bookings in a
+        // single ListView so the whole page scrolls together.
+        if (status == 'active') {
+          return ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _buildActiveBookingsSection(
+                  filteredBookings,
+                  focusedBooking: focusedBooking,
+                  otherBookings: otherActiveBookings,
+                ),
               ),
-            // Bookings List
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: listBookings.length,
-                itemBuilder: (context, index) {
-                  final booking = listBookings[index];
-                  return _bookingCard(booking);
-                },
+              ...listBookings.map(
+                (booking) => Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: _bookingCard(booking),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+            ],
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: listBookings.length,
+          itemBuilder: (context, index) {
+            final booking = listBookings[index];
+            return _bookingCard(booking);
+          },
         );
       },
     );

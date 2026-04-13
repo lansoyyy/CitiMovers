@@ -2235,4 +2235,177 @@ class AdminRepository {
     final snap = await _db.collection(AdminConstants.colUsers).count().get();
     return snap.count ?? 0;
   }
+
+  // ── Support Tickets ──────────────────────────────────────────────────────
+
+  /// Atomically generates the next TICKET#XXXXX number.
+  static Future<String> _getNextTicketNumber() async {
+    final counterRef = _db.collection('meta').doc('ticket_counter');
+    int nextCount = 1;
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(counterRef);
+      if (snap.exists) {
+        nextCount = ((snap.data()?['count'] as int?) ?? 0) + 1;
+        tx.update(counterRef, {'count': nextCount});
+      } else {
+        nextCount = 1;
+        tx.set(counterRef, {'count': 1});
+      }
+    });
+    return 'TICKET#${nextCount.toString().padLeft(5, '0')}';
+  }
+
+  /// Streams all support tickets, optionally filtered by status.
+  static Stream<QuerySnapshot> streamSupportTickets({String? status}) {
+    Query q = _db
+        .collection('support_tickets')
+        .orderBy('createdAt', descending: true);
+    if (status != null && status.isNotEmpty) {
+      q = q.where('status', isEqualTo: status);
+    }
+    return q.snapshots();
+  }
+
+  /// Streams the messages subcollection for a ticket (oldest first).
+  static Stream<QuerySnapshot> streamTicketMessages(String ticketId) {
+    return _db
+        .collection('support_tickets')
+        .doc(ticketId)
+        .collection('messages')
+        .orderBy('createdAt', descending: false)
+        .snapshots();
+  }
+
+  /// Admin creates a ticket on behalf of a caller (CSR workflow).
+  static Future<String?> createTicketForCaller({
+    required String callerName,
+    required String subject,
+    required String description,
+    required String category,
+  }) async {
+    try {
+      final ticketNumber = await _getNextTicketNumber();
+      final now = DateTime.now().toIso8601String();
+      final docRef = _db.collection('support_tickets').doc();
+
+      await docRef.set({
+        'ticketNumber': ticketNumber,
+        'subject': subject,
+        'description': description,
+        'category': category,
+        'status': 'open',
+        'submittedBy': 'admin',
+        'submittedByType': 'admin',
+        'submittedByName': callerName,
+        'createdAt': now,
+        'updatedAt': now,
+        'lastMessageAt': now,
+        'isEscalated': false,
+      });
+
+      // First message = caller description
+      final msgRef = docRef.collection('messages').doc();
+      await msgRef.set({
+        'body': description,
+        'senderId': 'admin',
+        'senderType': 'admin',
+        'senderName': 'Admin (on behalf of $callerName)',
+        'createdAt': now,
+      });
+
+      return docRef.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Posts a reply message from admin in a support ticket thread.
+  static Future<bool> addAdminMessage({
+    required String ticketId,
+    required String body,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      final msgRef = _db
+          .collection('support_tickets')
+          .doc(ticketId)
+          .collection('messages')
+          .doc();
+
+      await msgRef.set({
+        'body': body,
+        'senderId': 'admin',
+        'senderType': 'admin',
+        'senderName': 'Admin',
+        'createdAt': now,
+      });
+
+      await _db.collection('support_tickets').doc(ticketId).update({
+        'lastMessageAt': now,
+        'updatedAt': now,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Marks a ticket as resolved and records resolution notes.
+  static Future<bool> resolveTicket({
+    required String ticketId,
+    required String resolutionNotes,
+    String closedBy = 'Admin',
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _db.collection('support_tickets').doc(ticketId).update({
+        'status': 'resolved',
+        'resolvedAt': now,
+        'resolvedBy': closedBy,
+        'resolutionNotes': resolutionNotes,
+        'closedBy': closedBy,
+        'updatedAt': now,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Escalates a ticket with remarks.
+  static Future<bool> escalateTicket({
+    required String ticketId,
+    required String remarks,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _db.collection('support_tickets').doc(ticketId).update({
+        'status': 'escalated',
+        'isEscalated': true,
+        'escalationRemarks': remarks,
+        'escalatedAt': now,
+        'updatedAt': now,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Re-opens a resolved or escalated ticket.
+  static Future<bool> reopenTicket(String ticketId) async {
+    try {
+      await _db.collection('support_tickets').doc(ticketId).update({
+        'status': 'open',
+        'isEscalated': false,
+        'resolvedAt': null,
+        'resolvedBy': null,
+        'resolutionNotes': null,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

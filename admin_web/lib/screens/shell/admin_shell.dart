@@ -46,6 +46,7 @@ final _navItems = [
   _NavItem('Finance', Icons.account_balance_wallet_outlined, '/finance'),
   _NavItem('Notifications', Icons.notifications_outlined, '/notifications'),
   _NavItem('Promo Banners', Icons.campaign_outlined, '/promos'),
+  _NavItem('Support Tickets', Icons.support_agent_outlined, '/support-tickets'),
   _NavItem('Audit Logs', Icons.history_outlined, '/audit-logs'),
   _NavItem('Maintenance', Icons.build_circle_outlined, '/maintenance'),
 ];
@@ -209,6 +210,8 @@ class _TopBar extends StatelessWidget {
         return 'Audit Logs';
       case '/maintenance':
         return 'Maintenance';
+      case '/support-tickets':
+        return 'Support Tickets';
       default:
         return 'Admin Panel';
     }
