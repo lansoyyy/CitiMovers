@@ -42,6 +42,31 @@ void main() {
       expect(booking.canBeCancelled, isFalse);
     });
   });
+
+  group('BookingModel trip ticket reference', () {
+    test('normalizes legacy dashed trip numbers for display', () {
+      final booking = _buildBooking(
+        createdAt: DateTime(2026, 4, 15),
+        tripNumber: '2026-04-15-00015',
+        tripDateKey: '2026-04-15',
+        tripSequence: 15,
+      );
+
+      expect(booking.bookingReference, '2026-0415-00015');
+    });
+
+    test('builds the display ticket from legacy trip date key and sequence',
+        () {
+      final booking = _buildBooking(
+        createdAt: DateTime(2026, 4, 15),
+        tripNumber: null,
+        tripDateKey: '2026-15-04',
+        tripSequence: 15,
+      );
+
+      expect(booking.bookingReference, '2026-0415-00015');
+    });
+  });
 }
 
 BookingModel _buildBooking({
@@ -50,9 +75,16 @@ BookingModel _buildBooking({
   double? loadingDemurrageFee,
   double? unloadingDemurrageFee,
   double? tipAmount,
+  String? tripNumber,
+  String? tripDateKey,
+  int? tripSequence,
+  DateTime? createdAt,
 }) {
   return BookingModel(
     bookingId: 'booking-1',
+    tripNumber: tripNumber,
+    tripDateKey: tripDateKey,
+    tripSequence: tripSequence,
     customerId: 'customer-1',
     customerName: 'Customer',
     customerPhone: '09170000000',
@@ -84,7 +116,7 @@ BookingModel _buildBooking({
     finalFare: finalFare,
     status: status,
     paymentMethod: 'Wallet',
-    createdAt: DateTime(2026, 4, 4),
+    createdAt: createdAt ?? DateTime(2026, 4, 4),
     loadingDemurrageFee: loadingDemurrageFee,
     unloadingDemurrageFee: unloadingDemurrageFee,
     tipAmount: tipAmount,

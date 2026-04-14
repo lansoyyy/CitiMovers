@@ -132,7 +132,9 @@ class BookingService {
           _firestore.collection('delivery_requests').doc(bookingId);
       final userRef = _firestore.collection('users').doc(customerId);
       final walletTxnRef = _firestore.collection('wallet_transactions').doc();
-      final tripCounterDate = scheduledDateTime ?? now;
+      // Trip tickets are based on the booking transaction date, not the
+      // scheduled service date, so daily sequences match what was booked today.
+      final tripCounterDate = now;
 
       await _firestore.runTransaction((transaction) async {
         final tripAllocation = await _tripNumberService.allocateTripNumber(

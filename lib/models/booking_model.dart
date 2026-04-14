@@ -143,6 +143,114 @@ class BookingModel {
     return null;
   }
 
+  static String _buildTripDateKey(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month$day';
+  }
+
+  static String _normalizeTripDateKeyParts(
+    String year,
+    String first,
+    String second, {
+    DateTime? fallbackDate,
+  }) {
+    if (fallbackDate != null) {
+      final month = fallbackDate.month.toString().padLeft(2, '0');
+      final day = fallbackDate.day.toString().padLeft(2, '0');
+      if ((first == month && second == day) ||
+          (first == day && second == month)) {
+        return '$year-$month$day';
+      }
+    }
+
+    final firstInt = int.tryParse(first);
+    final secondInt = int.tryParse(second);
+    if (firstInt != null && secondInt != null) {
+      if (firstInt > 12 && secondInt <= 12) {
+        return '$year-$second$first';
+      }
+      if (secondInt > 12 && firstInt <= 12) {
+        return '$year-$first$second';
+      }
+    }
+
+    return '$year-$first$second';
+  }
+
+  static String? _normalizeTripDateKeyValue(
+    String? raw, {
+    DateTime? fallbackDate,
+  }) {
+    final value = raw?.trim() ?? '';
+    if (value.isNotEmpty) {
+      final compactMatch = RegExp(r'^(\d{4})-(\d{4})$').firstMatch(value);
+      if (compactMatch != null) {
+        return value;
+      }
+
+      final dashedMatch =
+          RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+      if (dashedMatch != null) {
+        return _normalizeTripDateKeyParts(
+          dashedMatch.group(1)!,
+          dashedMatch.group(2)!,
+          dashedMatch.group(3)!,
+          fallbackDate: fallbackDate,
+        );
+      }
+
+      final plainMatch = RegExp(r'^(\d{4})(\d{2})(\d{2})$').firstMatch(value);
+      if (plainMatch != null) {
+        return '${plainMatch.group(1)!}-${plainMatch.group(2)!}${plainMatch.group(3)!}';
+      }
+    }
+
+    if (fallbackDate == null) return null;
+    return _buildTripDateKey(fallbackDate);
+  }
+
+  static String? _normalizeTripNumberValue(
+    String? raw, {
+    String? tripDateKey,
+    int? tripSequence,
+    DateTime? fallbackDate,
+  }) {
+    final value = raw?.trim() ?? '';
+    if (value.isNotEmpty) {
+      final compactMatch =
+          RegExp(r'^(\d{4})-(\d{4})-(\d{5})$').firstMatch(value);
+      if (compactMatch != null) {
+        return value;
+      }
+
+      final dashedMatch =
+          RegExp(r'^(\d{4})-(\d{2})-(\d{2})-(\d{5})$').firstMatch(value);
+      if (dashedMatch != null) {
+        final dateKey = _normalizeTripDateKeyParts(
+          dashedMatch.group(1)!,
+          dashedMatch.group(2)!,
+          dashedMatch.group(3)!,
+          fallbackDate: fallbackDate,
+        );
+        return '$dateKey-${dashedMatch.group(4)!}';
+      }
+    }
+
+    if (tripSequence != null && tripSequence > 0) {
+      final normalizedDateKey = _normalizeTripDateKeyValue(
+        tripDateKey,
+        fallbackDate: fallbackDate,
+      );
+      if (normalizedDateKey != null && normalizedDateKey.isNotEmpty) {
+        return '$normalizedDateKey-${tripSequence.toString().padLeft(5, '0')}';
+      }
+    }
+
+    return null;
+  }
+
   /// Create BookingModel from Firestore document
   factory BookingModel.fromMap(Map<String, dynamic> map) {
     return BookingModel(
@@ -434,7 +542,15 @@ class BookingModel {
         : computedTotal;
   }
 
-  String get bookingReference => tripNumber ?? bookingId ?? 'Unknown';
+  String get bookingReference {
+    final normalizedTripNumber = _normalizeTripNumberValue(
+      tripNumber,
+      tripDateKey: tripDateKey,
+      tripSequence: tripSequence,
+      fallbackDate: createdAt,
+    );
+    return normalizedTripNumber ?? bookingId ?? 'Unknown';
+  }
 
   @override
   String toString() {

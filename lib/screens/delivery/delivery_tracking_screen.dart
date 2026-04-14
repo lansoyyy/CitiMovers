@@ -677,7 +677,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               ),
             ),
             Text(
-              'Booking ID: ${widget.booking.bookingId}',
+              'Trip Ticket #: ${widget.booking.bookingReference}',
               style: const TextStyle(
                 fontSize: 12,
                 fontFamily: 'Regular',

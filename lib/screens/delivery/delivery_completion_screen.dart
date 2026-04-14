@@ -461,7 +461,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Booking ID: ${widget.booking.bookingId}',
+                          'Trip Ticket #: ${widget.booking.bookingReference}',
                           style: const TextStyle(
                             fontSize: 14,
                             fontFamily: 'Regular',

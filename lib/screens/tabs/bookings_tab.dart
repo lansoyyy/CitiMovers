@@ -879,7 +879,7 @@ class _BookingCardState extends State<BookingCard> {
   }
 
   String getBookingId() {
-    return widget.booking.bookingId ?? 'Unknown';
+    return widget.booking.bookingReference;
   }
 
   String getDriverName() {
@@ -1523,7 +1523,7 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
   }
 
   String getBookingId() {
-    return widget.booking.bookingId ?? 'Unknown';
+    return widget.booking.bookingReference;
   }
 
   String getStatusText() {
@@ -1746,7 +1746,7 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Booking ID: ${getBookingId()}',
+                        'Trip Ticket #: ${getBookingId()}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontFamily: 'Regular',

@@ -147,7 +147,7 @@ class _CancelBookingDialogState extends State<CancelBookingDialog> {
                         ),
                       ),
                       Text(
-                        'ID: ${widget.booking.bookingId}',
+                        'Trip Ticket #: ${widget.booking.bookingReference}',
                         style: const TextStyle(
                           fontSize: 12,
                           fontFamily: 'Regular',
