@@ -343,6 +343,73 @@ class BookingService {
     return sorted;
   }
 
+  String _assignedRiderIdFromData(Map<String, dynamic>? bookingData) {
+    return ((bookingData?['driverId'] ?? bookingData?['riderId']) as String?)
+            ?.trim() ??
+        '';
+  }
+
+  Future<bool> _riderHasOtherLiveBooking(
+    String riderId, {
+    String? excludingBookingId,
+  }) async {
+    final snapshot = await _firestore
+        .collection(_bookingsCollection)
+        .where('driverId', isEqualTo: riderId)
+        .get();
+
+    for (final doc in snapshot.docs) {
+      if (excludingBookingId != null && doc.id == excludingBookingId) {
+        continue;
+      }
+
+      final rawStatus = (doc.data()['status'] ?? '').toString();
+      if (BookingStatusService.isAssignedRiderLiveStatus(rawStatus)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Future<void> _syncRiderActiveBookingPointer({
+    required String bookingId,
+    required String riderId,
+    required String status,
+  }) async {
+    final resolvedRiderId = riderId.trim();
+    if (resolvedRiderId.isEmpty) return;
+
+    final riderRef = _firestore.collection('riders').doc(resolvedRiderId);
+    final normalizedStatus = BookingStatusService.normalizeStatus(status);
+
+    if (BookingStatusService.isAssignedRiderLiveStatus(normalizedStatus)) {
+      await riderRef.set({
+        'activeBookingId': bookingId,
+        'activeBookingStatus': normalizedStatus,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    if (!BookingStatusService.isFinalStatus(normalizedStatus)) {
+      return;
+    }
+
+    final riderSnap = await riderRef.get();
+    if (!riderSnap.exists) return;
+
+    final activeBookingId =
+        (riderSnap.data()?['activeBookingId'] as String?)?.trim() ?? '';
+    if (activeBookingId != bookingId) return;
+
+    await riderRef.set({
+      'activeBookingId': FieldValue.delete(),
+      'activeBookingStatus': FieldValue.delete(),
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    }, SetOptions(merge: true));
+  }
+
   /// Guard for auto-continue navigation.
   ///
   /// - Prevents resuming stale bookings.
@@ -505,6 +572,14 @@ class BookingService {
   Future<bool> updateBookingStatus(String bookingId, String status,
       {String? driverId}) async {
     try {
+      final bookingRef =
+          _firestore.collection(_bookingsCollection).doc(bookingId);
+      final bookingDoc = await bookingRef.get();
+      if (!bookingDoc.exists) return false;
+
+      final bookingData = bookingDoc.data();
+      final resolvedDriverId =
+          driverId?.trim() ?? _assignedRiderIdFromData(bookingData);
       final updateData = {
         'status': status,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
@@ -514,10 +589,16 @@ class BookingService {
         updateData['driverId'] = driverId;
       }
 
-      await _firestore
-          .collection(_bookingsCollection)
-          .doc(bookingId)
-          .update(updateData);
+      await bookingRef.update(updateData);
+
+      if (resolvedDriverId.isNotEmpty) {
+        await _syncRiderActiveBookingPointer(
+          bookingId: bookingId,
+          riderId: resolvedDriverId,
+          status: status,
+        );
+      }
+
       return true;
     } catch (e) {
       debugPrint('Error updating booking status: $e');
@@ -535,6 +616,7 @@ class BookingService {
       final bookingDoc =
           await _firestore.collection(_bookingsCollection).doc(bookingId).get();
       final bookingData = bookingDoc.data();
+      final riderId = _assignedRiderIdFromData(bookingData);
       final resolvedFinalFare = _calculateResolvedFinalFare(bookingData);
       final appliedFinalFare =
           resolvedFinalFare > finalFare ? resolvedFinalFare : finalFare;
@@ -550,6 +632,15 @@ class BookingService {
         'completedAt': completedAt.millisecondsSinceEpoch,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
+
+      if (riderId.isNotEmpty) {
+        await _syncRiderActiveBookingPointer(
+          bookingId: bookingId,
+          riderId: riderId,
+          status: BookingStatusService.STATUS_COMPLETED,
+        );
+      }
+
       return true;
     } catch (e) {
       debugPrint('Error completing booking: $e');
@@ -576,6 +667,9 @@ class BookingService {
           ((bookingData['driverId'] ?? bookingData['riderId']) as String?)
                   ?.trim() ??
               '';
+      final riderRef = riderId.isNotEmpty
+          ? _firestore.collection('riders').doc(riderId)
+          : null;
 
       // Only cancel if still in a customer-cancellable state.
       if (currentStatus == null ||
@@ -621,6 +715,22 @@ class BookingService {
               'updatedAt': now.millisecondsSinceEpoch,
             },
             SetOptions(merge: true));
+
+        if (riderRef != null) {
+          final riderSnap = await txn.get(riderRef);
+          final activeBookingId =
+              (riderSnap.data()?['activeBookingId'] as String?)?.trim() ?? '';
+          if (activeBookingId == bookingId) {
+            txn.set(
+                riderRef,
+                {
+                  'activeBookingId': FieldValue.delete(),
+                  'activeBookingStatus': FieldValue.delete(),
+                  'updatedAt': now.millisecondsSinceEpoch,
+                },
+                SetOptions(merge: true));
+          }
+        }
 
         if (customerId.isNotEmpty && refundAmount > 0) {
           txn.update(userRef, {
@@ -683,15 +793,27 @@ class BookingService {
       final bookingData = bookingSnap.data()!;
       final customerId = bookingData['customerId'] as String?;
       final riderName = bookingData['driverName'] as String?;
+      final assignedRiderId = _assignedRiderIdFromData(bookingData);
+      final currentStatus = (bookingData['status'] ?? '').toString();
       final capturedAmount =
           (bookingData['paymentCapturedAmount'] as num?)?.toDouble() ??
               (bookingData['estimatedFare'] as num?)?.toDouble() ??
               0.0;
 
+      if (assignedRiderId.isNotEmpty && assignedRiderId != riderId) {
+        throw StateError('Only the assigned rider can cancel this booking.');
+      }
+
+      if (!BookingStatusService.isAssignedRiderLiveStatus(currentStatus)) {
+        debugPrint('Cannot cancel rider booking with status: $currentStatus');
+        return false;
+      }
+
       final userRef = _firestore.collection('users').doc(customerId);
       final deliveryRequestRef =
           _firestore.collection('delivery_requests').doc(bookingId);
       final walletTxnRef = _firestore.collection('wallet_transactions').doc();
+      final riderRef = _firestore.collection('riders').doc(riderId);
 
       await _firestore.runTransaction((txn) async {
         txn.update(bookingRef, {
@@ -711,6 +833,20 @@ class BookingService {
               'updatedAt': now.millisecondsSinceEpoch,
             },
             SetOptions(merge: true));
+
+        final riderSnap = await txn.get(riderRef);
+        final activeBookingId =
+            (riderSnap.data()?['activeBookingId'] as String?)?.trim() ?? '';
+        if (activeBookingId == bookingId) {
+          txn.set(
+              riderRef,
+              {
+                'activeBookingId': FieldValue.delete(),
+                'activeBookingStatus': FieldValue.delete(),
+                'updatedAt': now.millisecondsSinceEpoch,
+              },
+              SetOptions(merge: true));
+        }
 
         if (customerId != null && customerId.isNotEmpty && capturedAmount > 0) {
           final userSnap = await txn.get(userRef);
@@ -1062,6 +1198,8 @@ class BookingService {
           _readDouble(bookingData?['unloadingDemurrageFee']);
       final totalDemurrageFee =
           resolvedLoadingDemurrage + resolvedUnloadingDemurrage;
+      final resolvedRiderId =
+          driverId?.trim() ?? _assignedRiderIdFromData(bookingData);
 
       if (loadingDemurrageFee != null || unloadingDemurrageFee != null) {
         updateData['totalDemurrageFee'] = totalDemurrageFee;
@@ -1093,6 +1231,14 @@ class BookingService {
           .doc(bookingId)
           .update(updateData);
 
+      if (resolvedRiderId.isNotEmpty) {
+        await _syncRiderActiveBookingPointer(
+          bookingId: bookingId,
+          riderId: resolvedRiderId,
+          status: status,
+        );
+      }
+
       // Send notifications based on status
       final hasDemurrageFees = (loadingDemurrageFee ?? 0.0) > 0.0 ||
           (unloadingDemurrageFee ?? 0.0) > 0.0;
@@ -1121,6 +1267,14 @@ class BookingService {
     required String riderId,
   }) async {
     try {
+      if (await _riderHasOtherLiveBooking(
+        riderId,
+        excludingBookingId: bookingId,
+      )) {
+        debugPrint('Rider $riderId already has another live booking.');
+        return false;
+      }
+
       final now = DateTime.now();
       final nowMs = now.millisecondsSinceEpoch;
 
@@ -1145,6 +1299,8 @@ class BookingService {
         final riderData = riderSnap.data() as Map<String, dynamic>;
         riderName =
             (riderData['name'] ?? riderData['fullName'] ?? 'Driver').toString();
+        final activeBookingId =
+            (riderData['activeBookingId'] as String?)?.trim() ?? '';
 
         final currentStatus = data['status'] as String?;
         final currentDriverId = data['driverId'] as String?;
@@ -1153,6 +1309,10 @@ class BookingService {
             currentStatus == 'payment_locked';
 
         if (!canAccept || currentDriverId != null) {
+          return false;
+        }
+
+        if (activeBookingId.isNotEmpty && activeBookingId != bookingId) {
           return false;
         }
 
@@ -1188,6 +1348,15 @@ class BookingService {
           },
           SetOptions(merge: true),
         );
+
+        txn.set(
+            riderRef,
+            {
+              'activeBookingId': bookingId,
+              'activeBookingStatus': BookingStatusService.STATUS_ACCEPTED,
+              'updatedAt': nowMs,
+            },
+            SetOptions(merge: true));
 
         return true;
       });

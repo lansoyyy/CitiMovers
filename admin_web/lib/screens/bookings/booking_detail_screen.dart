@@ -740,22 +740,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     final status = d['status'] ?? 'unknown';
     final issueStatus = (d['issueStatus'] ?? '').toString();
     final issueOwner = (d['issueOwner'] ?? '').toString();
-    final canAssign = const [
-      'pending',
-      'awaiting_payment',
-      'payment_locked',
-      'accepted',
-    ].contains(status);
+    final canAssign = AdminRepository.canAssignBookingStatus(status);
     final hasAssignedRider = (d['driverId'] ?? d['riderId'] ?? '')
         .toString()
         .trim()
         .isNotEmpty;
-    final canCancel = ![
-      'completed',
-      'cancelled',
-      'cancelled_by_rider',
-      'cancelled_by_customer',
-    ].contains(status);
+    final canCancel = AdminRepository.canCancelBookingStatus(status);
     final canManageIssue =
         issueStatus.isNotEmpty ||
         (d['cancellationReason'] ?? '').toString().isNotEmpty;

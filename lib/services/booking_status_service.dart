@@ -168,6 +168,18 @@ class BookingStatusService {
         CANCELLED_STATUSES.contains(status);
   }
 
+  /// Check if a status should keep a rider occupied with a live booking.
+  static bool isAssignedRiderLiveStatus(String status) {
+    final normalized = normalizeStatus(status);
+    return isPending(normalized) || isActive(normalized);
+  }
+
+  /// Check if admin can still cancel a booking.
+  static bool canAdminCancel(String status) {
+    final normalized = normalizeStatus(status);
+    return !isFinalStatus(normalized);
+  }
+
   /// Check if a transition is valid
   static bool isValidTransition(String fromStatus, String toStatus) {
     final validTargets = VALID_TRANSITIONS[fromStatus];

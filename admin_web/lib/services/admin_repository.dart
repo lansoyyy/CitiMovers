@@ -266,10 +266,79 @@ class AdminRepository {
   static String _normalizeBookingStatus(dynamic rawStatus) {
     final status = _asString(rawStatus, fallback: 'pending');
     if (AdminConstants.bookingStatuses.contains(status)) return status;
+    if (status == 'payment_pending') return 'awaiting_payment';
+    if (status == 'driver_assigned' || status == 'assigned') return 'accepted';
+    if (status == 'driver_arrived') return 'arrived_at_pickup';
+    if (status == 'loading_started') return 'loading';
+    if (status == 'loading_finished') return 'loading_complete';
     if (status == 'in_progress') return 'in_transit';
+    if (status == 'transit' || status == 'on_the_way') return 'in_transit';
+    if (status == 'driver_arrived_destination') return 'arrived_at_dropoff';
+    if (status == 'unloading_started') return 'unloading';
+    if (status == 'unloading_finished') return 'unloading_complete';
     if (status == 'delivered') return 'completed';
-    if (status == 'assigned') return 'accepted';
-    return 'pending';
+    if (status == 'rider_cancelled') return 'cancelled_by_rider';
+    if (status == 'customer_cancelled') return 'cancelled_by_customer';
+    return status.isEmpty ? 'pending' : status;
+  }
+
+  static bool canAssignBookingStatus(dynamic rawStatus) {
+    const assignableStatuses = [
+      'pending',
+      'awaiting_payment',
+      'payment_locked',
+      'accepted',
+    ];
+    return assignableStatuses.contains(_normalizeBookingStatus(rawStatus));
+  }
+
+  static bool isLiveAssignedBookingStatus(dynamic rawStatus) {
+    const liveStatuses = [
+      'pending',
+      'awaiting_payment',
+      'payment_locked',
+      'accepted',
+      'arrived_at_pickup',
+      'loading',
+      'loading_complete',
+      'in_transit',
+      'arrived_at_dropoff',
+      'unloading',
+      'unloading_complete',
+    ];
+    return liveStatuses.contains(_normalizeBookingStatus(rawStatus));
+  }
+
+  static bool canCancelBookingStatus(dynamic rawStatus) {
+    const nonCancellableStatuses = [
+      'completed',
+      'cancelled',
+      'cancelled_by_rider',
+      'cancelled_by_customer',
+    ];
+    return !nonCancellableStatuses.contains(_normalizeBookingStatus(rawStatus));
+  }
+
+  static Future<bool> _riderHasOtherLiveBooking(
+    String riderId, {
+    String? excludingBookingId,
+  }) async {
+    final snapshot = await _db
+        .collection(AdminConstants.colBookings)
+        .where('driverId', isEqualTo: riderId)
+        .get();
+
+    for (final doc in snapshot.docs) {
+      if (excludingBookingId != null && doc.id == excludingBookingId) {
+        continue;
+      }
+
+      if (isLiveAssignedBookingStatus(doc.data()['status'])) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   static List<String> _normalizeDeliveryPhotos(dynamic rawPhotos) {
@@ -932,13 +1001,6 @@ class AdminRepository {
   static Stream<List<Map<String, dynamic>>> streamDispatchQueue({
     int limit = 120,
   }) {
-    const assignableStatuses = [
-      'pending',
-      'awaiting_payment',
-      'payment_locked',
-      'accepted',
-    ];
-
     return _db
         .collection(AdminConstants.colBookings)
         .orderBy('createdAt', descending: true)
@@ -953,9 +1015,7 @@ class AdminRepository {
                   booking['riderId'],
                 ]);
                 return riderId.isEmpty &&
-                    assignableStatuses.contains(
-                      _asString(booking['status'], fallback: 'pending'),
-                    );
+                    canAssignBookingStatus(booking['status']);
               })
               .toList();
         });
@@ -964,17 +1024,6 @@ class AdminRepository {
   static Stream<List<Map<String, dynamic>>> streamActiveAssignedBookings({
     int limit = 200,
   }) {
-    const activeStatuses = [
-      'accepted',
-      'arrived_at_pickup',
-      'loading',
-      'loading_complete',
-      'in_transit',
-      'arrived_at_dropoff',
-      'unloading',
-      'unloading_complete',
-    ];
-
     return _db
         .collection(AdminConstants.colBookings)
         .orderBy('createdAt', descending: true)
@@ -989,9 +1038,7 @@ class AdminRepository {
                   booking['riderId'],
                 ]);
                 return riderId.isNotEmpty &&
-                    activeStatuses.contains(
-                      _asString(booking['status'], fallback: 'pending'),
-                    );
+                    isLiveAssignedBookingStatus(booking['status']);
               })
               .toList();
         });
@@ -1018,6 +1065,13 @@ class AdminRepository {
     required String riderId,
     required String reason,
   }) async {
+    if (await _riderHasOtherLiveBooking(
+      riderId,
+      excludingBookingId: bookingId,
+    )) {
+      throw StateError('This rider already has another live booking assigned.');
+    }
+
     final bookingRef = _db
         .collection(AdminConstants.colBookings)
         .doc(bookingId);
@@ -1043,18 +1097,13 @@ class AdminRepository {
         _asMap(bookingSnap.data()),
       );
       final riderData = normalizeRiderData(riderId, _asMap(riderSnap.data()));
+      final riderActiveBookingId = _asString(riderData['activeBookingId']);
 
       final currentStatus = _asString(
         beforeData['status'],
         fallback: 'pending',
       );
-      const assignableStatuses = [
-        'pending',
-        'awaiting_payment',
-        'payment_locked',
-        'accepted',
-      ];
-      if (!assignableStatuses.contains(currentStatus)) {
+      if (!canAssignBookingStatus(currentStatus)) {
         throw StateError(
           'Only pending or accepted bookings can be assigned from admin.',
         );
@@ -1076,6 +1125,13 @@ class AdminRepository {
         throw StateError('Booking is already assigned to this rider.');
       }
 
+      if (riderActiveBookingId.isNotEmpty &&
+          riderActiveBookingId != bookingId) {
+        throw StateError(
+          'This rider already has another live booking assigned.',
+        );
+      }
+
       final customerId = _coalesceString([
         beforeData['customerId'],
         beforeData['userId'],
@@ -1087,6 +1143,13 @@ class AdminRepository {
       final shouldMarkAccepted = currentStatus != 'accepted';
       final nextStatus = shouldMarkAccepted ? 'accepted' : currentStatus;
       final wasReassigned = currentRiderId.isNotEmpty;
+      final previousRiderRef = wasReassigned && currentRiderId != riderId
+          ? _db.collection(AdminConstants.colRiders).doc(currentRiderId)
+          : null;
+      DocumentSnapshot<Map<String, dynamic>>? previousRiderSnap;
+      if (previousRiderRef != null) {
+        previousRiderSnap = await transaction.get(previousRiderRef);
+      }
 
       transaction.set(bookingRef, {
         'driverId': riderId,
@@ -1121,6 +1184,25 @@ class AdminRepository {
         'distance': beforeData['distance'],
         'estimatedFare': beforeData['estimatedFare'],
       }, SetOptions(merge: true));
+
+      transaction.set(riderRef, {
+        'activeBookingId': bookingId,
+        'activeBookingStatus': nextStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (previousRiderRef != null) {
+        final previousActiveBookingId = _asString(
+          _asMap(previousRiderSnap?.data())['activeBookingId'],
+        );
+        if (previousActiveBookingId == bookingId) {
+          transaction.set(previousRiderRef, {
+            'activeBookingId': FieldValue.delete(),
+            'activeBookingStatus': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      }
 
       if (customerId.isNotEmpty) {
         final notificationRef = _db
@@ -1251,13 +1333,15 @@ class AdminRepository {
         beforeData['status'],
         fallback: 'pending',
       );
-      if ({
-        'completed',
-        'cancelled',
-        'cancelled_by_rider',
-        'cancelled_by_customer',
-      }.contains(currentStatus)) {
+      if (!canCancelBookingStatus(currentStatus)) {
         throw StateError('This booking can no longer be cancelled.');
+      }
+      final riderRef = riderId.isNotEmpty
+          ? _db.collection(AdminConstants.colRiders).doc(riderId)
+          : null;
+      DocumentSnapshot<Map<String, dynamic>>? riderSnap;
+      if (riderRef != null) {
+        riderSnap = await transaction.get(riderRef);
       }
 
       const lateCancellationStatuses = [
@@ -1338,6 +1422,19 @@ class AdminRepository {
         'cancellationReason': reason,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      if (riderRef != null) {
+        final activeBookingId = _asString(
+          _asMap(riderSnap?.data())['activeBookingId'],
+        );
+        if (activeBookingId == bookingId) {
+          transaction.set(riderRef, {
+            'activeBookingId': FieldValue.delete(),
+            'activeBookingStatus': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      }
 
       // Wallet refund when payment was on hold
       if (shouldRefund && userSnap != null && refundAmount > 0) {

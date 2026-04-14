@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../../services/booking_status_service.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../delivery/rider_delivery_progress_screen.dart';
@@ -68,9 +69,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
   List<DeliveryData> _cancelledDeliveries = [];
   List<DeliveryData> _availableDeliveries = [];
 
-  StreamSubscription<QuerySnapshot>? _activeSubscription;
-  StreamSubscription<QuerySnapshot>? _completedSubscription;
-  StreamSubscription<QuerySnapshot>? _cancelledSubscription;
+  StreamSubscription<QuerySnapshot>? _deliveriesSubscription;
   StreamSubscription? _availableSubscription;
 
   @override
@@ -83,9 +82,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
   @override
   void dispose() {
     _tabController.dispose();
-    _activeSubscription?.cancel();
-    _completedSubscription?.cancel();
-    _cancelledSubscription?.cancel();
+    _deliveriesSubscription?.cancel();
     _availableSubscription?.cancel();
     super.dispose();
   }
@@ -93,9 +90,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
   Future<void> _loadRiderDeliveries() async {
     final rider = await _authService.getCurrentRider();
     if (rider != null) {
-      _listenToActiveDeliveries(rider.riderId);
-      _listenToCompletedDeliveries(rider.riderId);
-      _listenToCancelledDeliveries(rider.riderId);
+      _listenToRiderDeliveries(rider.riderId);
       _listenToAvailableDeliveries();
     }
   }
@@ -108,77 +103,50 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     });
   }
 
-  void _listenToActiveDeliveries(String riderId) {
-    _activeSubscription = _firestore
+  void _listenToRiderDeliveries(String riderId) {
+    _deliveriesSubscription?.cancel();
+    _deliveriesSubscription = _firestore
         .collection('bookings')
         .where('driverId', isEqualTo: riderId)
-        .where('status', whereIn: [
-          'pending',
-          'accepted',
-          'driver_assigned',
-          'arrived_at_pickup',
-          'loading_complete',
-          'in_transit',
-          'in_progress',
-          'arrived_at_dropoff',
-          'unloading_complete',
-        ])
         .snapshots()
         .listen((snapshot) {
-          if (mounted) {
-            setState(() {
-              final docs = snapshot.docs.toList();
-              docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
-                  .compareTo(_parseDateTime(a.data()['createdAt'])));
-              _activeDeliveries = docs
-                  .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
-                  .toList();
-            });
-          }
-        });
-  }
+      if (mounted) {
+        final activeDeliveries = <DeliveryData>[];
+        final completedDeliveries = <DeliveryData>[];
+        final cancelledDeliveries = <DeliveryData>[];
+        final docs = snapshot.docs.toList();
+        docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
+            .compareTo(_parseDateTime(a.data()['createdAt'])));
 
-  void _listenToCompletedDeliveries(String riderId) {
-    _completedSubscription = _firestore
-        .collection('bookings')
-        .where('driverId', isEqualTo: riderId)
-        .where('status', whereIn: ['completed', 'delivered'])
-        .snapshots()
-        .listen((snapshot) {
-          if (mounted) {
-            setState(() {
-              final docs = snapshot.docs.toList();
-              docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
-                  .compareTo(_parseDateTime(a.data()['createdAt'])));
-              _completedDeliveries = docs
-                  .take(20)
-                  .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
-                  .toList();
-            });
-          }
-        });
-  }
+        for (final doc in docs) {
+          final rawStatus = (doc.data()['status'] ?? '').toString();
+          final normalizedStatus =
+              BookingStatusService.normalizeStatus(rawStatus);
+          final delivery = _bookingToDeliveryData(doc.id, doc.data());
 
-  void _listenToCancelledDeliveries(String riderId) {
-    _cancelledSubscription = _firestore
-        .collection('bookings')
-        .where('driverId', isEqualTo: riderId)
-        .where('status',
-            whereIn: ['cancelled', 'cancelled_by_rider', 'rejected'])
-        .snapshots()
-        .listen((snapshot) {
-          if (mounted) {
-            setState(() {
-              final docs = snapshot.docs.toList();
-              docs.sort((a, b) => _parseDateTime(b.data()['createdAt'])
-                  .compareTo(_parseDateTime(a.data()['createdAt'])));
-              _cancelledDeliveries = docs
-                  .take(20)
-                  .map((doc) => _bookingToDeliveryData(doc.id, doc.data()))
-                  .toList();
-            });
+          if (BookingStatusService.isCompleted(normalizedStatus)) {
+            completedDeliveries.add(delivery);
+            continue;
           }
+
+          if (BookingStatusService.isCancelled(normalizedStatus) ||
+              rawStatus == 'rejected') {
+            cancelledDeliveries.add(delivery);
+            continue;
+          }
+
+          if (BookingStatusService.isAssignedRiderLiveStatus(rawStatus)) {
+            activeDeliveries.add(delivery);
+          }
+        }
+
+        setState(() {
+          _activeDeliveries = activeDeliveries;
+          _completedDeliveries = completedDeliveries.take(20).toList();
+          _cancelledDeliveries = cancelledDeliveries.take(20).toList();
         });
+      }
+    });
   }
 
   DeliveryData _bookingToDeliveryData(
@@ -210,7 +178,8 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     final finalFare = _parseOptionalDouble(data['finalFare']);
 
     // Get status
-    final status = data['status'] as String? ?? 'pending';
+    final rawStatus = data['status'] as String? ?? 'pending';
+    final status = BookingStatusService.normalizeStatus(rawStatus);
 
     // Get status color and display text
     Color statusColor;
@@ -218,61 +187,72 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
     String estimatedTimeText;
 
     switch (status) {
-      case 'pending':
+      case BookingStatusService.STATUS_PENDING:
         statusColor = AppColors.warning;
         statusText = 'Pending';
         estimatedTimeText = 'Waiting for driver';
         break;
-      case 'accepted':
-        statusColor = AppColors.primaryBlue;
-        statusText = 'Accepted';
-        estimatedTimeText = 'Preparing';
-        break;
-      case 'driver_assigned':
+      case BookingStatusService.STATUS_AWAITING_PAYMENT:
         statusColor = AppColors.warning;
-        statusText = 'Driver Assigned';
+        statusText = 'Awaiting Payment';
+        estimatedTimeText = 'Waiting for payment';
+        break;
+      case BookingStatusService.STATUS_PAYMENT_LOCKED:
+        statusColor = AppColors.warning;
+        statusText = 'Payment Processing';
+        estimatedTimeText = 'Confirming payment';
+        break;
+      case BookingStatusService.STATUS_ACCEPTED:
+        statusColor = AppColors.primaryBlue;
+        statusText =
+            rawStatus == 'driver_assigned' ? 'Driver Assigned' : 'Accepted';
         estimatedTimeText = 'Heading to pickup';
         break;
-      case 'arrived_at_pickup':
+      case BookingStatusService.STATUS_ARRIVED_PICKUP:
         statusColor = AppColors.primaryBlue;
         statusText = 'Arrived at Pickup';
         estimatedTimeText = 'Loading';
         break;
-      case 'loading_complete':
+      case BookingStatusService.STATUS_LOADING:
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Loading';
+        estimatedTimeText = 'Loading in progress';
+        break;
+      case BookingStatusService.STATUS_LOADING_COMPLETE:
         statusColor = AppColors.primaryBlue;
         statusText = 'Loading Complete';
         estimatedTimeText = 'Heading to drop-off';
         break;
-      case 'arrived_at_dropoff':
-        statusColor = AppColors.primaryBlue;
-        statusText = 'Arrived at Drop-off';
-        estimatedTimeText = 'Unloading';
-        break;
-      case 'unloading_complete':
-        statusColor = AppColors.primaryBlue;
-        statusText = 'Unloading Complete';
-        estimatedTimeText = 'Receiving';
-        break;
-      case 'in_transit':
-      case 'in_progress':
+      case BookingStatusService.STATUS_IN_TRANSIT:
         statusColor = AppColors.primaryRed;
         statusText = 'In Transit';
         estimatedTimeText = 'On the way';
         break;
-      case 'completed':
-      case 'delivered':
+      case BookingStatusService.STATUS_ARRIVED_DROPOFF:
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Arrived at Drop-off';
+        estimatedTimeText = 'Unloading';
+        break;
+      case BookingStatusService.STATUS_UNLOADING:
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Unloading';
+        estimatedTimeText = 'Unloading in progress';
+        break;
+      case BookingStatusService.STATUS_UNLOADING_COMPLETE:
+        statusColor = AppColors.primaryBlue;
+        statusText = 'Unloading Complete';
+        estimatedTimeText = 'Receiving';
+        break;
+      case BookingStatusService.STATUS_COMPLETED:
         statusColor = AppColors.success;
         statusText = 'Completed';
         estimatedTimeText = 'Delivered';
         break;
-      case 'cancelled':
+      case BookingStatusService.STATUS_CANCELLED:
+      case BookingStatusService.STATUS_CANCELLED_BY_RIDER:
+      case BookingStatusService.STATUS_CANCELLED_BY_CUSTOMER:
         statusColor = AppColors.error;
-        statusText = 'Cancelled';
-        estimatedTimeText = 'Cancelled';
-        break;
-      case 'cancelled_by_rider':
-        statusColor = AppColors.error;
-        statusText = 'Cancelled';
+        statusText = BookingStatusService.getStatusDisplayText(status);
         estimatedTimeText = 'Cancelled';
         break;
       case 'rejected':
