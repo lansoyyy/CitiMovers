@@ -21,6 +21,11 @@ class SupportTicketModel {
   final String? escalationRemarks;
   final DateTime? escalatedAt;
   final String? closedBy;
+  final String? tripNumber; // linked booking trip# e.g. 2026-12-04-00001
+  final int csrAttempts; // number of CSR resolution attempts that failed
+  final int
+      managerAttempts; // number of manager resolution attempts that failed
+  final String escalationLevel; // 'csr' | 'manager' | 'presidential'
 
   const SupportTicketModel({
     required this.ticketId,
@@ -42,6 +47,10 @@ class SupportTicketModel {
     this.escalationRemarks,
     this.escalatedAt,
     this.closedBy,
+    this.tripNumber,
+    this.csrAttempts = 0,
+    this.managerAttempts = 0,
+    this.escalationLevel = 'csr',
   });
 
   bool get isResolved => status == 'resolved';
@@ -72,6 +81,10 @@ class SupportTicketModel {
       escalatedAt:
           data['escalatedAt'] != null ? _parseTs(data['escalatedAt']) : null,
       closedBy: data['closedBy'] as String?,
+      tripNumber: data['tripNumber'] as String?,
+      csrAttempts: (data['csrAttempts'] as int?) ?? 0,
+      managerAttempts: (data['managerAttempts'] as int?) ?? 0,
+      escalationLevel: (data['escalationLevel'] ?? 'csr').toString(),
     );
   }
 
@@ -95,6 +108,10 @@ class SupportTicketModel {
       'escalationRemarks': escalationRemarks,
       'escalatedAt': escalatedAt?.toIso8601String(),
       'closedBy': closedBy,
+      'tripNumber': tripNumber,
+      'csrAttempts': csrAttempts,
+      'managerAttempts': managerAttempts,
+      'escalationLevel': escalationLevel,
     };
   }
 

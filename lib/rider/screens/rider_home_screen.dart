@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../models/booking_model.dart';
@@ -29,6 +30,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   bool _isCheckingActiveDriverBooking = false;
   String? _lastResumedBookingId;
   DateTime? _lastResumeAt;
+  StreamSubscription<List<BookingModel>>? _activeBookingSubscription;
 
   bool _isDuplicateResume(String bookingId) {
     if (!ModalRoute.of(context)!.isCurrent) return true;
@@ -51,6 +53,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
     ];
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndResumeActiveDelivery();
+      _startActiveBookingStream();
     });
   }
 
@@ -62,6 +65,31 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
       _hasCheckedActiveDriverBooking = false;
       _checkAndResumeActiveDelivery(force: true);
     }
+  }
+
+  /// Start a real-time stream so that when coordinator assigns a booking to
+  /// this rider, the delivery progress screen opens automatically.
+  Future<void> _startActiveBookingStream() async {
+    final rider = await _authService.getCurrentRider();
+    if (rider == null || !mounted) return;
+
+    _activeBookingSubscription?.cancel();
+    _activeBookingSubscription = _bookingService
+        .getActiveDriverBookings(rider.riderId)
+        .listen((bookings) {
+      if (!mounted) return;
+      if (bookings.isEmpty) return;
+      final booking = bookings.first;
+      final bookingId = booking.bookingId ?? '';
+      if (bookingId.isEmpty) return;
+
+      // Only auto-navigate when the screen is in the foreground
+      final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+      if (!isCurrentRoute) return;
+      if (_isDuplicateResume(bookingId)) return;
+
+      _resumeActiveDriverBooking(booking);
+    });
   }
 
   /// Check if there is an active delivery and resume progress screen
@@ -201,6 +229,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _activeBookingSubscription?.cancel();
     _tabController.dispose();
     super.dispose();
   }

@@ -2255,13 +2255,15 @@ class AdminRepository {
     return 'TICKET#${nextCount.toString().padLeft(5, '0')}';
   }
 
-  /// Streams all support tickets, optionally filtered by status.
-  static Stream<QuerySnapshot> streamSupportTickets({String? status}) {
+  /// Streams all support tickets, optionally filtered by one or more statuses.
+  static Stream<QuerySnapshot> streamSupportTickets({List<String>? statuses}) {
     Query q = _db
         .collection('support_tickets')
         .orderBy('createdAt', descending: true);
-    if (status != null && status.isNotEmpty) {
-      q = q.where('status', isEqualTo: status);
+    if (statuses != null && statuses.length == 1) {
+      q = q.where('status', isEqualTo: statuses.first);
+    } else if (statuses != null && statuses.isNotEmpty) {
+      q = q.where('status', whereIn: statuses);
     }
     return q.snapshots();
   }
@@ -2282,6 +2284,7 @@ class AdminRepository {
     required String subject,
     required String description,
     required String category,
+    String? tripNumber,
   }) async {
     try {
       final ticketNumber = await _getNextTicketNumber();
@@ -2301,6 +2304,11 @@ class AdminRepository {
         'updatedAt': now,
         'lastMessageAt': now,
         'isEscalated': false,
+        'csrAttempts': 0,
+        'managerAttempts': 0,
+        'escalationLevel': 'csr',
+        if (tripNumber != null && tripNumber.isNotEmpty)
+          'tripNumber': tripNumber,
       });
 
       // First message = caller description
@@ -2319,10 +2327,11 @@ class AdminRepository {
     }
   }
 
-  /// Posts a reply message from admin in a support ticket thread.
+  /// Posts a reply message from admin/coordinator/manager in a ticket thread.
   static Future<bool> addAdminMessage({
     required String ticketId,
     required String body,
+    String senderName = 'Admin',
   }) async {
     try {
       final now = DateTime.now().toIso8601String();
@@ -2336,7 +2345,7 @@ class AdminRepository {
         'body': body,
         'senderId': 'admin',
         'senderType': 'admin',
-        'senderName': 'Admin',
+        'senderName': senderName,
         'createdAt': now,
       });
 
@@ -2350,7 +2359,7 @@ class AdminRepository {
     }
   }
 
-  /// Marks a ticket as resolved and records resolution notes.
+  /// Marks a ticket as resolved, records resolution notes, and posts a system message.
   static Future<bool> resolveTicket({
     required String ticketId,
     required String resolutionNotes,
@@ -2358,7 +2367,8 @@ class AdminRepository {
   }) async {
     try {
       final now = DateTime.now().toIso8601String();
-      await _db.collection('support_tickets').doc(ticketId).update({
+      final docRef = _db.collection('support_tickets').doc(ticketId);
+      await docRef.update({
         'status': 'resolved',
         'resolvedAt': now,
         'resolvedBy': closedBy,
@@ -2366,25 +2376,98 @@ class AdminRepository {
         'closedBy': closedBy,
         'updatedAt': now,
       });
+      // Post resolution system message in thread
+      await docRef.collection('messages').doc().set({
+        'body': '✅ RESOLVED by $closedBy\n\nResolution: $resolutionNotes',
+        'senderId': 'system',
+        'senderType': 'system',
+        'senderName': 'System',
+        'createdAt': now,
+      });
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  /// Escalates a ticket with remarks.
+  /// Escalates a ticket with attempt-based routing.
+  /// [actorRole]: 'coordinator' increments csrAttempts (≥5 → escalated_manager);
+  /// any other role increments managerAttempts (≥3 → escalated_presidential).
   static Future<bool> escalateTicket({
     required String ticketId,
     required String remarks,
+    String actorRole = 'coordinator',
   }) async {
     try {
       final now = DateTime.now().toIso8601String();
-      await _db.collection('support_tickets').doc(ticketId).update({
-        'status': 'escalated',
-        'isEscalated': true,
-        'escalationRemarks': remarks,
-        'escalatedAt': now,
-        'updatedAt': now,
+      final docRef = _db.collection('support_tickets').doc(ticketId);
+      String msgBody = '';
+
+      await _db.runTransaction((tx) async {
+        final snap = await tx.get(docRef);
+        final data = snap.data() ?? {};
+
+        if (actorRole == 'coordinator') {
+          final csrAttempts = ((data['csrAttempts'] as int?) ?? 0) + 1;
+          if (csrAttempts >= 5) {
+            msgBody =
+                '🔴 ESCALATED TO MANAGER — CSR Attempt $csrAttempts/5 reached.\nRemarks: $remarks\nThis ticket now requires Manager attention.';
+            tx.update(docRef, {
+              'status': 'escalated_manager',
+              'csrAttempts': csrAttempts,
+              'isEscalated': true,
+              'escalationLevel': 'manager',
+              'escalationRemarks': remarks,
+              'escalatedAt': now,
+              'updatedAt': now,
+            });
+          } else {
+            final remaining = 5 - csrAttempts;
+            msgBody =
+                '📋 CSR Attempt $csrAttempts/5 failed.\nRemarks: $remarks\n$remaining attempt(s) remaining before Manager escalation.';
+            tx.update(docRef, {
+              'status': 'pending',
+              'csrAttempts': csrAttempts,
+              'escalationRemarks': remarks,
+              'updatedAt': now,
+            });
+          }
+        } else {
+          // manager / admin / president
+          final managerAttempts = ((data['managerAttempts'] as int?) ?? 0) + 1;
+          if (managerAttempts >= 3) {
+            msgBody =
+                '⚠️ PRESIDENTIAL APPEAL — Manager Attempt $managerAttempts/3 exhausted.\nRemarks: $remarks\nOnly President/CEO or Corporate Lawyer may now act on this case.';
+            tx.update(docRef, {
+              'status': 'escalated_presidential',
+              'managerAttempts': managerAttempts,
+              'isEscalated': true,
+              'escalationLevel': 'presidential',
+              'escalationRemarks': remarks,
+              'escalatedAt': now,
+              'updatedAt': now,
+            });
+          } else {
+            final remaining = 3 - managerAttempts;
+            msgBody =
+                '🔴 Manager Attempt $managerAttempts/3 failed.\nRemarks: $remarks\n$remaining attempt(s) remaining before Presidential Appeal.';
+            tx.update(docRef, {
+              'status': 'escalated_manager',
+              'managerAttempts': managerAttempts,
+              'escalationRemarks': remarks,
+              'updatedAt': now,
+            });
+          }
+        }
+      });
+
+      // Post system message in thread
+      await docRef.collection('messages').doc().set({
+        'body': msgBody,
+        'senderId': 'system',
+        'senderType': 'system',
+        'senderName': 'System',
+        'createdAt': now,
       });
       return true;
     } catch (_) {

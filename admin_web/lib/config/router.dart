@@ -28,7 +28,14 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
     final isLoggedIn = auth.isAuthenticated;
     final isLoginRoute = state.matchedLocation == '/login';
     if (!isLoggedIn && !isLoginRoute) return '/login';
-    if (isLoggedIn && isLoginRoute) return '/dispatch';
+    if (isLoggedIn && isLoginRoute) {
+      return auth.isCoordinator ? '/support-tickets' : '/dispatch';
+    }
+    // Coordinators are restricted to the support-tickets area only
+    if (auth.isCoordinator &&
+        !state.matchedLocation.startsWith('/support-tickets')) {
+      return '/support-tickets';
+    }
     return null;
   },
   routes: [

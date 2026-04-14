@@ -112,13 +112,23 @@ class _Sidebar extends StatelessWidget {
           const SizedBox(height: 12),
           // Nav items
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: _navItems.length,
-              itemBuilder: (context, index) {
-                final item = _navItems[index];
-                final isActive = currentPath.startsWith(item.route);
-                return _NavTile(item: item, isActive: isActive);
+            child: Builder(
+              builder: (context) {
+                final role = AdminAuthService().currentRole;
+                final visibleItems = role == 'coordinator'
+                    ? _navItems
+                          .where((i) => i.route == '/support-tickets')
+                          .toList()
+                    : _navItems;
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: visibleItems.length,
+                  itemBuilder: (context, index) {
+                    final item = visibleItems[index];
+                    final isActive = currentPath.startsWith(item.route);
+                    return _NavTile(item: item, isActive: isActive);
+                  },
+                );
               },
             ),
           ),

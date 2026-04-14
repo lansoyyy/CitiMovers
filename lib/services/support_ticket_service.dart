@@ -39,6 +39,7 @@ class SupportTicketService {
     required String subject,
     required String description,
     required String category,
+    String? tripNumber,
   }) async {
     try {
       final ticketNumber = await _getNextTicketNumber();
@@ -58,6 +59,7 @@ class SupportTicketService {
         createdAt: now,
         updatedAt: now,
         isEscalated: false,
+        tripNumber: tripNumber,
       );
 
       await docRef.set(ticket.toMap());

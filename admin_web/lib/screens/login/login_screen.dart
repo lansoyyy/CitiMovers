@@ -43,7 +43,9 @@ class _LoginScreenState extends State<LoginScreen> {
         reason: 'Successful login',
       );
       if (!mounted) return;
-      context.go('/dashboard');
+      context.go(
+        AdminAuthService().isCoordinator ? '/support-tickets' : '/dispatch',
+      );
     } else {
       setState(() {
         _isLoading = false;

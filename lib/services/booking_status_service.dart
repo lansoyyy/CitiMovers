@@ -240,8 +240,12 @@ class BookingStatusService {
   }
 
   /// Check if a booking can be cancelled
+  /// Normalizes the status first so legacy values are handled correctly.
   static bool canBeCancelled(String status) {
-    return isPending(status) || status == STATUS_ACCEPTED;
+    final normalized = normalizeStatus(status);
+    return isPending(normalized) ||
+        normalized == STATUS_ACCEPTED ||
+        normalized == STATUS_ARRIVED_PICKUP;
   }
 
   /// Check if a booking can be modified

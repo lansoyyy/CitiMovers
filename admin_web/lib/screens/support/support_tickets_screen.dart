@@ -4,7 +4,28 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
+import '../../services/auth_service.dart';
 import '../../widgets/common_widgets.dart';
+
+// ─── Role helpers ─────────────────────────────────────────────────────────────
+String _roleName(String role) {
+  switch (role) {
+    case 'coordinator':
+      return 'Coordinator';
+    case 'manager':
+      return 'Manager';
+    case 'president':
+      return 'President/CEO';
+    default:
+      return 'Admin';
+  }
+}
+
+bool _canActOnManagerQueue(String role) =>
+    role == 'manager' || role == 'admin' || role == 'president';
+
+bool _canActOnPresidential(String role) =>
+    role == 'admin' || role == 'president';
 
 class SupportTicketsScreen extends StatefulWidget {
   const SupportTicketsScreen({super.key});
@@ -15,7 +36,8 @@ class SupportTicketsScreen extends StatefulWidget {
 
 class _SupportTicketsScreenState extends State<SupportTicketsScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  late final List<(String label, List<String>? statuses)> _tabs;
+  late final TabController _tabController;
   final _searchCtrl = TextEditingController();
   String _search = '';
   String? _selectedTicketId;
@@ -25,15 +47,39 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
   final _callerNameCtrl = TextEditingController();
   final _callerSubjectCtrl = TextEditingController();
   final _callerDescCtrl = TextEditingController();
+  final _callerTripCtrl = TextEditingController();
   String _callerCategory = 'app';
   bool _creatingTicket = false;
 
-  static const _tabs = ['All', 'Pending', 'Escalated', 'Resolved'];
-  static const _tabStatuses = [null, 'pending', 'escalated', 'resolved'];
+  static List<(String, List<String>?)> _buildTabsForRole(String role) {
+    if (role == 'coordinator') {
+      return [
+        ('All', null),
+        ('Pending', ['open', 'pending']),
+        ('Resolved', ['resolved']),
+      ];
+    } else if (role == 'manager') {
+      return [
+        ('All', null),
+        ('Pending', ['open', 'pending']),
+        ('Manager Queue', ['escalated_manager']),
+        ('Resolved', ['resolved']),
+      ];
+    } else {
+      return [
+        ('All', null),
+        ('Pending', ['open', 'pending']),
+        ('Manager Queue', ['escalated_manager']),
+        ('Presidential', ['escalated_presidential']),
+        ('Resolved', ['resolved']),
+      ];
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _tabs = _buildTabsForRole(AdminAuthService().currentRole);
     _tabController = TabController(length: _tabs.length, vsync: this);
   }
 
@@ -44,30 +90,28 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
     _callerNameCtrl.dispose();
     _callerSubjectCtrl.dispose();
     _callerDescCtrl.dispose();
+    _callerTripCtrl.dispose();
     super.dispose();
   }
 
-  String? get _currentStatus => _tabStatuses[_tabController.index];
+  List<String>? get _currentStatuses => _tabs[_tabController.index].$2;
 
-  void _openDetail(String ticketId) {
-    setState(() {
-      _selectedTicketId = ticketId;
-      _showDetail = true;
-    });
-  }
+  void _openDetail(String ticketId) => setState(() {
+    _selectedTicketId = ticketId;
+    _showDetail = true;
+  });
 
-  void _closeDetail() {
-    setState(() {
-      _showDetail = false;
-      _selectedTicketId = null;
-    });
-  }
+  void _closeDetail() => setState(() {
+    _showDetail = false;
+    _selectedTicketId = null;
+  });
 
   Future<void> _showNewTicketDialog() async {
     _callerNameCtrl.clear();
     _callerSubjectCtrl.clear();
     _callerDescCtrl.clear();
-    _callerCategory = 'app';
+    _callerTripCtrl.clear();
+    setState(() => _callerCategory = 'app');
 
     await showDialog(
       context: context,
@@ -75,57 +119,71 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
         builder: (ctx, setDlgState) {
           return AlertDialog(
             title: Text(
-              'New Ticket (on behalf of caller)',
+              'New Ticket — on behalf of caller',
               style: GoogleFonts.inter(fontWeight: FontWeight.w700),
             ),
             content: SizedBox(
               width: 480,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _callerNameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Caller Name *',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _callerSubjectCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Subject *',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _callerCategory,
-                    decoration: const InputDecoration(
-                      labelText: 'Category',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'app', child: Text('App Issue')),
-                      DropdownMenuItem(
-                        value: 'logistics',
-                        child: Text('Logistics Concern'),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: _callerNameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Caller Name *',
+                        border: OutlineInputBorder(),
                       ),
-                    ],
-                    onChanged: (v) =>
-                        setDlgState(() => _callerCategory = v ?? 'app'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _callerDescCtrl,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Description *',
-                      border: OutlineInputBorder(),
-                      alignLabelWithHint: true,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _callerSubjectCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Subject *',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _callerTripCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Trip # (optional)',
+                        hintText: 'e.g. 2026-12-04-00001',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _callerCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'app',
+                          child: Text('App Issue'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'logistics',
+                          child: Text('Logistics Concern'),
+                        ),
+                      ],
+                      onChanged: (v) =>
+                          setDlgState(() => _callerCategory = v ?? 'app'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _callerDescCtrl,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Description *',
+                        border: OutlineInputBorder(),
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [
@@ -154,6 +212,9 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
                           subject: _callerSubjectCtrl.text.trim(),
                           description: _callerDescCtrl.text.trim(),
                           category: _callerCategory,
+                          tripNumber: _callerTripCtrl.text.trim().isEmpty
+                              ? null
+                              : _callerTripCtrl.text.trim(),
                         );
                         setDlgState(() => _creatingTicket = false);
                         if (!ctx.mounted) return;
@@ -161,9 +222,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
                         if (id != null) {
                           _openDetail(id);
                           messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Ticket created successfully.'),
-                            ),
+                            const SnackBar(content: Text('Ticket created.')),
                           );
                         }
                       },
@@ -184,6 +243,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final role = AdminAuthService().currentRole;
     return Scaffold(
       backgroundColor: AdminTheme.surface,
       body: Column(
@@ -226,7 +286,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
                 fontWeight: FontWeight.w400,
               ),
               onTap: (_) => setState(() {}),
-              tabs: _tabs.map((t) => Tab(text: t)).toList(),
+              tabs: _tabs.map((t) => Tab(text: t.$1)).toList(),
             ),
           ),
 
@@ -241,7 +301,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
                 SizedBox(
                   width: _showDetail ? 380 : double.infinity,
                   child: _TicketList(
-                    status: _currentStatus,
+                    statuses: _currentStatuses,
                     search: _search,
                     selectedId: _selectedTicketId,
                     onSelect: _openDetail,
@@ -253,6 +313,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
                   Expanded(
                     child: _TicketDetailPane(
                       ticketId: _selectedTicketId!,
+                      role: role,
                       onClose: _closeDetail,
                     ),
                   ),
@@ -270,13 +331,13 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TicketList extends StatelessWidget {
-  final String? status;
+  final List<String>? statuses;
   final String search;
   final String? selectedId;
   final ValueChanged<String> onSelect;
 
   const _TicketList({
-    required this.status,
+    required this.statuses,
     required this.search,
     required this.selectedId,
     required this.onSelect,
@@ -285,7 +346,7 @@ class _TicketList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: AdminRepository.streamSupportTickets(status: status),
+      stream: AdminRepository.streamSupportTickets(statuses: statuses),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -298,9 +359,11 @@ class _TicketList extends StatelessWidget {
           final num = (data['ticketNumber'] ?? '').toString().toLowerCase();
           final sub = (data['subject'] ?? '').toString().toLowerCase();
           final name = (data['submittedByName'] ?? '').toString().toLowerCase();
+          final trip = (data['tripNumber'] ?? '').toString().toLowerCase();
           return num.contains(search) ||
               sub.contains(search) ||
-              name.contains(search);
+              name.contains(search) ||
+              trip.contains(search);
         }).toList();
 
         if (filtered.isEmpty) {
@@ -319,11 +382,10 @@ class _TicketList extends StatelessWidget {
           itemBuilder: (_, i) {
             final doc = filtered[i];
             final data = doc.data() as Map<String, dynamic>;
-            final isSelected = doc.id == selectedId;
             return _TicketRow(
               docId: doc.id,
               data: data,
-              isSelected: isSelected,
+              isSelected: doc.id == selectedId,
               onTap: () => onSelect(doc.id),
             );
           },
@@ -353,6 +415,9 @@ class _TicketRow extends StatelessWidget {
     final submitterName = (data['submittedByName'] ?? '').toString();
     final category = (data['category'] ?? 'app').toString();
     final status = (data['status'] ?? 'open').toString();
+    final tripNumber = (data['tripNumber'] ?? '').toString();
+    final csrAttempts = (data['csrAttempts'] as int?) ?? 0;
+    final managerAttempts = (data['managerAttempts'] as int?) ?? 0;
     final createdAt = _parseTs(data['createdAt']);
     final updatedAt = _parseTs(data['updatedAt']);
 
@@ -390,6 +455,26 @@ class _TicketRow extends StatelessWidget {
                 _statusChip(status),
               ],
             ),
+            if (tripNumber.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.confirmation_number_outlined,
+                    size: 12,
+                    color: AdminTheme.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Trip $tripNumber',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AdminTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 6),
             Text(
               subject,
@@ -410,14 +495,15 @@ class _TicketRow extends StatelessWidget {
                   color: AdminTheme.textSecondary,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  submitterName,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: AdminTheme.textSecondary,
+                Expanded(
+                  child: Text(
+                    submitterName,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AdminTheme.textSecondary,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 Text(
                   _fmtDate(updatedAt ?? createdAt),
                   style: GoogleFonts.inter(
@@ -427,9 +513,36 @@ class _TicketRow extends StatelessWidget {
                 ),
               ],
             ),
+            if (status == 'pending' && csrAttempts > 0) ...[
+              const SizedBox(height: 4),
+              _attemptBar(csrAttempts, 5, 'CSR', Colors.orange),
+            ],
+            if ((status == 'escalated_manager' ||
+                    status == 'escalated_presidential') &&
+                managerAttempts > 0) ...[
+              const SizedBox(height: 4),
+              _attemptBar(managerAttempts, 3, 'Manager', Colors.deepOrange),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  static Widget _attemptBar(int current, int max, String label, Color color) {
+    return Row(
+      children: [
+        Icon(Icons.warning_amber_outlined, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(
+          '$label Attempt $current/$max',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 
@@ -453,25 +566,7 @@ class _TicketRow extends StatelessWidget {
   }
 
   static Widget _statusChip(String status) {
-    Color color;
-    String label;
-    switch (status) {
-      case 'open':
-        color = AdminTheme.statusActive;
-        label = 'Open';
-      case 'pending':
-        color = AdminTheme.statusPending;
-        label = 'Pending';
-      case 'escalated':
-        color = AdminTheme.statusWarning;
-        label = 'Escalated';
-      case 'resolved':
-        color = AdminTheme.statusCompleted;
-        label = 'Resolved';
-      default:
-        color = AdminTheme.textSecondary;
-        label = status;
-    }
+    final (color, label) = _statusMeta(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -487,6 +582,23 @@ class _TicketRow extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static (Color, String) _statusMeta(String status) {
+    switch (status) {
+      case 'open':
+        return (AdminTheme.statusActive, 'Open');
+      case 'pending':
+        return (AdminTheme.statusPending, 'Pending');
+      case 'escalated_manager':
+        return (Colors.deepOrange, 'Manager Queue');
+      case 'escalated_presidential':
+        return (Color(0xFFB71C1C), 'Presidential');
+      case 'resolved':
+        return (AdminTheme.statusCompleted, 'Resolved');
+      default:
+        return (AdminTheme.textSecondary, status);
+    }
   }
 
   static DateTime? _parseTs(dynamic v) {
@@ -509,9 +621,14 @@ class _TicketRow extends StatelessWidget {
 
 class _TicketDetailPane extends StatefulWidget {
   final String ticketId;
+  final String role;
   final VoidCallback onClose;
 
-  const _TicketDetailPane({required this.ticketId, required this.onClose});
+  const _TicketDetailPane({
+    required this.ticketId,
+    required this.role,
+    required this.onClose,
+  });
 
   @override
   State<_TicketDetailPane> createState() => _TicketDetailPaneState();
@@ -548,6 +665,7 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
     final ok = await AdminRepository.addAdminMessage(
       ticketId: widget.ticketId,
       body: text,
+      senderName: _roleName(widget.role),
     );
     if (mounted) {
       setState(() => _sending = false);
@@ -558,7 +676,7 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
     }
   }
 
-  Future<void> _showResolveDialog(Map<String, dynamic> ticketData) async {
+  Future<void> _showResolveDialog() async {
     final notesCtrl = TextEditingController();
     await showDialog(
       context: context,
@@ -568,7 +686,7 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
           builder: (ctx, setS) {
             return AlertDialog(
               title: Text(
-                'Resolve Ticket',
+                'Mark as Resolved',
                 style: GoogleFonts.inter(fontWeight: FontWeight.w700),
               ),
               content: Column(
@@ -586,6 +704,7 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                   TextField(
                     controller: notesCtrl,
                     maxLines: 4,
+                    autofocus: true,
                     decoration: const InputDecoration(
                       labelText: 'Resolution Notes *',
                       border: OutlineInputBorder(),
@@ -600,6 +719,9 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AdminTheme.statusActive,
+                  ),
                   onPressed: saving
                       ? null
                       : () async {
@@ -609,6 +731,7 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                           await AdminRepository.resolveTicket(
                             ticketId: widget.ticketId,
                             resolutionNotes: notesCtrl.text.trim(),
+                            closedBy: _roleName(widget.role),
                           );
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
@@ -616,16 +739,13 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                             const SnackBar(content: Text('Ticket resolved.')),
                           );
                         },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AdminTheme.statusActive,
-                  ),
                   child: saving
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Mark Resolved'),
+                      : const Text('Resolve'),
                 ),
               ],
             );
@@ -635,8 +755,18 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
     );
   }
 
-  Future<void> _showEscalateDialog() async {
+  Future<void> _showNoDialog({
+    required bool isManagerLevel,
+    required int currentAttempts,
+    required int maxAttempts,
+  }) async {
     final remarksCtrl = TextEditingController();
+    final remaining = maxAttempts - currentAttempts - 1;
+    final willEscalate = remaining <= 0;
+    final nextEscalation = isManagerLevel
+        ? 'Presidential Appeal'
+        : 'Manager Queue';
+
     await showDialog(
       context: context,
       builder: (ctx) {
@@ -645,27 +775,53 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
           builder: (ctx, setS) {
             return AlertDialog(
               title: Text(
-                'Escalate Ticket',
+                willEscalate
+                    ? 'Escalate to $nextEscalation'
+                    : 'Attempt ${currentAttempts + 1}/$maxAttempts Failed',
                 style: GoogleFonts.inter(fontWeight: FontWeight.w700),
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Provide remarks explaining why this is being escalated:',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AdminTheme.textSecondary,
+                  if (willEscalate)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.deepOrange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        isManagerLevel
+                            ? '⚠️ Attempt $maxAttempts/$maxAttempts. This will escalate to Presidential Appeal. Only President/CEO or Corporate Lawyer may act after.'
+                            : '⚠️ Attempt $maxAttempts/$maxAttempts. This will escalate to the Manager Queue.',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: Colors.deepOrange,
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      isManagerLevel
+                          ? '$remaining attempt(s) remaining before Presidential Appeal.'
+                          : '$remaining attempt(s) remaining before Manager escalation.',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: AdminTheme.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: remarksCtrl,
                     maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Escalation Remarks *',
-                      border: OutlineInputBorder(),
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Remarks *',
+                      hintText: willEscalate
+                          ? 'Explain why this is being escalated...'
+                          : 'Describe what was attempted and why it failed...',
+                      border: const OutlineInputBorder(),
                       alignLabelWithHint: true,
                     ),
                   ),
@@ -677,32 +833,48 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: willEscalate
+                        ? Colors.deepOrange
+                        : AdminTheme.statusWarning,
+                  ),
                   onPressed: saving
                       ? null
                       : () async {
                           if (remarksCtrl.text.trim().isEmpty) return;
                           setS(() => saving = true);
                           final messenger = ScaffoldMessenger.of(context);
+                          final actorRole = isManagerLevel
+                              ? widget.role
+                              : 'coordinator';
                           await AdminRepository.escalateTicket(
                             ticketId: widget.ticketId,
                             remarks: remarksCtrl.text.trim(),
+                            actorRole: actorRole,
                           );
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
                           messenger.showSnackBar(
-                            const SnackBar(content: Text('Ticket escalated.')),
+                            SnackBar(
+                              content: Text(
+                                willEscalate
+                                    ? 'Ticket escalated to $nextEscalation.'
+                                    : 'Attempt recorded. Ticket remains in queue.',
+                              ),
+                            ),
                           );
                         },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AdminTheme.statusWarning,
-                  ),
                   child: saving
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Escalate'),
+                      : Text(
+                          willEscalate
+                              ? 'Escalate to $nextEscalation'
+                              : 'Submit Failed Attempt',
+                        ),
                 ),
               ],
             );
@@ -737,9 +909,12 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
           final submitterName = (data['submittedByName'] ?? '').toString();
           final submitterType = (data['submittedByType'] ?? '').toString();
           final createdAt = _parseTs(data['createdAt']);
+          final tripNumber = (data['tripNumber'] ?? '').toString();
+          final csrAttempts = (data['csrAttempts'] as int?) ?? 0;
+          final managerAttempts = (data['managerAttempts'] as int?) ?? 0;
           final isResolved = status == 'resolved';
-          final isEscalated = (data['isEscalated'] as bool?) ?? false;
           final resolutionNotes = (data['resolutionNotes'] ?? '').toString();
+          final closedBy = (data['closedBy'] ?? '').toString();
           final escalationRemarks = (data['escalationRemarks'] ?? '')
               .toString();
 
@@ -773,6 +948,27 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                               _statusBadge(status),
                             ],
                           ),
+                          if (tripNumber.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.confirmation_number_outlined,
+                                  size: 13,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Trip $tripNumber',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AdminTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 4),
                           Text(
                             subject,
@@ -803,33 +999,14 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
               ),
 
               // Status banner
-              if (isResolved)
-                _BannerStrip(
-                  color: AdminTheme.statusActive,
-                  icon: Icons.check_circle_outline,
-                  text: 'Resolved — $resolutionNotes',
-                  trailing: TextButton(
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      await AdminRepository.reopenTicket(widget.ticketId);
-                      if (mounted) {
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('Ticket reopened.')),
-                        );
-                      }
-                    },
-                    child: const Text(
-                      'Reopen',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                )
-              else if (isEscalated)
-                _BannerStrip(
-                  color: AdminTheme.statusWarning,
-                  icon: Icons.warning_amber_outlined,
-                  text: 'Escalated — $escalationRemarks',
-                ),
+              _buildStatusBanner(
+                status: status,
+                csrAttempts: csrAttempts,
+                managerAttempts: managerAttempts,
+                resolutionNotes: resolutionNotes,
+                closedBy: closedBy,
+                escalationRemarks: escalationRemarks,
+              ),
 
               // Messages thread
               Expanded(
@@ -844,13 +1021,14 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                       itemCount: msgs.length,
                       itemBuilder: (_, i) {
                         final m = msgs[i].data() as Map<String, dynamic>;
-                        final isAdminMsg = (m['senderType'] ?? '') == 'admin';
+                        final sType = (m['senderType'] ?? '').toString();
                         return _MessageBubble(
                           body: (m['body'] ?? '').toString(),
                           senderName: (m['senderName'] ?? '').toString(),
-                          senderType: (m['senderType'] ?? '').toString(),
+                          senderType: sType,
                           createdAt: _parseTs(m['createdAt']),
-                          isAdmin: isAdminMsg,
+                          isAdmin: sType == 'admin',
+                          isSystem: sType == 'system',
                         );
                       },
                     );
@@ -858,41 +1036,36 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                 ),
               ),
 
-              // Resolution action bar (not shown for resolved tickets)
+              // Action bar
               if (!isResolved) ...[
                 const Divider(height: 1),
+                _buildActionBar(
+                  status: status,
+                  csrAttempts: csrAttempts,
+                  managerAttempts: managerAttempts,
+                ),
+              ],
+
+              // Reopen (for resolved + manager-level roles)
+              if (isResolved &&
+                  (widget.role == 'admin' ||
+                      widget.role == 'president' ||
+                      widget.role == 'manager')) ...[
+                const Divider(height: 1),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Did you resolve the issue?',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AdminTheme.textPrimary,
-                        ),
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: () => _showResolveDialog(data),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AdminTheme.statusActive,
-                        ),
-                        child: const Text('YES — Resolved'),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: _showEscalateDialog,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AdminTheme.statusWarning,
-                          side: const BorderSide(
-                            color: AdminTheme.statusWarning,
-                          ),
-                        ),
-                        child: const Text('NO — Escalate'),
-                      ),
-                    ],
+                  padding: const EdgeInsets.all(12),
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await AdminRepository.reopenTicket(widget.ticketId);
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Ticket reopened.')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Reopen Ticket'),
                   ),
                 ),
               ],
@@ -906,13 +1079,16 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                     Expanded(
                       child: TextField(
                         controller: _replyCtrl,
+                        enabled: !isResolved,
                         minLines: 1,
                         maxLines: 4,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a reply...',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          hintText: isResolved
+                              ? 'Ticket is resolved. Reopen to reply.'
+                              : 'Reply as ${_roleName(widget.role)}...',
+                          border: const OutlineInputBorder(),
                           isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
+                          contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 10,
                           ),
@@ -922,7 +1098,7 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
-                      onPressed: _sending ? null : _sendReply,
+                      onPressed: (!isResolved && !_sending) ? _sendReply : null,
                       child: _sending
                           ? const SizedBox(
                               width: 16,
@@ -940,6 +1116,217 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner({
+    required String status,
+    required int csrAttempts,
+    required int managerAttempts,
+    required String resolutionNotes,
+    required String closedBy,
+    required String escalationRemarks,
+  }) {
+    switch (status) {
+      case 'resolved':
+        return _BannerStrip(
+          color: AdminTheme.statusActive,
+          icon: Icons.check_circle_outline,
+          text: 'Resolved by $closedBy — $resolutionNotes',
+        );
+      case 'pending':
+        if (csrAttempts == 0) return const SizedBox.shrink();
+        return _BannerStrip(
+          color: AdminTheme.statusWarning,
+          icon: Icons.hourglass_empty_outlined,
+          text:
+              'Pending — CSR Attempt $csrAttempts/5. ${5 - csrAttempts} remain before Manager escalation.',
+        );
+      case 'escalated_manager':
+        return _BannerStrip(
+          color: Colors.deepOrange,
+          icon: Icons.warning_amber_outlined,
+          text:
+              '🔴 Manager Queue — 5 CSR attempts exhausted.'
+              '${managerAttempts > 0 ? ' Manager Attempt $managerAttempts/3.' : ''}'
+              '${escalationRemarks.isNotEmpty ? ' Remarks: $escalationRemarks' : ''}',
+        );
+      case 'escalated_presidential':
+        return _BannerStrip(
+          color: const Color(0xFFB71C1C),
+          icon: Icons.gavel_outlined,
+          text:
+              '⚠️ PRESIDENTIAL APPEAL — 3 Manager attempts exhausted. Only President/CEO or Corporate Lawyer may act.',
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildActionBar({
+    required String status,
+    required int csrAttempts,
+    required int managerAttempts,
+  }) {
+    // Presidential — locked unless admin/president
+    if (status == 'escalated_presidential') {
+      if (_canActOnPresidential(widget.role)) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.gavel_outlined,
+                color: Color(0xFFB71C1C),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Presidential Appeal — President/CEO or Corporate Lawyer only.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFB71C1C),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFB71C1C),
+                ),
+                onPressed: _showResolveDialog,
+                child: const Text('RESOLVE — Presidential'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        return Container(
+          color: const Color(0xFFFFEBEE),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.lock_outline,
+                color: Color(0xFFB71C1C),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Presidential Appeal — Contact President/CEO or Corporate Lawyer.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFB71C1C),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // Manager Queue — locked for coordinator
+    if (status == 'escalated_manager') {
+      if (!_canActOnManagerQueue(widget.role)) {
+        return Container(
+          color: Colors.orange.shade50,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.lock_outline,
+                color: Colors.deepOrange,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Manager Queue — Awaiting Manager attention.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.deepOrange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return _yesNoBar(
+        isManagerLevel: true,
+        currentAttempts: managerAttempts,
+        maxAttempts: 3,
+      );
+    }
+
+    // Open / Pending
+    return _yesNoBar(
+      isManagerLevel: false,
+      currentAttempts: csrAttempts,
+      maxAttempts: 5,
+    );
+  }
+
+  Widget _yesNoBar({
+    required bool isManagerLevel,
+    required int currentAttempts,
+    required int maxAttempts,
+  }) {
+    final remaining = maxAttempts - currentAttempts;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Did you resolve the issue?',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (currentAttempts > 0)
+                  Text(
+                    '${isManagerLevel ? 'Manager' : 'CSR'} Attempt $currentAttempts/$maxAttempts — $remaining remain',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AdminTheme.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AdminTheme.statusActive,
+            ),
+            onPressed: _showResolveDialog,
+            child: const Text('YES'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.deepOrange,
+              side: const BorderSide(color: Colors.deepOrange),
+            ),
+            onPressed: () => _showNoDialog(
+              isManagerLevel: isManagerLevel,
+              currentAttempts: currentAttempts,
+              maxAttempts: maxAttempts,
+            ),
+            child: const Text('NO'),
+          ),
+        ],
       ),
     );
   }
@@ -973,9 +1360,12 @@ class _TicketDetailPaneState extends State<_TicketDetailPane> {
       case 'pending':
         color = AdminTheme.statusPending;
         label = 'Pending';
-      case 'escalated':
-        color = AdminTheme.statusWarning;
-        label = 'Escalated';
+      case 'escalated_manager':
+        color = Colors.deepOrange;
+        label = 'Manager Queue';
+      case 'escalated_presidential':
+        color = const Color(0xFFB71C1C);
+        label = 'Presidential';
       case 'resolved':
         color = AdminTheme.statusCompleted;
         label = 'Resolved';
@@ -1037,6 +1427,7 @@ class _MessageBubble extends StatelessWidget {
   final String senderType;
   final DateTime? createdAt;
   final bool isAdmin;
+  final bool isSystem;
 
   const _MessageBubble({
     required this.body,
@@ -1044,10 +1435,46 @@ class _MessageBubble extends StatelessWidget {
     required this.senderType,
     required this.createdAt,
     required this.isAdmin,
+    required this.isSystem,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (isSystem) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: AdminTheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AdminTheme.divider),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              body,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: AdminTheme.textSecondary,
+              ),
+            ),
+            if (createdAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  DateFormat('MMM d, h:mm a').format(createdAt!.toLocal()),
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: AdminTheme.textSecondary,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     return Align(
       alignment: isAdmin ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -1113,13 +1540,11 @@ class _BannerStrip extends StatelessWidget {
   final Color color;
   final IconData icon;
   final String text;
-  final Widget? trailing;
 
   const _BannerStrip({
     required this.color,
     required this.icon,
     required this.text,
-    this.trailing,
   });
 
   @override
@@ -1140,11 +1565,10 @@ class _BannerStrip extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: color,
               ),
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],
       ),
     );

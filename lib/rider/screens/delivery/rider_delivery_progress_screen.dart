@@ -119,6 +119,8 @@ class _RiderDeliveryProgressScreenState
   /// Offline-first photo-upload queue with 10-minute retry.
   final DeliveryQueueService _deliveryQueue = DeliveryQueueService.instance;
 
+  StreamSubscription<DocumentSnapshot>? _bookingStatusSub;
+
   /// Resolved receiver-signature URL (set via queue callback after upload).
   String? _signatureUrl;
 
@@ -164,6 +166,7 @@ class _RiderDeliveryProgressScreenState
     // Register URL-resolved callbacks so in-memory state stays up-to-date
     _registerQueueCallbacks();
     _restoreSavedDeliveryState();
+    _listenForBookingCancellation();
   }
 
   /// Register callbacks that fire whenever the queue successfully uploads a
@@ -226,8 +229,49 @@ class _RiderDeliveryProgressScreenState
     );
   }
 
+  void _listenForBookingCancellation() {
+    _bookingStatusSub = _firestore
+        .collection('bookings')
+        .doc(widget.request.id)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted || !snap.exists) return;
+      final status = (snap.data()?['status'] ?? '').toString();
+      const cancelledStatuses = [
+        'cancelled',
+        'cancelled_by_customer',
+        'cancelled_by_rider',
+      ];
+      if (cancelledStatuses.contains(status)) {
+        _bookingStatusSub?.cancel();
+        _loadingTimer?.cancel();
+        _unloadingTimer?.cancel();
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            title: const Text('Booking Cancelled'),
+            content: const Text(
+              'This booking has been cancelled. You will be returned to the home screen.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // close dialog
+                  Navigator.of(context).pop(); // pop delivery screen
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _bookingStatusSub?.cancel();
     _loadingTimer?.cancel();
     _unloadingTimer?.cancel();
     _locationTrackingTimer?.cancel();
@@ -2836,10 +2880,78 @@ class _RiderDeliveryProgressScreenState
     }
   }
 
+  Future<void> _showCancelDeliveryDialog() async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Delivery'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Please provide a reason for cancellation:'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'Enter reason…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) return;
+              Navigator.of(ctx).pop(true);
+            },
+            child: const Text('Cancel Delivery'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    final reason = reasonController.text.trim();
+
+    final rider = await _riderAuthService.getCurrentRider();
+    if (rider == null || !mounted) return;
+
+    final success = await _bookingService.cancelBookingByRider(
+      widget.request.id,
+      rider.riderId,
+      reason,
+    );
+
+    if (!mounted) return;
+    if (success) {
+      Navigator.of(context).pop(); // pop delivery screen; stream will also fire
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to cancel. Please try again.')),
+      );
+    }
+  }
+
   Widget _buildBottomAction() {
     String label = '';
     VoidCallback? onTap;
     Color color = AppColors.primaryRed;
+
+    // Steps where the rider can cancel (before goods are received/unloaded)
+    final canCancel = _currentStep == DeliveryStep.headingToWarehouse ||
+        _currentStep == DeliveryStep.loading ||
+        _currentStep == DeliveryStep.delivering;
 
     switch (_currentStep) {
       case DeliveryStep.headingToWarehouse:
@@ -2847,8 +2959,9 @@ class _RiderDeliveryProgressScreenState
         onTap = _arrivedAtWarehouse;
         break;
       case DeliveryStep.loading:
-        // Managed inside view
-        return const SizedBox.shrink();
+        // Managed inside view — only show cancel button
+        if (!canCancel) return const SizedBox.shrink();
+        break;
       case DeliveryStep.delivering:
         label = 'Arrived at Destination';
         onTap = _arrivedAtClient;
@@ -2877,26 +2990,53 @@ class _RiderDeliveryProgressScreenState
           ),
         ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: ElevatedButton(
-          onPressed: onTap,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: color,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (label.isNotEmpty)
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: onTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 16,
-              fontFamily: 'Bold',
-              color: Colors.white,
+          if (canCancel) ...[
+            if (label.isNotEmpty) const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton(
+                onPressed: _showCancelDeliveryDialog,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  'Cancel Delivery',
+                  style: TextStyle(fontSize: 15, fontFamily: 'Bold'),
+                ),
+              ),
             ),
-          ),
-        ),
+          ],
+        ],
       ),
     );
   }

@@ -1071,7 +1071,7 @@ class _BookingCardState extends State<BookingCard> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'ID: ${getBookingId()}',
+                                'Trip ${widget.booking.bookingReference}',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontFamily: 'Medium',
@@ -1204,6 +1204,30 @@ class _BookingCardState extends State<BookingCard> {
                                 ),
                               ],
                             ),
+                            if (_driver != null &&
+                                (_driver!.vehiclePlateNumber).isNotEmpty &&
+                                _driver!.vehiclePlateNumber != 'N/A') ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.directions_car_outlined,
+                                    size: 14,
+                                    color: AppColors.success,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _driver!.vehiclePlateNumber,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'Medium',
+                                      color: AppColors.success,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),

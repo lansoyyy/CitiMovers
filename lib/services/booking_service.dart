@@ -579,9 +579,7 @@ class BookingService {
 
       // Only cancel if still in a customer-cancellable state.
       if (currentStatus == null ||
-          !BookingStatusService.canBeCancelled(
-            BookingStatusService.normalizeStatus(currentStatus),
-          )) {
+          !BookingStatusService.canBeCancelled(currentStatus)) {
         debugPrint('Cannot cancel booking with status: $currentStatus');
         return false;
       }

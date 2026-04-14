@@ -3,8 +3,21 @@ class AdminConstants {
   static const String adminUsername = 'admin';
   static const String adminPassword = 'CitiMoversAdmin2026';
 
-  // Session storage key
+  // Coordinator (CSR) credentials
+  static const String coordinatorUsername = 'coordinator';
+  static const String coordinatorPassword = 'CitiMoversCSR2026';
+
+  // Manager credentials
+  static const String managerUsername = 'manager';
+  static const String managerPassword = 'CitiMoversManager2026';
+
+  // President / CEO credentials
+  static const String presidentUsername = 'president';
+  static const String presidentPassword = 'CitiMoversPresident2026';
+
+  // Session storage keys
   static const String sessionKey = 'admin_authenticated';
+  static const String sessionRoleKey = 'admin_role';
 
   // Firestore collections (using 'riders' as source of truth, not 'drivers')
   static const String colUsers = 'users';

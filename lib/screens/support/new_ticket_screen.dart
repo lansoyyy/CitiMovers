@@ -22,6 +22,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   final _formKey = GlobalKey<FormState>();
   final _subjectCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _tripNumberCtrl = TextEditingController();
   String _category = 'app';
   bool _submitting = false;
 
@@ -29,6 +30,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   void dispose() {
     _subjectCtrl.dispose();
     _descCtrl.dispose();
+    _tripNumberCtrl.dispose();
     super.dispose();
   }
 
@@ -43,6 +45,9 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       subject: _subjectCtrl.text.trim(),
       description: _descCtrl.text.trim(),
       category: _category,
+      tripNumber: _tripNumberCtrl.text.trim().isEmpty
+          ? null
+          : _tripNumberCtrl.text.trim(),
     );
 
     if (!mounted) return;
@@ -163,6 +168,26 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                 validator: (v) => (v == null || v.trim().isEmpty)
                     ? 'Description is required'
                     : null,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Regular',
+                    color: AppColors.textPrimary),
+              ),
+
+              const SizedBox(height: 20),
+
+              const Text(
+                'Trip # (Optional)',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _tripNumberCtrl,
+                decoration: _inputDecoration(
+                    'e.g. 2026-12-04-00001  (leave blank if not trip-related)'),
                 style: const TextStyle(
                     fontSize: 14,
                     fontFamily: 'Regular',
