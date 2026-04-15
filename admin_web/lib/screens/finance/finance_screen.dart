@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
+import '../../services/csv_export_service.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -18,6 +19,7 @@ class FinanceScreen extends StatefulWidget {
 class _FinanceScreenState extends State<FinanceScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -31,40 +33,267 @@ class _FinanceScreenState extends State<FinanceScreen>
     super.dispose();
   }
 
+  Future<int> _exportPayments() async {
+    final payments = await AdminRepository.getPayments(limit: 500);
+    if (payments.isEmpty) {
+      throw StateError('No payment records available to export.');
+    }
+
+    final rows = payments.map((payment) {
+      final createdAt = AdminRepository.parseTimestamp(payment['createdAt']);
+      final amount = (payment['amount'] ?? 0) as num;
+
+      return <String>[
+        (payment['id'] ?? '').toString(),
+        (payment['bookingId'] ?? '').toString(),
+        (payment['paymentMethod'] ?? payment['method'] ?? '').toString(),
+        (payment['paymentStatus'] ?? payment['status'] ?? '').toString(),
+        amount.toStringAsFixed(2),
+        (payment['reconciliationStatus'] ?? '').toString(),
+        createdAt != null
+            ? DateFormat('yyyy-MM-dd HH:mm:ss').format(createdAt)
+            : '',
+      ];
+    }).toList();
+
+    AdminCsvExportService.downloadCsv(
+      fileName:
+          'payments_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
+      headers: const [
+        'Payment ID',
+        'Booking ID',
+        'Method',
+        'Status',
+        'Amount',
+        'Reconciliation Status',
+        'Created At',
+      ],
+      rows: rows,
+    );
+
+    return rows.length;
+  }
+
+  Future<int> _exportWalletLedger() async {
+    final transactions = await AdminRepository.getWalletTransactions(
+      limit: 500,
+    );
+    if (transactions.isEmpty) {
+      throw StateError('No wallet transactions available to export.');
+    }
+
+    final rows = transactions.map((transaction) {
+      final createdAt = AdminRepository.parseTimestamp(
+        transaction['createdAt'],
+      );
+      final amount = (transaction['amount'] ?? 0) as num;
+      final balance =
+          (transaction['newBalance'] ?? transaction['balance'] ?? 0) as num;
+
+      return <String>[
+        (transaction['id'] ?? '').toString(),
+        (transaction['userId'] ?? '').toString(),
+        (transaction['type'] ?? transaction['transactionType'] ?? '')
+            .toString(),
+        amount.toStringAsFixed(2),
+        balance.toStringAsFixed(2),
+        (transaction['description'] ?? transaction['remarks'] ?? '').toString(),
+        createdAt != null
+            ? DateFormat('yyyy-MM-dd HH:mm:ss').format(createdAt)
+            : '',
+      ];
+    }).toList();
+
+    AdminCsvExportService.downloadCsv(
+      fileName:
+          'wallet_ledger_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
+      headers: const [
+        'Transaction ID',
+        'User ID',
+        'Type',
+        'Amount',
+        'Balance',
+        'Description',
+        'Created At',
+      ],
+      rows: rows,
+    );
+
+    return rows.length;
+  }
+
+  Future<int> _exportReconciliationQueue() async {
+    final bookings = await AdminRepository.getReconciliationQueue(limit: 500);
+    if (bookings.isEmpty) {
+      throw StateError('No reconciliation records available to export.');
+    }
+
+    final rows = bookings.map((booking) {
+      final createdAt = AdminRepository.parseTimestamp(booking['createdAt']);
+      final fare =
+          (booking['finalFare'] ?? booking['estimatedFare'] ?? 0) as num;
+
+      return <String>[
+        (booking['tripNumber'] ?? '').toString(),
+        (booking['bookingId'] ?? '').toString(),
+        (booking['customerName'] ?? '').toString(),
+        (booking['status'] ?? '').toString(),
+        (booking['paymentStatus'] ?? '').toString(),
+        (booking['reconciliationStatus'] ?? '').toString(),
+        fare.toStringAsFixed(2),
+        (booking['pickupAddress'] ?? '').toString(),
+        (booking['dropoffAddress'] ?? '').toString(),
+        createdAt != null
+            ? DateFormat('yyyy-MM-dd HH:mm:ss').format(createdAt)
+            : '',
+      ];
+    }).toList();
+
+    AdminCsvExportService.downloadCsv(
+      fileName:
+          'reconciliation_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
+      headers: const [
+        'Trip Ticket',
+        'Booking ID',
+        'Customer',
+        'Status',
+        'Payment Status',
+        'Reconciliation Status',
+        'Fare',
+        'Pickup',
+        'Dropoff',
+        'Created At',
+      ],
+      rows: rows,
+    );
+
+    return rows.length;
+  }
+
+  Future<void> _exportCurrentTab() async {
+    if (_exporting) return;
+
+    setState(() => _exporting = true);
+    try {
+      String label;
+      int count;
+      switch (_tabs.index) {
+        case 0:
+          label = 'payments';
+          count = await _exportPayments();
+          break;
+        case 1:
+          label = 'wallet ledger';
+          count = await _exportWalletLedger();
+          break;
+        default:
+          label = 'reconciliation queue';
+          count = await _exportReconciliationQueue();
+          break;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported $count $label rows to CSV.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Finance export failed: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: Card(
-        child: Column(
-          children: [
-            TabBar(
-              controller: _tabs,
-              labelColor: AdminTheme.primary,
-              unselectedLabelColor: AdminTheme.textSecondary,
-              indicatorColor: AdminTheme.primary,
-              labelStyle: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-              tabs: const [
-                Tab(text: 'Payment Transactions'),
-                Tab(text: 'Wallet Ledger'),
-                Tab(text: 'Reconciliation Queue'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabs,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final exportButton = OutlinedButton.icon(
+                onPressed: _exporting ? null : _exportCurrentTab,
+                icon: _exporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_outlined, size: 16),
+                label: Text(_exporting ? 'Exporting...' : 'Export CSV'),
+              );
+
+              final helperText = Text(
+                'Download the current finance tab as CSV for Excel.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AdminTheme.textSecondary,
+                ),
+              );
+
+              if (constraints.maxWidth < 720) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    helperText,
+                    const SizedBox(height: 12),
+                    exportButton,
+                  ],
+                );
+              }
+
+              return Row(
                 children: [
-                  _PaymentsTab(),
-                  _WalletLedgerTab(),
-                  _ReconciliationQueueTab(),
+                  Expanded(child: helperText),
+                  exportButton,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Card(
+              child: Column(
+                children: [
+                  TabBar(
+                    controller: _tabs,
+                    labelColor: AdminTheme.primary,
+                    unselectedLabelColor: AdminTheme.textSecondary,
+                    indicatorColor: AdminTheme.primary,
+                    labelStyle: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    tabs: const [
+                      Tab(text: 'Payment Transactions'),
+                      Tab(text: 'Wallet Ledger'),
+                      Tab(text: 'Reconciliation Queue'),
+                    ],
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabs,
+                      children: [
+                        _PaymentsTab(),
+                        _WalletLedgerTab(),
+                        _ReconciliationQueueTab(),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -255,71 +484,95 @@ class _ReconciliationQueueTab extends StatelessWidget {
                 ? docs[i].id.substring(0, 8)
                 : docs[i].id;
 
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              title: Row(
+            return Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      '#$shortId · ${d['customerName'] ?? 'Unknown Customer'}',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final badges = <Widget>[
+                        StatusBadge(reconciliationStatus),
+                        if (issueStatus.isNotEmpty) StatusBadge(issueStatus),
+                      ];
+
+                      if (constraints.maxWidth < 760) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '#$shortId · ${d['customerName'] ?? 'Unknown Customer'}',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(spacing: 8, runSpacing: 8, children: badges),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '#$shortId · ${d['customerName'] ?? 'Unknown Customer'}',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Wrap(spacing: 8, runSpacing: 8, children: badges),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${d['pickupAddress'] ?? 'Pickup'} → ${d['dropoffAddress'] ?? 'Dropoff'}',
+                    style: GoogleFonts.inter(fontSize: 11),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Payment: ${d['paymentStatus'] ?? '—'} · Fare: ₱ ${amount.toStringAsFixed(2)}${createdAt != null ? ' · ${DateFormat('MMM d, h:mm a').format(createdAt)}' : ''}',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AdminTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => _updateReconciliation(
+                          context,
+                          bookingId: docs[i].id,
+                          status: 'under_review',
+                          label: 'Mark Under Review',
+                        ),
+                        child: const Text('Under Review'),
                       ),
-                    ),
-                  ),
-                  StatusBadge(reconciliationStatus),
-                  if (issueStatus.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    StatusBadge(issueStatus),
-                  ],
-                ],
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${d['pickupAddress'] ?? 'Pickup'} → ${d['dropoffAddress'] ?? 'Dropoff'}',
-                      style: GoogleFonts.inter(fontSize: 11),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Payment: ${d['paymentStatus'] ?? '—'} · Fare: ₱ ${amount.toStringAsFixed(2)}${createdAt != null ? ' · ${DateFormat('MMM d, h:mm a').format(createdAt)}' : ''}',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: AdminTheme.textSecondary,
+                      ElevatedButton(
+                        onPressed: () => _updateReconciliation(
+                          context,
+                          bookingId: docs[i].id,
+                          status: 'reconciled',
+                          label: 'Mark Reconciled',
+                        ),
+                        child: const Text('Reconciled'),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => _updateReconciliation(
-                      context,
-                      bookingId: docs[i].id,
-                      status: 'under_review',
-                      label: 'Mark Under Review',
-                    ),
-                    child: const Text('Under Review'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => _updateReconciliation(
-                      context,
-                      bookingId: docs[i].id,
-                      status: 'reconciled',
-                      label: 'Mark Reconciled',
-                    ),
-                    child: const Text('Reconciled'),
-                  ),
-                  IconButton(
-                    onPressed: () => context.go('/bookings/${docs[i].id}'),
-                    icon: const Icon(Icons.open_in_new_outlined),
-                    tooltip: 'Open booking',
+                      OutlinedButton.icon(
+                        onPressed: () => context.go('/bookings/${docs[i].id}'),
+                        icon: const Icon(Icons.open_in_new_outlined, size: 16),
+                        label: const Text('Open Booking'),
+                      ),
+                    ],
                   ),
                 ],
               ),

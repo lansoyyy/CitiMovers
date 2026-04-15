@@ -73,62 +73,78 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         paymentStatus == 'held' && lateCancellationStatuses.contains(status);
     final willRefund = paymentStatus == 'held' && !capturesHeldAmount;
     final reasonCtrl = TextEditingController();
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        String? reasonError;
+        final viewportWidth = MediaQuery.of(dialogContext).size.width;
+        final dialogWidth = viewportWidth > 560 ? 420.0 : viewportWidth * 0.82;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
             title: const Text('Cancel Booking'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  capturesHeldAmount
-                      ? 'This will cancel the booking and keep the original held booking amount as the cancellation charge.'
-                      : willRefund
-                      ? 'This will cancel the booking and refund the held amount to the customer wallet.'
-                      : 'This will cancel the booking and keep the current payment state unchanged.',
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reasonCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Cancellation reason (required)',
+            content: SizedBox(
+              width: dialogWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    capturesHeldAmount
+                        ? 'This will cancel the booking and keep the original held booking amount as the cancellation charge.'
+                        : willRefund
+                        ? 'This will cancel the booking and refund the held amount to the customer wallet.'
+                        : 'This will cancel the booking and keep the current payment state unchanged.',
                   ),
-                  maxLines: 2,
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reasonCtrl,
+                    autofocus: true,
+                    onChanged: (_) {
+                      if (reasonError != null &&
+                          reasonCtrl.text.trim().isNotEmpty) {
+                        setDialogState(() => reasonError = null);
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Cancellation reason (required)',
+                      errorText: reasonError,
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Back'),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AdminTheme.accent,
                 ),
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () {
+                  final trimmedReason = reasonCtrl.text.trim();
+                  if (trimmedReason.isEmpty) {
+                    setDialogState(
+                      () => reasonError = 'Cancellation reason is required.',
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(dialogContext, trimmedReason);
+                },
                 child: const Text('Cancel Booking'),
               ),
             ],
           ),
-        ) ??
-        false;
-
-    if (!confirmed) return;
-    final reason = reasonCtrl.text.trim();
-    if (reason.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please provide a cancellation reason.'),
-            backgroundColor: Colors.red,
-          ),
         );
-      }
-      return;
-    }
+      },
+    );
+    reasonCtrl.dispose();
+
+    if (reason == null) return;
 
     setState(() => _isMutating = true);
     try {
@@ -221,6 +237,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           context: context,
           builder: (dialogContext) => StatefulBuilder(
             builder: (dialogContext, setDialogState) {
+              final viewportWidth = MediaQuery.of(dialogContext).size.width;
+              final dialogWidth = viewportWidth > 820
+                  ? 640.0
+                  : viewportWidth * 0.82;
+
               Map<String, List<Map<String, dynamic>>> groupRiders(
                 List<Map<String, dynamic>> riders,
               ) {
@@ -284,7 +305,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               return AlertDialog(
                 title: Text(actionLabel),
                 content: SizedBox(
-                  width: 640,
+                  width: dialogWidth,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,6 +499,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                                               );
                                                             },
                                                     ),
+                                                    const SizedBox(width: 8),
                                                     Expanded(
                                                       child: Column(
                                                         crossAxisAlignment:
@@ -485,9 +507,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                                                 .start,
                                                         children: [
                                                           Text(
-                                                            rider['name']
-                                                                    ?.toString() ??
-                                                                'Unknown rider',
+                                                            (rider['name'] ??
+                                                                    'Unnamed Rider')
+                                                                .toString(),
                                                             style: GoogleFonts.inter(
                                                               fontSize: 13,
                                                               fontWeight:
@@ -505,89 +527,81 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                                               rider,
                                                             ),
                                                             style: GoogleFonts.inter(
-                                                              fontSize: 12,
+                                                              fontSize: 11,
+                                                              color: AdminTheme
+                                                                  .textSecondary,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 8,
+                                                          ),
+                                                          Container(
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal: 8,
+                                                                  vertical: 4,
+                                                                ),
+                                                            decoration: BoxDecoration(
+                                                              color:
+                                                                  isBusyWithOtherBooking
+                                                                  ? AdminTheme
+                                                                        .statusPending
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.1,
+                                                                        )
+                                                                  : (rider['isOnline'] ==
+                                                                            true
+                                                                        ? AdminTheme.statusActive.withValues(
+                                                                            alpha:
+                                                                                0.1,
+                                                                          )
+                                                                        : AdminTheme
+                                                                              .surface),
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    999,
+                                                                  ),
+                                                            ),
+                                                            child: Text(
+                                                              isBusyWithOtherBooking
+                                                                  ? 'Busy on ${bookingReference(activeBooking)}'
+                                                                  : (rider['isOnline'] ==
+                                                                            true
+                                                                        ? 'Ready'
+                                                                        : 'Offline'),
+                                                              style: GoogleFonts.inter(
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color:
+                                                                    isBusyWithOtherBooking
+                                                                    ? AdminTheme
+                                                                          .statusPending
+                                                                    : (rider['isOnline'] ==
+                                                                              true
+                                                                          ? AdminTheme.statusActive
+                                                                          : AdminTheme.textSecondary),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 6,
+                                                          ),
+                                                          Text(
+                                                            (rider['locationUpdatedAt'] !=
+                                                                    null)
+                                                                ? 'GPS ${DateFormat('MMM d, h:mm a').format(AdminRepository.parseTimestamp(rider['locationUpdatedAt'])!)}'
+                                                                : 'No GPS ping',
+                                                            style: GoogleFonts.inter(
+                                                              fontSize: 11,
                                                               color: AdminTheme
                                                                   .textSecondary,
                                                             ),
                                                           ),
                                                         ],
                                                       ),
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .end,
-                                                      children: [
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color:
-                                                                isBusyWithOtherBooking
-                                                                ? AdminTheme
-                                                                      .statusPending
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.1,
-                                                                      )
-                                                                : (rider['isOnline'] ==
-                                                                          true
-                                                                      ? AdminTheme
-                                                                            .statusActive
-                                                                            .withValues(
-                                                                              alpha: 0.1,
-                                                                            )
-                                                                      : AdminTheme
-                                                                            .surface),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                          ),
-                                                          child: Text(
-                                                            isBusyWithOtherBooking
-                                                                ? 'Busy on ${bookingReference(activeBooking)}'
-                                                                : (rider['isOnline'] ==
-                                                                          true
-                                                                      ? 'Ready'
-                                                                      : 'Offline'),
-                                                            style: GoogleFonts.inter(
-                                                              fontSize: 11,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              color:
-                                                                  isBusyWithOtherBooking
-                                                                  ? AdminTheme
-                                                                        .statusPending
-                                                                  : (rider['isOnline'] ==
-                                                                            true
-                                                                        ? AdminTheme
-                                                                              .statusActive
-                                                                        : AdminTheme
-                                                                              .textSecondary),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 6,
-                                                        ),
-                                                        Text(
-                                                          (rider['locationUpdatedAt'] !=
-                                                                  null)
-                                                              ? 'GPS ${DateFormat('MMM d, h:mm a').format(AdminRepository.parseTimestamp(rider['locationUpdatedAt'])!)}'
-                                                              : 'No GPS ping',
-                                                          style: GoogleFonts.inter(
-                                                            fontSize: 11,
-                                                            color: AdminTheme
-                                                                .textSecondary,
-                                                          ),
-                                                        ),
-                                                      ],
                                                     ),
                                                   ],
                                                 ),
@@ -749,106 +763,133 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     final canManageIssue =
         issueStatus.isNotEmpty ||
         (d['cancellationReason'] ?? '').toString().isNotEmpty;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header actions
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () => context.go('/bookings'),
-                icon: const Icon(Icons.arrow_back, size: 18),
-                label: const Text('Back to Bookings'),
-              ),
-              const Spacer(),
-              if (canAssign) ...[
-                OutlinedButton.icon(
-                  onPressed: _isMutating ? null : _assignRider,
-                  icon: Icon(
-                    hasAssignedRider
-                        ? Icons.swap_horiz_outlined
-                        : Icons.person_add_alt_1_outlined,
-                    size: 16,
-                  ),
-                  label: Text(
-                    hasAssignedRider ? 'Reassign Rider' : 'Assign Rider',
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              OutlinedButton.icon(
-                onPressed: _isMutating ? null : _addNote,
-                icon: const Icon(Icons.note_add_outlined, size: 16),
-                label: const Text('Add Note'),
-              ),
-              if (canManageIssue) ...[
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _isMutating
-                      ? null
-                      : issueOwner.isNotEmpty
-                      ? _releaseIssue
-                      : _claimIssue,
-                  icon: Icon(
-                    issueOwner.isNotEmpty
-                        ? Icons.assignment_return_outlined
-                        : Icons.assignment_ind_outlined,
-                    size: 16,
-                  ),
-                  label: Text(
-                    issueOwner.isNotEmpty ? 'Release Issue' : 'Claim Issue',
-                  ),
-                ),
-              ],
-              if (canCancel) ...[
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AdminTheme.accent,
-                  ),
-                  onPressed: _isMutating ? null : _cancelBooking,
-                  icon: const Icon(Icons.cancel_outlined, size: 16),
-                  label: const Text('Cancel Booking'),
-                ),
-              ],
-            ],
+    final actionButtons = <Widget>[
+      if (canAssign)
+        OutlinedButton.icon(
+          onPressed: _isMutating ? null : _assignRider,
+          icon: Icon(
+            hasAssignedRider
+                ? Icons.swap_horiz_outlined
+                : Icons.person_add_alt_1_outlined,
+            size: 16,
           ),
-          const SizedBox(height: 20),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 5,
-                child: _BookingInfoCard(d: d, bookingId: widget.bookingId),
-              ),
-              const SizedBox(width: 16),
-              Expanded(flex: 3, child: _StatusTimelineCard(d: d)),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _PaymentCard(d: d)),
-              const SizedBox(width: 16),
-              Expanded(child: _DemurrageCard(d: d)),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          _SupportNotesCard(bookingId: widget.bookingId, d: d),
-          const SizedBox(height: 16),
-
-          // Delivery photos
-          if ((d['deliveryPhotos'] as List?)?.isNotEmpty == true)
-            _DeliveryPhotosCard(photos: List<String>.from(d['deliveryPhotos'])),
-        ],
+          label: Text(hasAssignedRider ? 'Reassign Rider' : 'Assign Rider'),
+        ),
+      OutlinedButton.icon(
+        onPressed: _isMutating ? null : _addNote,
+        icon: const Icon(Icons.note_add_outlined, size: 16),
+        label: const Text('Add Note'),
       ),
+      if (canManageIssue)
+        OutlinedButton.icon(
+          onPressed: _isMutating
+              ? null
+              : issueOwner.isNotEmpty
+              ? _releaseIssue
+              : _claimIssue,
+          icon: Icon(
+            issueOwner.isNotEmpty
+                ? Icons.assignment_return_outlined
+                : Icons.assignment_ind_outlined,
+            size: 16,
+          ),
+          label: Text(issueOwner.isNotEmpty ? 'Release Issue' : 'Claim Issue'),
+        ),
+      if (canCancel)
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(backgroundColor: AdminTheme.accent),
+          onPressed: _isMutating ? null : _cancelBooking,
+          icon: const Icon(Icons.cancel_outlined, size: 16),
+          label: const Text('Cancel Booking'),
+        ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactActions = constraints.maxWidth < 900;
+        final stackDetailCards = constraints.maxWidth < 1120;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (compactActions) ...[
+                TextButton.icon(
+                  onPressed: () => context.go('/bookings'),
+                  icon: const Icon(Icons.arrow_back, size: 18),
+                  label: const Text('Back to Bookings'),
+                ),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: actionButtons),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => context.go('/bookings'),
+                      icon: const Icon(Icons.arrow_back, size: 18),
+                      label: const Text('Back to Bookings'),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.end,
+                          children: actionButtons,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 20),
+              if (stackDetailCards) ...[
+                _BookingInfoCard(d: d, bookingId: widget.bookingId),
+                const SizedBox(height: 16),
+                _StatusTimelineCard(d: d),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: _BookingInfoCard(
+                        d: d,
+                        bookingId: widget.bookingId,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 3, child: _StatusTimelineCard(d: d)),
+                  ],
+                ),
+              const SizedBox(height: 16),
+              if (stackDetailCards) ...[
+                _PaymentCard(d: d),
+                const SizedBox(height: 16),
+                _DemurrageCard(d: d),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _PaymentCard(d: d)),
+                    const SizedBox(width: 16),
+                    Expanded(child: _DemurrageCard(d: d)),
+                  ],
+                ),
+              const SizedBox(height: 16),
+              _SupportNotesCard(bookingId: widget.bookingId, d: d),
+              const SizedBox(height: 16),
+              if ((d['deliveryPhotos'] as List?)?.isNotEmpty == true)
+                _DeliveryPhotosCard(
+                  photos: List<String>.from(d['deliveryPhotos']),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -867,36 +908,41 @@ class _BookingInfoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const SectionHeader(title: 'Booking Details'),
-                const SizedBox(width: 12),
                 StatusBadge(d['status'] ?? 'unknown'),
               ],
             ),
             const SizedBox(height: 16),
             if ((d['tripNumber'] ?? '').toString().isNotEmpty)
-              _Row('Trip Number', d['tripNumber'].toString()),
-            _Row('ID', bookingId),
+              _buildRow('Trip Ticket', d['tripNumber'].toString()),
+            _buildRow('ID', bookingId),
             if (created != null)
-              _Row(
+              _buildRow(
                 'Created',
                 DateFormat('MMM d, yyyy – h:mm a').format(created),
               ),
-            _Row('Customer', d['customerName'] ?? d['userName'] ?? '—'),
-            _Row('Customer Phone', d['customerPhone'] ?? d['userPhone'] ?? '—'),
-            _Row('Rider', d['riderName'] ?? '—'),
-            _Row('Vehicle', d['vehicleType'] ?? d['truckType'] ?? '—'),
+            _buildRow('Customer', d['customerName'] ?? d['userName'] ?? '—'),
+            _buildRow(
+              'Customer Phone',
+              d['customerPhone'] ?? d['userPhone'] ?? '—',
+            ),
+            _buildRow('Rider', d['riderName'] ?? '—'),
+            _buildRow('Vehicle', d['vehicleType'] ?? d['truckType'] ?? '—'),
             const Divider(color: AdminTheme.divider),
-            _Row('Pickup', d['pickupAddress'] ?? '—'),
-            _Row('Dropoff', d['dropoffAddress'] ?? '—'),
-            _Row('Receiver', d['receiverName'] ?? '—'),
-            _Row('Receiver Phone', d['receiverPhone'] ?? '—'),
-            _Row('Distance', '${d['distance'] ?? '—'} km'),
-            _Row('Payment Method', d['paymentMethod'] ?? '—'),
+            _buildRow('Pickup', d['pickupAddress'] ?? '—'),
+            _buildRow('Dropoff', d['dropoffAddress'] ?? '—'),
+            _buildRow('Receiver', d['receiverName'] ?? '—'),
+            _buildRow('Receiver Phone', d['receiverPhone'] ?? '—'),
+            _buildRow('Distance', '${d['distance'] ?? '—'} km'),
+            _buildRow('Payment Method', d['paymentMethod'] ?? '—'),
             if ((d['cancellationReason'] ?? '').toString().isNotEmpty) ...[
               const Divider(color: AdminTheme.divider),
-              _Row('Cancellation Reason', d['cancellationReason'] ?? '—'),
+              _buildRow('Cancellation Reason', d['cancellationReason'] ?? '—'),
             ],
           ],
         ),
@@ -904,7 +950,7 @@ class _BookingInfoCard extends StatelessWidget {
     );
   }
 
-  Widget _Row(String label, String value) => Padding(
+  Widget _buildRow(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1067,51 +1113,82 @@ class _PaymentCard extends StatelessWidget {
           children: [
             const SectionHeader(title: 'Payment'),
             const SizedBox(height: 12),
-            _FRow('Estimated Fare', '₱ ${estimated.toStringAsFixed(2)}'),
-            _FRow('Gross Amount', '₱ ${gross.toStringAsFixed(2)}'),
-            _FRow('Final Fare', '₱ ${final_.toStringAsFixed(2)}', bold: true),
-            _FRow('Tip', '₱ ${tip.toStringAsFixed(2)}'),
-            _FRow('Partner Net (80%)', '₱ ${partnerNet.toStringAsFixed(2)}'),
-            _FRow('Admin Fee (20%)', '₱ ${adminFee.toStringAsFixed(2)}'),
-            _FRow('VAT (inside 20%)', '₱ ${vat.toStringAsFixed(2)}'),
-            _FRow('Admin Net After VAT', '₱ ${adminNet.toStringAsFixed(2)}'),
+            _buildFinancialRow(
+              'Estimated Fare',
+              '₱ ${estimated.toStringAsFixed(2)}',
+            ),
+            _buildFinancialRow('Gross Amount', '₱ ${gross.toStringAsFixed(2)}'),
+            _buildFinancialRow(
+              'Final Fare',
+              '₱ ${final_.toStringAsFixed(2)}',
+              bold: true,
+            ),
+            _buildFinancialRow('Tip', '₱ ${tip.toStringAsFixed(2)}'),
+            _buildFinancialRow(
+              'Partner Net (80%)',
+              '₱ ${partnerNet.toStringAsFixed(2)}',
+            ),
+            _buildFinancialRow(
+              'Admin Fee (20%)',
+              '₱ ${adminFee.toStringAsFixed(2)}',
+            ),
+            _buildFinancialRow(
+              'VAT (inside 20%)',
+              '₱ ${vat.toStringAsFixed(2)}',
+            ),
+            _buildFinancialRow(
+              'Admin Net After VAT',
+              '₱ ${adminNet.toStringAsFixed(2)}',
+            ),
             if (refunded > 0)
-              _FRow('Refunded Amount', '₱ ${refunded.toStringAsFixed(2)}'),
-            _FRow('Payment Method', d['paymentMethod'] ?? '—'),
-            _FRow('Payment Status', payStatus),
+              _buildFinancialRow(
+                'Refunded Amount',
+                '₱ ${refunded.toStringAsFixed(2)}',
+              ),
+            _buildFinancialRow('Payment Method', d['paymentMethod'] ?? '—'),
+            _buildFinancialRow('Payment Status', payStatus),
             if (reconciliationStatus.toString().isNotEmpty)
-              _FRow('Reconciliation', reconciliationStatus.toString()),
+              _buildFinancialRow(
+                'Reconciliation',
+                reconciliationStatus.toString(),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _FRow(String label, String value, {bool bold = false}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 5),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 140,
-          child: Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: AdminTheme.textSecondary,
+  Widget _buildFinancialRow(String label, String value, {bool bold = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 140,
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AdminTheme.textSecondary,
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                value,
+                softWrap: true,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                  color: bold ? AdminTheme.primary : AdminTheme.textPrimary,
+                ),
+              ),
+            ),
+          ],
         ),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-            color: bold ? AdminTheme.primary : AdminTheme.textPrimary,
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 }
 
 class _SupportNotesCard extends StatelessWidget {
@@ -1138,24 +1215,59 @@ class _SupportNotesCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const SectionHeader(title: 'Issue History'),
-                const SizedBox(width: 12),
-                if (issueStatus.isNotEmpty) StatusBadge(issueStatus),
-                if (reconciliationStatus.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  StatusBadge(reconciliationStatus),
-                ],
-                const Spacer(),
-                Text(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final chips = <Widget>[
+                  if (issueStatus.isNotEmpty) StatusBadge(issueStatus),
+                  if (reconciliationStatus.isNotEmpty)
+                    StatusBadge(reconciliationStatus),
+                ];
+                final notesText = Text(
                   '$issueNotesCount note${issueNotesCount == 1 ? '' : 's'}',
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     color: AdminTheme.textSecondary,
                   ),
-                ),
-              ],
+                );
+
+                if (constraints.maxWidth < 760) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const SectionHeader(title: 'Issue History'),
+                          ...chips,
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      notesText,
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const SectionHeader(title: 'Issue History'),
+                          ...chips,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    notesText,
+                  ],
+                );
+              },
             ),
             if (issueOwner.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -1282,33 +1394,88 @@ class _SupportNotesCard extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        (entry['createdBy'] ??
-                                                AdminConstants.adminUsername)
-                                            .toString(),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      StatusBadge(
-                                        (entry['type'] ?? 'support').toString(),
-                                      ),
-                                      const Spacer(),
-                                      if (createdAt != null)
-                                        Text(
-                                          DateFormat(
-                                            'MMM d, yyyy – h:mm a',
-                                          ).format(createdAt),
-                                          style: GoogleFonts.inter(
-                                            fontSize: 10,
-                                            color: AdminTheme.textSecondary,
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final createdBy =
+                                          (entry['createdBy'] ??
+                                                  AdminConstants.adminUsername)
+                                              .toString();
+                                      final dateWidget = createdAt != null
+                                          ? Text(
+                                              DateFormat(
+                                                'MMM d, yyyy – h:mm a',
+                                              ).format(createdAt),
+                                              style: GoogleFonts.inter(
+                                                fontSize: 10,
+                                                color: AdminTheme.textSecondary,
+                                              ),
+                                            )
+                                          : null;
+
+                                      if (constraints.maxWidth < 460) {
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              crossAxisAlignment:
+                                                  WrapCrossAlignment.center,
+                                              children: [
+                                                Text(
+                                                  createdBy,
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                                StatusBadge(
+                                                  (entry['type'] ?? 'support')
+                                                      .toString(),
+                                                ),
+                                              ],
+                                            ),
+                                            if (dateWidget != null) ...[
+                                              const SizedBox(height: 6),
+                                              dateWidget,
+                                            ],
+                                          ],
+                                        );
+                                      }
+
+                                      return Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              crossAxisAlignment:
+                                                  WrapCrossAlignment.center,
+                                              children: [
+                                                Text(
+                                                  createdBy,
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                                StatusBadge(
+                                                  (entry['type'] ?? 'support')
+                                                      .toString(),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                    ],
+                                          if (dateWidget != null) ...[
+                                            const SizedBox(width: 12),
+                                            dateWidget,
+                                          ],
+                                        ],
+                                      );
+                                    },
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
@@ -1362,13 +1529,28 @@ class _DemurrageCard extends StatelessWidget {
           children: [
             const SectionHeader(title: 'Demurrage'),
             const SizedBox(height: 12),
-            _FRow('Loading Started', _fmt(d['loadingStartedAt'])),
-            _FRow('Loading Completed', _fmt(d['loadingCompletedAt'])),
-            _FRow('Loading Fee', '₱ ${loadingFee.toStringAsFixed(2)}'),
+            _buildDemurrageRow('Loading Started', _fmt(d['loadingStartedAt'])),
+            _buildDemurrageRow(
+              'Loading Completed',
+              _fmt(d['loadingCompletedAt']),
+            ),
+            _buildDemurrageRow(
+              'Loading Fee',
+              '₱ ${loadingFee.toStringAsFixed(2)}',
+            ),
             const Divider(color: AdminTheme.divider),
-            _FRow('Unloading Started', _fmt(d['unloadingStartedAt'])),
-            _FRow('Unloading Completed', _fmt(d['unloadingCompletedAt'])),
-            _FRow('Unloading Fee', '₱ ${unloadingFee.toStringAsFixed(2)}'),
+            _buildDemurrageRow(
+              'Unloading Started',
+              _fmt(d['unloadingStartedAt']),
+            ),
+            _buildDemurrageRow(
+              'Unloading Completed',
+              _fmt(d['unloadingCompletedAt']),
+            ),
+            _buildDemurrageRow(
+              'Unloading Fee',
+              '₱ ${unloadingFee.toStringAsFixed(2)}',
+            ),
           ],
         ),
       ),
@@ -1380,9 +1562,10 @@ class _DemurrageCard extends StatelessWidget {
     return dt != null ? DateFormat('h:mm a').format(dt) : '—';
   }
 
-  Widget _FRow(String label, String value) => Padding(
+  Widget _buildDemurrageRow(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           width: 150,
@@ -1394,9 +1577,16 @@ class _DemurrageCard extends StatelessWidget {
             ),
           ),
         ),
-        Text(
-          value,
-          style: GoogleFonts.inter(fontSize: 12, color: AdminTheme.textPrimary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            value,
+            softWrap: true,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AdminTheme.textPrimary,
+            ),
+          ),
         ),
       ],
     ),

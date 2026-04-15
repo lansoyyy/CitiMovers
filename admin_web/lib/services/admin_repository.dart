@@ -1788,6 +1788,54 @@ class AdminRepository {
           .limit(limit)
           .snapshots();
 
+  static Future<List<Map<String, dynamic>>> getPayments({
+    int limit = 500,
+  }) async {
+    final snapshot = await _db
+        .collection(AdminConstants.colPayments)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+
+    return snapshot.docs
+        .map((doc) => normalizePaymentData(doc.id, _asMap(doc.data())))
+        .toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getWalletTransactions({
+    int limit = 500,
+  }) async {
+    final snapshot = await _db
+        .collection(AdminConstants.colWalletTransactions)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+
+    return snapshot.docs
+        .map(
+          (doc) => normalizeWalletTransactionData(doc.id, _asMap(doc.data())),
+        )
+        .toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getReconciliationQueue({
+    int limit = 500,
+  }) async {
+    final snapshot = await _db
+        .collection(AdminConstants.colBookings)
+        .where(
+          'reconciliationStatus',
+          whereIn: const ['admin_review_required', 'under_review'],
+        )
+        .orderBy('updatedAt', descending: true)
+        .limit(limit)
+        .get();
+
+    return snapshot.docs
+        .map((doc) => normalizeBookingData(doc.id, _asMap(doc.data())))
+        .toList();
+  }
+
   static Stream<QuerySnapshot> streamBookingPayments(
     String bookingId, {
     int limit = 20,

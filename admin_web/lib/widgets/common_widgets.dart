@@ -10,19 +10,34 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(
-          title,
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AdminTheme.textPrimary,
-          ),
-        ),
-        const Spacer(),
-        if (trailing != null) trailing!,
-      ],
+    final titleText = Text(
+      title,
+      style: GoogleFonts.inter(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: AdminTheme.textPrimary,
+      ),
+    );
+
+    if (trailing == null) {
+      return titleText;
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boundedWidth = constraints.hasBoundedWidth;
+        return Row(
+          mainAxisSize: boundedWidth ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            if (boundedWidth)
+              Expanded(child: titleText)
+            else
+              Flexible(fit: FlexFit.loose, child: titleText),
+            const SizedBox(width: 12),
+            Flexible(fit: FlexFit.loose, child: trailing!),
+          ],
+        );
+      },
     );
   }
 }
