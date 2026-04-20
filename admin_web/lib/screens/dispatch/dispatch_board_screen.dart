@@ -297,10 +297,13 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     final reasonCtrl = TextEditingController(
       text: 'Dispatched from the admin dispatch board.',
     );
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        String? dialogError;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
             title: const Text('Assign Unit'),
             content: SizedBox(
               width: 420,
@@ -323,8 +326,15 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                   TextField(
                     controller: reasonCtrl,
                     maxLines: 3,
-                    decoration: const InputDecoration(
+                    onChanged: (_) {
+                      if (dialogError != null &&
+                          reasonCtrl.text.trim().isNotEmpty) {
+                        setDialogState(() => dialogError = null);
+                      }
+                    },
+                    decoration: InputDecoration(
                       labelText: 'Dispatch note (required)',
+                      errorText: dialogError,
                     ),
                   ),
                 ],
@@ -332,30 +342,30 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: () {
+                  final trimmedReason = reasonCtrl.text.trim();
+                  if (trimmedReason.isEmpty) {
+                    setDialogState(
+                      () => dialogError = 'Dispatch note is required.',
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext, trimmedReason);
+                },
                 child: const Text('Assign Unit'),
               ),
             ],
           ),
-        ) ??
-        false;
+        );
+      },
+    );
+    reasonCtrl.dispose();
 
-    if (!confirmed) return false;
-    final reason = reasonCtrl.text.trim();
-    if (reason.isEmpty) {
-      if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please provide a dispatch note.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return false;
-    }
+    if (reason == null) return false;
 
     setState(() => _isAssigning = true);
     try {

@@ -417,26 +417,105 @@ class AdminRepository {
     return !nonCancellableStatuses.contains(_normalizeBookingStatus(rawStatus));
   }
 
-  static Future<bool> _riderHasOtherLiveBooking(
-    String riderId, {
-    String? excludingBookingId,
-  }) async {
-    final snapshot = await _db
-        .collection(AdminConstants.colBookings)
-        .where('driverId', isEqualTo: riderId)
-        .get();
+  static String _assignedRiderIdForBooking(Map<String, dynamic> booking) {
+    return _coalesceString([booking['driverId'], booking['riderId']]);
+  }
 
-    for (final doc in snapshot.docs) {
-      if (excludingBookingId != null && doc.id == excludingBookingId) {
-        continue;
-      }
+  static int _compareBookingsByRecency(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final aTimestamp =
+        parseTimestamp(a['updatedAt']) ??
+        parseTimestamp(a['acceptedAt']) ??
+        parseTimestamp(a['createdAt']);
+    final bTimestamp =
+        parseTimestamp(b['updatedAt']) ??
+        parseTimestamp(b['acceptedAt']) ??
+        parseTimestamp(b['createdAt']);
 
-      if (isLiveAssignedBookingStatus(doc.data()['status'])) {
-        return true;
+    if (aTimestamp == null && bTimestamp == null) return 0;
+    if (aTimestamp == null) return 1;
+    if (bTimestamp == null) return -1;
+    return bTimestamp.compareTo(aTimestamp);
+  }
+
+  static Future<List<Map<String, dynamic>>> _getLiveAssignedBookingsForRider(
+    String riderId,
+  ) async {
+    final trimmedRiderId = riderId.trim();
+    if (trimmedRiderId.isEmpty) return const <Map<String, dynamic>>[];
+
+    final bookingsRef = _db.collection(AdminConstants.colBookings);
+    final snapshots = await Future.wait([
+      bookingsRef.where('driverId', isEqualTo: trimmedRiderId).get(),
+      bookingsRef.where('riderId', isEqualTo: trimmedRiderId).get(),
+    ]);
+
+    final bookingsById = <String, Map<String, dynamic>>{};
+    for (final snapshot in snapshots) {
+      for (final doc in snapshot.docs) {
+        final booking = normalizeBookingData(doc.id, _asMap(doc.data()));
+        if (_assignedRiderIdForBooking(booking) != trimmedRiderId) {
+          continue;
+        }
+        if (!isLiveAssignedBookingStatus(booking['status'])) {
+          continue;
+        }
+        bookingsById[doc.id] = booking;
       }
     }
 
-    return false;
+    final liveBookings = bookingsById.values.toList()
+      ..sort(_compareBookingsByRecency);
+    return liveBookings;
+  }
+
+  static Future<void> _reconcileRiderActiveBookingPointer(String riderId) async {
+    final trimmedRiderId = riderId.trim();
+    if (trimmedRiderId.isEmpty) return;
+
+    final riderRef = _db.collection(AdminConstants.colRiders).doc(trimmedRiderId);
+    final riderSnap = await riderRef.get();
+    if (!riderSnap.exists) return;
+
+    final riderData = _asMap(riderSnap.data());
+    final liveBookings = await _getLiveAssignedBookingsForRider(trimmedRiderId);
+    final canonicalBooking = liveBookings.isEmpty ? null : liveBookings.first;
+    final canonicalBookingId = canonicalBooking == null
+        ? ''
+        : _asString(canonicalBooking['id']);
+    final canonicalStatus = canonicalBooking == null
+        ? ''
+        : _asString(canonicalBooking['status']);
+    final currentActiveBookingId = _asString(riderData['activeBookingId']);
+    final currentActiveBookingStatus = _asString(
+      riderData['activeBookingStatus'],
+    );
+
+    if (canonicalBookingId.isNotEmpty) {
+      if (currentActiveBookingId == canonicalBookingId &&
+          currentActiveBookingStatus == canonicalStatus) {
+        return;
+      }
+
+      await riderRef.set({
+        'activeBookingId': canonicalBookingId,
+        'activeBookingStatus': canonicalStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    if (currentActiveBookingId.isEmpty && currentActiveBookingStatus.isEmpty) {
+      return;
+    }
+
+    await riderRef.set({
+      'activeBookingId': FieldValue.delete(),
+      'activeBookingStatus': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   static List<String> _normalizeDeliveryPhotos(dynamic rawPhotos) {
@@ -1163,20 +1242,29 @@ class AdminRepository {
     required String riderId,
     required String reason,
   }) async {
-    if (await _riderHasOtherLiveBooking(
-      riderId,
-      excludingBookingId: bookingId,
-    )) {
-      throw StateError('This rider already has another live booking assigned.');
+    final resolvedBookingId = bookingId.trim();
+    final resolvedRiderId = riderId.trim();
+    final trimmedReason = reason.trim();
+
+    if (resolvedBookingId.isEmpty) {
+      throw StateError('Booking ID is required.');
     }
+    if (resolvedRiderId.isEmpty) {
+      throw StateError('Rider ID is required.');
+    }
+    if (trimmedReason.isEmpty) {
+      throw StateError('Assignment reason is required.');
+    }
+
+    await _reconcileRiderActiveBookingPointer(resolvedRiderId);
 
     final bookingRef = _db
         .collection(AdminConstants.colBookings)
-        .doc(bookingId);
+        .doc(resolvedBookingId);
     final deliveryRequestRef = _db
         .collection(AdminConstants.colDeliveryRequests)
-        .doc(bookingId);
-    final riderRef = _db.collection(AdminConstants.colRiders).doc(riderId);
+        .doc(resolvedBookingId);
+    final riderRef = _db.collection(AdminConstants.colRiders).doc(resolvedRiderId);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
 
     await _db.runTransaction((transaction) async {
@@ -1190,11 +1278,15 @@ class AdminRepository {
         throw StateError('Rider not found.');
       }
 
+      final rawBookingData = _asMap(bookingSnap.data());
       final beforeData = normalizeBookingData(
-        bookingId,
-        _asMap(bookingSnap.data()),
+        resolvedBookingId,
+        rawBookingData,
       );
-      final riderData = normalizeRiderData(riderId, _asMap(riderSnap.data()));
+      final riderData = normalizeRiderData(
+        resolvedRiderId,
+        _asMap(riderSnap.data()),
+      );
       final riderActiveBookingId = _asString(riderData['activeBookingId']);
 
       final currentStatus = _asString(
@@ -1219,15 +1311,38 @@ class AdminRepository {
         beforeData['driverId'],
         beforeData['riderId'],
       ]);
-      if (currentRiderId == riderId) {
+      if (currentRiderId == resolvedRiderId) {
         throw StateError('Booking is already assigned to this rider.');
       }
 
+      DocumentSnapshot<Map<String, dynamic>>? riderActiveBookingSnap;
       if (riderActiveBookingId.isNotEmpty &&
-          riderActiveBookingId != bookingId) {
-        throw StateError(
-          'This rider already has another live booking assigned.',
-        );
+          riderActiveBookingId != resolvedBookingId) {
+        final riderActiveBookingRef = _db
+            .collection(AdminConstants.colBookings)
+            .doc(riderActiveBookingId);
+        riderActiveBookingSnap = await transaction.get(riderActiveBookingRef);
+      }
+
+      if (riderActiveBookingId.isNotEmpty &&
+          riderActiveBookingId != resolvedBookingId) {
+        final activeBooking =
+            riderActiveBookingSnap != null && riderActiveBookingSnap.exists
+            ? normalizeBookingData(
+                riderActiveBookingId,
+                _asMap(riderActiveBookingSnap.data()),
+              )
+            : null;
+        final activeBookingStillLive =
+            activeBooking != null &&
+            _assignedRiderIdForBooking(activeBooking) == resolvedRiderId &&
+            isLiveAssignedBookingStatus(activeBooking['status']);
+
+        if (activeBookingStillLive) {
+          throw StateError(
+            'This rider already has another live booking assigned.',
+          );
+        }
       }
 
       final customerId = _coalesceString([
@@ -1241,7 +1356,8 @@ class AdminRepository {
       final shouldMarkAccepted = currentStatus != 'accepted';
       final nextStatus = shouldMarkAccepted ? 'accepted' : currentStatus;
       final wasReassigned = currentRiderId.isNotEmpty;
-      final previousRiderRef = wasReassigned && currentRiderId != riderId
+      final previousRiderRef =
+          wasReassigned && currentRiderId != resolvedRiderId
           ? _db.collection(AdminConstants.colRiders).doc(currentRiderId)
           : null;
       DocumentSnapshot<Map<String, dynamic>>? previousRiderSnap;
@@ -1250,12 +1366,12 @@ class AdminRepository {
       }
 
       transaction.set(bookingRef, {
-        'driverId': riderId,
-        'riderId': riderId,
+        'driverId': resolvedRiderId,
+        'riderId': resolvedRiderId,
         'driverName': riderName,
         'riderName': riderName,
         'status': nextStatus,
-        'assignmentReason': reason,
+        'assignmentReason': trimmedReason,
         'assignedBy': AdminConstants.adminUsername,
         'assignedAt': FieldValue.serverTimestamp(),
         if (wasReassigned) 'reassignedAt': FieldValue.serverTimestamp(),
@@ -1266,25 +1382,25 @@ class AdminRepository {
       }, SetOptions(merge: true));
 
       transaction.set(deliveryRequestRef, {
-        'requestId': bookingId,
-        'bookingId': bookingId,
+        'requestId': resolvedBookingId,
+        'bookingId': resolvedBookingId,
         'customerId': customerId,
-        'riderId': riderId,
+        'riderId': resolvedRiderId,
         'riderName': riderName,
         'status': 'accepted',
         'acceptedAt': FieldValue.serverTimestamp(),
         'respondedAt': FieldValue.serverTimestamp(),
-        'assignmentReason': reason,
+        'assignmentReason': trimmedReason,
         'updatedAt': FieldValue.serverTimestamp(),
         'vehicleType': beforeData['vehicleType'],
-        'pickupLocation': _asMap(bookingSnap.data())['pickupLocation'],
-        'dropoffLocation': _asMap(bookingSnap.data())['dropoffLocation'],
+        'pickupLocation': rawBookingData['pickupLocation'],
+        'dropoffLocation': rawBookingData['dropoffLocation'],
         'distance': beforeData['distance'],
         'estimatedFare': beforeData['estimatedFare'],
       }, SetOptions(merge: true));
 
       transaction.set(riderRef, {
-        'activeBookingId': bookingId,
+        'activeBookingId': resolvedBookingId,
         'activeBookingStatus': nextStatus,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -1318,33 +1434,35 @@ class AdminRepository {
               ? 'Support reassigned your booking to $riderName.'
               : 'Support assigned $riderName to your booking.',
           'type': 'booking',
-          'referenceId': bookingId,
-          'bookingId': bookingId,
+          'referenceId': resolvedBookingId,
+          'bookingId': resolvedBookingId,
           'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
 
-      final assignedRiderNotificationRef = _db
-          .collection(AdminConstants.colNotifications)
-          .doc();
-      transaction.set(assignedRiderNotificationRef, {
-        'id': assignedRiderNotificationRef.id,
-        'userId': riderId,
-        'userType': 'rider',
-        'title': wasReassigned
-            ? 'Booking Reassigned to You'
-            : 'Booking Assigned',
-        'message':
-            'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
-        'body':
-            'Support assigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to you.',
-        'type': 'booking',
-        'referenceId': bookingId,
-        'bookingId': bookingId,
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      if (resolvedRiderId.isNotEmpty) {
+        final assignedRiderNotificationRef = _db
+            .collection(AdminConstants.colNotifications)
+            .doc();
+        transaction.set(assignedRiderNotificationRef, {
+          'id': assignedRiderNotificationRef.id,
+          'userId': resolvedRiderId,
+          'userType': 'rider',
+          'title': wasReassigned
+              ? 'Booking Reassigned to You'
+              : 'Booking Assigned',
+          'message':
+              'Support assigned booking #${resolvedBookingId.substring(0, resolvedBookingId.length > 8 ? 8 : resolvedBookingId.length)} to you.',
+          'body':
+              'Support assigned booking #${resolvedBookingId.substring(0, resolvedBookingId.length > 8 ? 8 : resolvedBookingId.length)} to you.',
+          'type': 'booking',
+          'referenceId': resolvedBookingId,
+          'bookingId': resolvedBookingId,
+          'isRead': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
 
       if (wasReassigned && currentRiderId.isNotEmpty) {
         final previousRiderNotificationRef = _db
@@ -1356,12 +1474,12 @@ class AdminRepository {
           'userType': 'rider',
           'title': 'Booking Reassigned',
           'message':
-              'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
+              'Support reassigned booking #${resolvedBookingId.substring(0, resolvedBookingId.length > 8 ? 8 : resolvedBookingId.length)} to another rider.',
           'body':
-              'Support reassigned booking #${bookingId.substring(0, bookingId.length > 8 ? 8 : bookingId.length)} to another rider.',
+              'Support reassigned booking #${resolvedBookingId.substring(0, resolvedBookingId.length > 8 ? 8 : resolvedBookingId.length)} to another rider.',
           'type': 'booking',
-          'referenceId': bookingId,
-          'bookingId': bookingId,
+          'referenceId': resolvedBookingId,
+          'bookingId': resolvedBookingId,
           'isRead': false,
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -1372,8 +1490,8 @@ class AdminRepository {
         _buildAuditEntry(
           action: AdminConstants.auditAssignBooking,
           entityType: 'booking',
-          entityId: bookingId,
-          reason: reason,
+          entityId: resolvedBookingId,
+          reason: trimmedReason,
           before: {
             'status': beforeData['status'],
             'driverId': beforeData['driverId'],
@@ -1382,8 +1500,8 @@ class AdminRepository {
           },
           after: {
             'status': nextStatus,
-            'driverId': riderId,
-            'riderId': riderId,
+            'driverId': resolvedRiderId,
+            'riderId': resolvedRiderId,
             'riderName': riderName,
             'wasReassigned': wasReassigned,
           },
