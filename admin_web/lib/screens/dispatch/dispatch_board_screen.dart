@@ -951,6 +951,10 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                               final isOnline = rider['isOnline'] == true;
                               final isHighlighted =
                                   riderId == highlightedRiderId;
+                              final plate = (rider['plateNumber'] ?? '')
+                                  .toString()
+                                  .trim()
+                                  .toUpperCase();
                               final markerColor = isHighlighted
                                   ? AdminTheme.primary
                                   : isBusy
@@ -960,48 +964,95 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                   : AdminTheme.textSecondary;
 
                               return Marker(
-                                width: 56,
-                                height: 56,
+                                width: 96,
+                                height: 72,
+                                alignment: Alignment.bottomCenter,
                                 point: LatLng(
                                   (rider['currentLatitude'] as num).toDouble(),
                                   (rider['currentLongitude'] as num).toDouble(),
                                 ),
-                                child: GestureDetector(
-                                  onTap: () async {
-                                    setState(() {
-                                      _highlightedRiderId = riderId;
-                                      _selectedUnitName =
-                                          (rider['unitName'] ?? '').toString();
-                                    });
-                                    await _showVehicleActivityDialog(
-                                      rider: rider,
-                                      riders: riders,
-                                      activeAssignments: activeAssignments,
-                                      selectedBooking: selectedBooking,
-                                    );
-                                  },
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: markerColor,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isHighlighted
-                                            ? Colors.black
-                                            : Colors.white,
-                                        width: isHighlighted ? 3 : 2,
-                                      ),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Color(0x22000000),
-                                          blurRadius: 10,
-                                          offset: Offset(0, 3),
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    onTap: () async {
+                                      setState(() {
+                                        _highlightedRiderId = riderId;
+                                        _selectedUnitName =
+                                            (rider['unitName'] ?? '')
+                                                .toString();
+                                      });
+                                      await _showVehicleActivityDialog(
+                                        rider: rider,
+                                        riders: riders,
+                                        activeAssignments: activeAssignments,
+                                        selectedBooking: selectedBooking,
+                                      );
+                                    },
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        // Plate number label bubble
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: markerColor,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x44000000),
+                                                blurRadius: 6,
+                                                offset: Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Text(
+                                            plate.isEmpty ? '—' : plate,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white,
+                                              letterSpacing: 0.5,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        // Truck icon circle
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: markerColor,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: isHighlighted
+                                                  ? Colors.black
+                                                  : Colors.white,
+                                              width: isHighlighted ? 3 : 2,
+                                            ),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x22000000),
+                                                blurRadius: 10,
+                                                offset: Offset(0, 3),
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(
+                                            Icons.local_shipping,
+                                            color: Colors.white,
+                                            size: 22,
+                                          ),
                                         ),
                                       ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.local_shipping,
-                                      color: Colors.white,
-                                      size: 26,
                                     ),
                                   ),
                                 ),
