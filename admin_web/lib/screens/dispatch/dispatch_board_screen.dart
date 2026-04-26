@@ -270,6 +270,19 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     return 'No live location yet';
   }
 
+  String _markerLocationLabel(Map<String, dynamic> rider) {
+    final location = _formatLocation(rider);
+    if (location == 'No live location yet') return 'Locating';
+
+    final firstChunk = location
+        .split(',')
+        .map((part) => part.trim())
+        .firstWhere((part) => part.isNotEmpty, orElse: () => location);
+
+    if (firstChunk.length <= 20) return firstChunk;
+    return '${firstChunk.substring(0, 20).trimRight()}...';
+  }
+
   LatLng _resolveMapCenter(List<Map<String, dynamic>> riders) {
     final located = riders
         .where((rider) => rider['hasLiveLocation'] == true)
@@ -951,10 +964,9 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                               final isOnline = rider['isOnline'] == true;
                               final isHighlighted =
                                   riderId == highlightedRiderId;
-                              final plate = (rider['plateNumber'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .toUpperCase();
+                                final markerLocation = _markerLocationLabel(
+                                rider,
+                                );
                               final markerColor = isHighlighted
                                   ? AdminTheme.primary
                                   : isBusy
@@ -993,7 +1005,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.center,
                                       children: [
-                                        // Plate number label bubble
+                                        // Current location label bubble (shortened)
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 7,
@@ -1013,7 +1025,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                             ],
                                           ),
                                           child: Text(
-                                            plate.isEmpty ? '—' : plate,
+                                            markerLocation,
                                             style: GoogleFonts.inter(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w800,
