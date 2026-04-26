@@ -270,19 +270,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     return 'No live location yet';
   }
 
-  String _markerLocationLabel(Map<String, dynamic> rider) {
-    final location = _formatLocation(rider);
-    if (location == 'No live location yet') return 'Locating';
-
-    final firstChunk = location
-        .split(',')
-        .map((part) => part.trim())
-        .firstWhere((part) => part.isNotEmpty, orElse: () => location);
-
-    if (firstChunk.length <= 20) return firstChunk;
-    return '${firstChunk.substring(0, 20).trimRight()}...';
-  }
-
   LatLng _resolveMapCenter(List<Map<String, dynamic>> riders) {
     final located = riders
         .where((rider) => rider['hasLiveLocation'] == true)
@@ -902,6 +889,11 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         )
         .toList();
     final mapCenter = _resolveMapCenter(liveRiders);
+    final focusedRider = _findRider(liveRiders, highlightedRiderId);
+    final mapOverlayRider = focusedRider ?? (liveRiders.isNotEmpty ? liveRiders.first : null);
+    final mapOverlayLocation = mapOverlayRider == null
+      ? 'No live location yet'
+      : _formatLocation(mapOverlayRider);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -942,141 +934,183 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                     )
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(18),
-                      child: FlutterMap(
-                        key: ValueKey(
-                          '${liveRiders.length}-${mapCenter.latitude.toStringAsFixed(3)}-${mapCenter.longitude.toStringAsFixed(3)}',
-                        ),
-                        options: MapOptions(
-                          initialCenter: mapCenter,
-                          initialZoom: 11,
-                        ),
+                      child: Stack(
                         children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.citimovers.admin_web',
-                          ),
-                          MarkerLayer(
-                            markers: liveRiders.map((rider) {
-                              final riderId = (rider['id'] ?? '').toString();
-                              final busyAssignment = activeAssignments[riderId];
-                              final isBusy = busyAssignment != null;
-                              final isOnline = rider['isOnline'] == true;
-                              final isHighlighted =
-                                  riderId == highlightedRiderId;
-                                final markerLocation = _markerLocationLabel(
-                                rider,
-                                );
-                              final markerColor = isHighlighted
-                                  ? AdminTheme.primary
-                                  : isBusy
-                                  ? AdminTheme.statusPending
-                                  : isOnline
-                                  ? AdminTheme.statusActive
-                                  : AdminTheme.textSecondary;
+                          FlutterMap(
+                            key: ValueKey(
+                              '${liveRiders.length}-${mapCenter.latitude.toStringAsFixed(3)}-${mapCenter.longitude.toStringAsFixed(3)}',
+                            ),
+                            options: MapOptions(
+                              initialCenter: mapCenter,
+                              initialZoom: 11,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.citimovers.admin_web',
+                              ),
+                              MarkerLayer(
+                                markers: liveRiders.map((rider) {
+                                  final riderId = (rider['id'] ?? '').toString();
+                                  final busyAssignment = activeAssignments[riderId];
+                                  final isBusy = busyAssignment != null;
+                                  final isOnline = rider['isOnline'] == true;
+                                  final isHighlighted =
+                                      riderId == highlightedRiderId;
+                                  final plate = (rider['plateNumber'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .toUpperCase();
+                                  final markerColor = isHighlighted
+                                      ? AdminTheme.primary
+                                      : isBusy
+                                      ? AdminTheme.statusPending
+                                      : isOnline
+                                      ? AdminTheme.statusActive
+                                      : AdminTheme.textSecondary;
 
-                              return Marker(
-                                width: 96,
-                                height: 72,
-                                alignment: Alignment.bottomCenter,
-                                point: LatLng(
-                                  (rider['currentLatitude'] as num).toDouble(),
-                                  (rider['currentLongitude'] as num).toDouble(),
-                                ),
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.click,
-                                  child: GestureDetector(
-                                    onTap: () async {
-                                      setState(() {
-                                        _highlightedRiderId = riderId;
-                                        _selectedUnitName =
-                                            (rider['unitName'] ?? '')
-                                                .toString();
-                                      });
-                                      await _showVehicleActivityDialog(
-                                        rider: rider,
-                                        riders: riders,
-                                        activeAssignments: activeAssignments,
-                                        selectedBooking: selectedBooking,
-                                      );
-                                    },
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        // Current location label bubble (shortened)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 7,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: markerColor,
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                            boxShadow: const [
-                                              BoxShadow(
-                                                color: Color(0x44000000),
-                                                blurRadius: 6,
-                                                offset: Offset(0, 2),
+                                  return Marker(
+                                    width: 96,
+                                    height: 72,
+                                    alignment: Alignment.bottomCenter,
+                                    point: LatLng(
+                                      (rider['currentLatitude'] as num).toDouble(),
+                                      (rider['currentLongitude'] as num).toDouble(),
+                                    ),
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      child: GestureDetector(
+                                        onTap: () async {
+                                          setState(() {
+                                            _highlightedRiderId = riderId;
+                                            _selectedUnitName =
+                                                (rider['unitName'] ?? '')
+                                                    .toString();
+                                          });
+                                          await _showVehicleActivityDialog(
+                                            rider: rider,
+                                            riders: riders,
+                                            activeAssignments: activeAssignments,
+                                            selectedBooking: selectedBooking,
+                                          );
+                                        },
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
+                                          children: [
+                                            // Plate number label bubble
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 7,
+                                                vertical: 3,
                                               ),
-                                            ],
-                                          ),
-                                          child: Text(
-                                            markerLocation,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w800,
-                                              color: Colors.white,
-                                              letterSpacing: 0.5,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        // Truck icon circle
-                                        Container(
-                                          width: 42,
-                                          height: 42,
-                                          decoration: BoxDecoration(
-                                            color: markerColor,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: isHighlighted
-                                                  ? Colors.black
-                                                  : Colors.white,
-                                              width: isHighlighted ? 3 : 2,
-                                            ),
-                                            boxShadow: const [
-                                              BoxShadow(
-                                                color: Color(0x22000000),
-                                                blurRadius: 10,
-                                                offset: Offset(0, 3),
+                                              decoration: BoxDecoration(
+                                                color: markerColor,
+                                                borderRadius: BorderRadius.circular(
+                                                  6,
+                                                ),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x44000000),
+                                                    blurRadius: 6,
+                                                    offset: Offset(0, 2),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                          child: const Icon(
-                                            Icons.local_shipping,
-                                            color: Colors.white,
-                                            size: 22,
-                                          ),
+                                              child: Text(
+                                                plate.isEmpty ? '—' : plate,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Colors.white,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            // Truck icon circle
+                                            Container(
+                                              width: 42,
+                                              height: 42,
+                                              decoration: BoxDecoration(
+                                                color: markerColor,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: isHighlighted
+                                                      ? Colors.black
+                                                      : Colors.white,
+                                                  width: isHighlighted ? 3 : 2,
+                                                ),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x22000000),
+                                                    blurRadius: 10,
+                                                    offset: Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.local_shipping,
+                                                color: Colors.white,
+                                                size: 22,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              RichAttributionWidget(
+                                attributions: const [
+                                  TextSourceAttribution(
+                                    'OpenStreetMap contributors',
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Positioned(
+                            top: 10,
+                            left: 10,
+                            child: IgnorePointer(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 360),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xCC111827),
+                                    borderRadius: BorderRadius.circular(10),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x33000000),
+                                        blurRadius: 10,
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    mapOverlayLocation,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      height: 1.25,
                                     ),
                                   ),
                                 ),
-                              );
-                            }).toList(),
-                          ),
-                          RichAttributionWidget(
-                            attributions: const [
-                              TextSourceAttribution(
-                                'OpenStreetMap contributors',
                               ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
