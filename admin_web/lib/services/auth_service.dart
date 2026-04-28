@@ -12,8 +12,22 @@ class AdminAuthService {
   bool get isAuthenticated => _isAuthenticated;
   String get currentRole => _role;
 
-  /// Returns true if the logged-in user is a coordinator (CSR-only access).
+  /// Returns true if the logged-in user is a coordinator account.
   bool get isCoordinator => _role == 'coordinator';
+
+  /// Returns true if the current role can assign riders from dispatch/bookings.
+  bool get canAssignRiders => _role == 'admin' || _role == 'coordinator';
+
+  /// Centralized route access guard used by the router and shell navigation.
+  bool canAccessRoute(String route) {
+    final normalizedRoute = route.trim();
+    if (normalizedRoute.isEmpty) return false;
+    if (!isCoordinator) return true;
+
+    return normalizedRoute == '/dispatch' ||
+        normalizedRoute.startsWith('/bookings') ||
+        normalizedRoute.startsWith('/support-tickets');
+  }
 
   /// Returns true if the logged-in user can handle manager-queue tickets.
   bool get isManager =>

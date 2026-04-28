@@ -114,12 +114,10 @@ class _Sidebar extends StatelessWidget {
           Expanded(
             child: Builder(
               builder: (context) {
-                final role = AdminAuthService().currentRole;
-                final visibleItems = role == 'coordinator'
-                    ? _navItems
-                          .where((i) => i.route == '/support-tickets')
-                          .toList()
-                    : _navItems;
+                final auth = AdminAuthService();
+                final visibleItems = _navItems
+                    .where((item) => auth.canAccessRoute(item.route))
+                    .toList();
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   itemCount: visibleItems.length,

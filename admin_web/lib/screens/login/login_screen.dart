@@ -36,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (success) {
+      final auth = AdminAuthService();
       await AdminAuditService.log(
         action: AdminConstants.auditLogin,
         entityType: 'session',
@@ -44,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       context.go(
-        AdminAuthService().isCoordinator ? '/support-tickets' : '/dispatch',
+        auth.canAccessRoute('/dispatch') ? '/dispatch' : '/support-tickets',
       );
     } else {
       setState(() {

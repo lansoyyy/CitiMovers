@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../config/theme.dart';
+import '../../services/auth_service.dart';
 import '../../services/admin_repository.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -637,12 +638,16 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              TextButton(
-                                onPressed: () =>
-                                    context.go('/riders/$unitRiderId'),
-                                child: const Text('Open rider'),
-                              ),
-                              const SizedBox(width: 8),
+                              if (AdminAuthService().canAccessRoute(
+                                '/riders/$unitRiderId',
+                              )) ...[
+                                TextButton(
+                                  onPressed: () =>
+                                      context.go('/riders/$unitRiderId'),
+                                  child: const Text('Open rider'),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
                               ElevatedButton.icon(
                                 onPressed: canAssign
                                     ? () async {
@@ -890,10 +895,11 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         .toList();
     final mapCenter = _resolveMapCenter(liveRiders);
     final focusedRider = _findRider(liveRiders, highlightedRiderId);
-    final mapOverlayRider = focusedRider ?? (liveRiders.isNotEmpty ? liveRiders.first : null);
+    final mapOverlayRider =
+        focusedRider ?? (liveRiders.isNotEmpty ? liveRiders.first : null);
     final mapOverlayLocation = mapOverlayRider == null
-      ? 'No live location yet'
-      : _formatLocation(mapOverlayRider);
+        ? 'No live location yet'
+        : _formatLocation(mapOverlayRider);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -948,12 +954,15 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                               TileLayer(
                                 urlTemplate:
                                     'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.citimovers.admin_web',
+                                userAgentPackageName:
+                                    'com.citimovers.admin_web',
                               ),
                               MarkerLayer(
                                 markers: liveRiders.map((rider) {
-                                  final riderId = (rider['id'] ?? '').toString();
-                                  final busyAssignment = activeAssignments[riderId];
+                                  final riderId = (rider['id'] ?? '')
+                                      .toString();
+                                  final busyAssignment =
+                                      activeAssignments[riderId];
                                   final isBusy = busyAssignment != null;
                                   final isOnline = rider['isOnline'] == true;
                                   final isHighlighted =
@@ -975,8 +984,10 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                     height: 72,
                                     alignment: Alignment.bottomCenter,
                                     point: LatLng(
-                                      (rider['currentLatitude'] as num).toDouble(),
-                                      (rider['currentLongitude'] as num).toDouble(),
+                                      (rider['currentLatitude'] as num)
+                                          .toDouble(),
+                                      (rider['currentLongitude'] as num)
+                                          .toDouble(),
                                     ),
                                     child: MouseRegion(
                                       cursor: SystemMouseCursors.click,
@@ -991,7 +1002,8 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                           await _showVehicleActivityDialog(
                                             rider: rider,
                                             riders: riders,
-                                            activeAssignments: activeAssignments,
+                                            activeAssignments:
+                                                activeAssignments,
                                             selectedBooking: selectedBooking,
                                           );
                                         },
@@ -1002,15 +1014,15 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                           children: [
                                             // Plate number label bubble
                                             Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 7,
-                                                vertical: 3,
-                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 7,
+                                                    vertical: 3,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: markerColor,
-                                                borderRadius: BorderRadius.circular(
-                                                  6,
-                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
                                                 boxShadow: const [
                                                   BoxShadow(
                                                     color: Color(0x44000000),
@@ -1080,7 +1092,9 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                             left: 10,
                             child: IgnorePointer(
                               child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 360),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 360,
+                                ),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
