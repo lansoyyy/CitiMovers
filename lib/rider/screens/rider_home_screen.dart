@@ -6,6 +6,7 @@ import '../../services/booking_service.dart';
 import '../../utils/app_colors.dart';
 import '../models/delivery_request_model.dart';
 import '../services/rider_auth_service.dart';
+import '../services/rider_foreground_location_service.dart';
 import 'delivery/rider_delivery_progress_screen.dart';
 import 'tabs/rider_home_tab.dart';
 import 'tabs/rider_deliveries_tab.dart';
@@ -25,6 +26,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   late List<Widget> _screens;
   final RiderAuthService _authService = RiderAuthService();
   final BookingService _bookingService = BookingService();
+  final RiderForegroundLocationService _locationTrackingService =
+      RiderForegroundLocationService.instance;
 
   bool _hasCheckedActiveDriverBooking = false;
   bool _isCheckingActiveDriverBooking = false;
@@ -54,6 +57,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndResumeActiveDelivery();
       _startActiveBookingStream();
+      _startForegroundLocationTracking();
     });
   }
 
@@ -61,10 +65,22 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
-      if (!isCurrentRoute) return;
-      _hasCheckedActiveDriverBooking = false;
-      _checkAndResumeActiveDelivery(force: true);
+      _startForegroundLocationTracking();
+      if (isCurrentRoute) {
+        _hasCheckedActiveDriverBooking = false;
+        _checkAndResumeActiveDelivery(force: true);
+      }
+      return;
     }
+
+    _locationTrackingService.pauseTracking();
+  }
+
+  Future<void> _startForegroundLocationTracking() async {
+    final rider = await _authService.getCurrentRider();
+    if (rider == null || !mounted) return;
+
+    await _locationTrackingService.startTracking(riderId: rider.riderId);
   }
 
   /// Start a real-time stream so that when coordinator assigns a booking to
@@ -231,6 +247,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
     WidgetsBinding.instance.removeObserver(this);
     _activeBookingSubscription?.cancel();
     _tabController.dispose();
+    _locationTrackingService.stopTracking();
     super.dispose();
   }
 

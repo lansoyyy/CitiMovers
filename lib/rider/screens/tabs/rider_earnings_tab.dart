@@ -503,92 +503,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
 
                         const SizedBox(height: 28),
 
-                        // Earnings Distribution Chart
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 4,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.warning,
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  const Text(
-                                    'Earnings Distribution Breakdown',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontFamily: 'Bold',
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Container(
-                                height: 250,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: AppColors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.04),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: _buildDistributionChart(),
-                              ),
-                              const SizedBox(height: 16),
-                              // Distribution Legend
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: AppColors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.04),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  children: [
-                                    _buildLegendItem(
-                                        'Operator (80%)',
-                                        AppColors.success,
-                                        '---'),
-                                    const SizedBox(height: 8),
-                                    _buildLegendItem(
-                                        'Admin (18%)',
-                                        AppColors.primaryBlue,
-                                        '---'),
-                                    const SizedBox(height: 8),
-                                    _buildLegendItem(
-                                        'BIR (2%)',
-                                        AppColors.warning,
-                                        '---'),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 28),
-
                         // Recent Transactions
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1710,7 +1624,6 @@ class _RiderEarningsTabState extends State<RiderEarningsTab> {
     );
   }
 }
-
 
 class _StatCard extends StatelessWidget {
   final IconData icon;

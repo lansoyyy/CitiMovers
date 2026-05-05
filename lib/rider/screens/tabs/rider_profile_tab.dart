@@ -6,8 +6,10 @@ import '../../../utils/app_colors.dart';
 import '../../../utils/app_constants.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
+import '../../services/rider_foreground_location_service.dart';
 import '../auth/rider_login_screen.dart';
 import '../profile/rider_edit_profile_screen.dart';
+import '../profile/rider_my_location_screen.dart';
 import '../profile/rider_vehicle_details_screen.dart';
 import '../profile/rider_documents_screen.dart';
 import '../profile/rider_payment_methods_screen.dart';
@@ -215,6 +217,7 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
     );
 
     if (confirm == true) {
+      RiderForegroundLocationService.instance.stopTracking(clearLocation: true);
       await _authService.logout();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -745,6 +748,18 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                           MaterialPageRoute(
                             builder: (context) =>
                                 const RiderVehicleDetailsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: FontAwesomeIcons.locationDot,
+                      title: 'My Location',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RiderMyLocationScreen(),
                           ),
                         );
                       },

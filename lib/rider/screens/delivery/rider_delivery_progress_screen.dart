@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:citimovers/rider/models/delivery_request_model.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
+import 'package:citimovers/rider/services/rider_foreground_location_service.dart';
 import 'package:citimovers/services/booking_service.dart';
 import 'package:citimovers/services/storage_service.dart';
 import 'package:citimovers/services/location_service.dart';
@@ -159,6 +160,7 @@ class _RiderDeliveryProgressScreenState
   @override
   void initState() {
     super.initState();
+    RiderForegroundLocationService.instance.pauseTracking();
     _geocodeAddresses();
     _startLocationTracking();
     // Start the offline-first upload queue (10-min retry + connectivity trigger)
@@ -275,6 +277,7 @@ class _RiderDeliveryProgressScreenState
     _loadingTimer?.cancel();
     _unloadingTimer?.cancel();
     _locationTrackingTimer?.cancel();
+    RiderForegroundLocationService.instance.resumeTracking();
     _receiverNameController.dispose();
     _arrivalRemarksController.dispose();
     _destinationArrivalRemarksController.dispose();

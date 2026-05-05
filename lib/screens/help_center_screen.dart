@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../utils/app_colors.dart';
+import '../utils/app_constants.dart';
 import '../utils/ui_helpers.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'support/support_tickets_screen.dart';
@@ -142,6 +143,10 @@ class HelpCenterScreen extends StatelessWidget {
 
             const SizedBox(height: 32),
 
+            _buildCustomerHelpSupportCard(context),
+
+            const SizedBox(height: 24),
+
             // Contact Support
             Container(
               width: double.infinity,
@@ -214,18 +219,20 @@ class HelpCenterScreen extends StatelessWidget {
                       Expanded(
                         child: _buildContactButton(
                           context,
-                          'Call Us',
-                          Icons.phone,
-                          () => _launchPhone(),
+                          'Email Activation',
+                          Icons.email,
+                          _launchEmail,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: _buildContactButton(
                           context,
-                          'Email Us',
-                          Icons.email,
-                          () => _launchEmail(),
+                          'Assignment Info',
+                          Icons.info_outline,
+                          () => UIHelpers.showInfoToast(
+                            'Assignment hotline will be available once the postpaid SIM is ready.',
+                          ),
                         ),
                       ),
                     ],
@@ -391,6 +398,144 @@ class HelpCenterScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildCustomerHelpSupportCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Help & Support',
+            style: TextStyle(
+              fontSize: 18,
+              fontFamily: 'Bold',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Use the right contact channel depending on the concern.',
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: 'Regular',
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildSupportContactTile(
+            title: AppConstants.customerHelpActivationLabel,
+            value: AppConstants.customerHelpActivationEmail,
+            icon: Icons.mark_email_read_outlined,
+            accentColor: AppColors.primaryRed,
+            actionLabel: 'Email',
+            onTap: _launchEmail,
+          ),
+          const SizedBox(height: 12),
+          _buildSupportContactTile(
+            title: AppConstants.customerHelpAssignmentLabel,
+            value: AppConstants.customerHelpAssignmentPhone,
+            description: AppConstants.customerHelpAssignmentStatus,
+            icon: Icons.phone_in_talk_outlined,
+            accentColor: AppColors.primaryBlue,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupportContactTile({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color accentColor,
+    String? description,
+    String? actionLabel,
+    VoidCallback? onTap,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: accentColor.withOpacity(0.16),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: accentColor,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Medium',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (description != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (onTap != null && actionLabel != null)
+            TextButton(
+              onPressed: onTap,
+              child: Text(actionLabel),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _showCategoryDetails(BuildContext context, HelpCategory category) {
     showModalBottomSheet(
       context: context,
@@ -546,18 +691,10 @@ class HelpCenterScreen extends StatelessWidget {
     );
   }
 
-  void _launchPhone() async {
-    const phoneNumber = '09090104355';
-    final uri = Uri.parse('tel:$phoneNumber');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      UIHelpers.showErrorToast('Could not launch phone dialer');
-    }
-  }
-
   void _launchEmail() async {
-    final uri = Uri.parse('mailto:support@citimovers.com');
+    final uri = Uri.parse(
+      'mailto:${AppConstants.customerHelpActivationEmail}',
+    );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {

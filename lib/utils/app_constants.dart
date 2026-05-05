@@ -96,6 +96,12 @@ class AppConstants {
   // Support Contact
   static const String supportPhone = '09090104355';
   static const String supportEmail = 'support@citimovers.com';
+  static const String customerHelpActivationEmail = 'support@citimovers.net';
+  static const String customerHelpActivationLabel = 'For Email Activation';
+  static const String customerHelpAssignmentLabel = 'For Assignment';
+  static const String customerHelpAssignmentPhone =
+      'Company official phone number';
+  static const String customerHelpAssignmentStatus = 'Postpaid SIM coming soon';
 
   // Privacy Policy Contact
   static const String privacyEmail = 'privacy@citimovers.com';
