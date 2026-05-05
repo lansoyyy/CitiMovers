@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../config/theme.dart';
-import '../../services/auth_service.dart';
 import '../../services/admin_repository.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -18,6 +17,9 @@ class DispatchBoardScreen extends StatefulWidget {
 
 class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final Map<String, GlobalKey> _loggedInRiderCardKeys = <String, GlobalKey>{};
+  final Map<String, GlobalKey> _selectedUnitRiderCardKeys =
+      <String, GlobalKey>{};
   String _searchQuery = '';
   String? _selectedBookingId;
   String? _selectedUnitName;
@@ -30,20 +32,71 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     super.dispose();
   }
 
+  String _unitNameForRider(Map<String, dynamic> rider) {
+    final unitName = (rider['unitName'] ?? 'Independent Units')
+        .toString()
+        .trim();
+    return unitName.isEmpty ? 'Independent Units' : unitName;
+  }
+
+  GlobalKey _loggedInRiderCardKeyFor(String riderId) {
+    return _loggedInRiderCardKeys.putIfAbsent(
+      riderId,
+      () => GlobalKey(debugLabel: 'dispatch-logged-in-rider-$riderId'),
+    );
+  }
+
+  GlobalKey _selectedUnitRiderCardKeyFor(String riderId) {
+    return _selectedUnitRiderCardKeys.putIfAbsent(
+      riderId,
+      () => GlobalKey(debugLabel: 'dispatch-selected-unit-rider-$riderId'),
+    );
+  }
+
+  void _scrollUnitsPanelToRider(String riderId) {
+    if (riderId.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final targetContext =
+          _loggedInRiderCardKeys[riderId]?.currentContext ??
+          _selectedUnitRiderCardKeys[riderId]?.currentContext;
+      if (targetContext == null) return;
+
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignment: 0.08,
+      );
+    });
+  }
+
+  void _selectRider(
+    Map<String, dynamic> rider, {
+    bool revealInUnitsPanel = true,
+  }) {
+    final riderId = (rider['id'] ?? '').toString();
+    if (riderId.isEmpty) return;
+
+    setState(() {
+      _highlightedRiderId = riderId;
+      _selectedUnitName = _unitNameForRider(rider);
+    });
+
+    if (revealInUnitsPanel) {
+      _scrollUnitsPanelToRider(riderId);
+    }
+  }
+
   Map<String, List<Map<String, dynamic>>> _groupRidersByUnit(
     List<Map<String, dynamic>> riders,
   ) {
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (final rider in riders) {
-      final unitName = (rider['unitName'] ?? 'Independent Units')
-          .toString()
-          .trim();
-      grouped
-          .putIfAbsent(
-            unitName.isEmpty ? 'Independent Units' : unitName,
-            () => <Map<String, dynamic>>[],
-          )
-          .add(rider);
+      final unitName = _unitNameForRider(rider);
+      grouped.putIfAbsent(unitName, () => <Map<String, dynamic>>[]).add(rider);
     }
 
     final entries = grouped.entries.toList()
@@ -78,6 +131,27 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
       ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
       return haystack.contains(query);
     }).toList();
+  }
+
+  List<Map<String, dynamic>> _prioritizeHighlightedRider(
+    List<Map<String, dynamic>> riders,
+    String? highlightedRiderId,
+  ) {
+    if (highlightedRiderId == null ||
+        highlightedRiderId.isEmpty ||
+        riders.length < 2) {
+      return riders;
+    }
+
+    final highlightedIndex = riders.indexWhere(
+      (rider) => (rider['id'] ?? '').toString() == highlightedRiderId,
+    );
+    if (highlightedIndex <= 0) return riders;
+
+    final reorderedRiders = List<Map<String, dynamic>>.from(riders);
+    final highlightedRider = reorderedRiders.removeAt(highlightedIndex);
+    reorderedRiders.insert(0, highlightedRider);
+    return reorderedRiders;
   }
 
   Map<String, dynamic>? _findBooking(
@@ -192,7 +266,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
 
     final highlightedRider = _findRider(riders, highlightedRiderId);
     if (highlightedRider != null) {
-      return (highlightedRider['unitName'] ?? '').toString();
+      return _unitNameForRider(highlightedRider);
     }
 
     for (final entry in groupedRiders.entries) {
@@ -376,6 +450,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         reason: reason,
       );
       if (!mounted) return false;
+      _scrollUnitsPanelToRider((rider['id'] ?? '').toString());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -402,298 +477,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         setState(() => _isAssigning = false);
       }
     }
-  }
-
-  Future<void> _showVehicleActivityDialog({
-    required Map<String, dynamic> rider,
-    required List<Map<String, dynamic>> riders,
-    required Map<String, Map<String, dynamic>> activeAssignments,
-    Map<String, dynamic>? selectedBooking,
-  }) async {
-    final unitName = (rider['unitName'] ?? 'Independent Units').toString();
-    final unitRiders = riders
-        .where(
-          (entry) =>
-              (entry['unitName'] ?? 'Independent Units').toString() == unitName,
-        )
-        .toList();
-    final locationUpdatedAt = AdminRepository.parseTimestamp(
-      rider['locationUpdatedAt'],
-    );
-    final highlightedActivity =
-        activeAssignments[(rider['id'] ?? '').toString()];
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('$unitName Activity'),
-        content: SizedBox(
-          width: 700,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 560),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AdminTheme.surface,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AdminTheme.divider),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    rider['name']?.toString() ??
-                                        'Unknown rider',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      color: AdminTheme.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _riderSubtitle(rider),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: AdminTheme.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            _InfoChip(
-                              label: _activityLabel(highlightedActivity, rider),
-                              color: _statusColor(
-                                (highlightedActivity?['status'] ?? '')
-                                    .toString(),
-                                isOnline: rider['isOnline'] == true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _formatLocation(rider),
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AdminTheme.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          locationUpdatedAt == null
-                              ? 'Waiting for GPS update'
-                              : 'Last GPS ping ${_formatDateTime(locationUpdatedAt)}',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: AdminTheme.textSecondary,
-                          ),
-                        ),
-                        if (highlightedActivity != null) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            'Trip ${_bookingReference(highlightedActivity)} • ${highlightedActivity['pickupAddress'] ?? 'No pickup'} → ${highlightedActivity['dropoffAddress'] ?? 'No drop-off'}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: AdminTheme.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Current Activity in This Unit',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AdminTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...unitRiders.map((unitRider) {
-                    final unitRiderId = (unitRider['id'] ?? '').toString();
-                    final activityBooking = activeAssignments[unitRiderId];
-                    final canAssign =
-                        selectedBooking != null &&
-                        activityBooking == null &&
-                        !_isAssigning;
-                    final isSelectedRider =
-                        unitRiderId == (rider['id'] ?? '').toString();
-                    final unitLocationUpdatedAt =
-                        AdminRepository.parseTimestamp(
-                          unitRider['locationUpdatedAt'],
-                        );
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: isSelectedRider
-                            ? AdminTheme.primary.withValues(alpha: 0.05)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelectedRider
-                              ? AdminTheme.primary
-                              : AdminTheme.divider,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      unitRider['name']?.toString() ??
-                                          'Unknown rider',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: AdminTheme.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _riderSubtitle(unitRider),
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: AdminTheme.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              _InfoChip(
-                                label: _activityLabel(
-                                  activityBooking,
-                                  unitRider,
-                                ),
-                                color: _statusColor(
-                                  (activityBooking?['status'] ?? '').toString(),
-                                  isOnline: unitRider['isOnline'] == true,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _formatLocation(unitRider),
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: AdminTheme.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            unitLocationUpdatedAt == null
-                                ? 'Waiting for GPS update'
-                                : 'Last GPS ping ${_formatDateTime(unitLocationUpdatedAt)}',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: AdminTheme.textSecondary,
-                            ),
-                          ),
-                          if (activityBooking != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Trip ${_bookingReference(activityBooking)} • ${activityBooking['pickupAddress'] ?? 'No pickup'} → ${activityBooking['dropoffAddress'] ?? 'No drop-off'}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: AdminTheme.textSecondary,
-                              ),
-                            ),
-                          ] else if (selectedBooking != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Available for trip ${_bookingReference(selectedBooking)}',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AdminTheme.statusActive,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (AdminAuthService().canAccessRoute(
-                                '/riders/$unitRiderId',
-                              )) ...[
-                                TextButton(
-                                  onPressed: () =>
-                                      context.go('/riders/$unitRiderId'),
-                                  child: const Text('Open rider'),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                              ElevatedButton.icon(
-                                onPressed: canAssign
-                                    ? () async {
-                                        final didAssign =
-                                            await _assignBookingToRider(
-                                              selectedBooking,
-                                              unitRider,
-                                            );
-                                        if (!dialogContext.mounted) return;
-                                        if (didAssign) {
-                                          Navigator.of(dialogContext).pop();
-                                        }
-                                      }
-                                    : null,
-                                icon: const Icon(
-                                  Icons.assignment_turned_in_outlined,
-                                ),
-                                label: Text(
-                                  selectedBooking == null
-                                      ? 'Select Booking'
-                                      : activityBooking != null
-                                      ? 'Busy on Current Trip'
-                                      : _isAssigning
-                                      ? 'Assigning...'
-                                      : 'Assign to Trip',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildQueuePanel(List<Map<String, dynamic>> queue) {
@@ -992,21 +775,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                     child: MouseRegion(
                                       cursor: SystemMouseCursors.click,
                                       child: GestureDetector(
-                                        onTap: () async {
-                                          setState(() {
-                                            _highlightedRiderId = riderId;
-                                            _selectedUnitName =
-                                                (rider['unitName'] ?? '')
-                                                    .toString();
-                                          });
-                                          await _showVehicleActivityDialog(
-                                            rider: rider,
-                                            riders: riders,
-                                            activeAssignments:
-                                                activeAssignments,
-                                            selectedBooking: selectedBooking,
-                                          );
-                                        },
+                                        onTap: () => _selectRider(rider),
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           crossAxisAlignment:
@@ -1144,10 +913,18 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     String? selectedUnitName,
   ) {
     final groupedRiders = _groupRidersByUnit(riders);
-    final loggedInRiders = riders.where(_isLoggedInRider).toList();
-    final selectedUnitRiders = selectedUnitName != null
-        ? (groupedRiders[selectedUnitName] ?? const <Map<String, dynamic>>[])
-        : const <Map<String, dynamic>>[];
+    final loggedInRiders = _prioritizeHighlightedRider(
+      riders.where(_isLoggedInRider).toList(),
+      highlightedRiderId,
+    );
+    final selectedUnitRiders = _prioritizeHighlightedRider(
+      selectedUnitName != null
+          ? List<Map<String, dynamic>>.from(
+              groupedRiders[selectedUnitName] ?? const <Map<String, dynamic>>[],
+            )
+          : <Map<String, dynamic>>[],
+      highlightedRiderId,
+    );
 
     return Card(
       child: Padding(
@@ -1204,148 +981,12 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
               )
             else
               Expanded(
-                child: ListView(
-                  children: [
-                    Text(
-                      'Logged-in Drivers',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AdminTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (loggedInRiders.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AdminTheme.surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: AdminTheme.divider),
-                        ),
-                        child: Text(
-                          'No drivers are logged in right now.',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AdminTheme.textSecondary,
-                          ),
-                        ),
-                      )
-                    else
-                      ...loggedInRiders.map((rider) {
-                        final riderId = (rider['id'] ?? '').toString();
-                        final busyAssignment = activeAssignments[riderId];
-                        final activityLabel = _activityLabel(
-                          busyAssignment,
-                          rider,
-                        );
-                        final activityColor = _statusColor(
-                          (busyAssignment?['status'] ?? '').toString(),
-                          isOnline: true,
-                        );
-                        final isHighlighted = riderId == highlightedRiderId;
-                        final locationUpdatedAt =
-                            AdminRepository.parseTimestamp(
-                              rider['locationUpdatedAt'],
-                            );
-
-                        return InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => setState(() {
-                            _highlightedRiderId = riderId;
-                            _selectedUnitName = (rider['unitName'] ?? '')
-                                .toString();
-                          }),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: isHighlighted
-                                  ? AdminTheme.primary.withValues(alpha: 0.06)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isHighlighted
-                                    ? AdminTheme.primary
-                                    : AdminTheme.divider,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            rider['name']?.toString() ??
-                                                'Unknown rider',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w700,
-                                              color: AdminTheme.textPrimary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '${rider['unitName'] ?? 'Independent Units'} • ${_riderSubtitle(rider)}',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 12,
-                                              color: AdminTheme.textSecondary,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    _InfoChip(
-                                      label: activityLabel,
-                                      color: activityColor,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  _formatLocation(rider),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: AdminTheme.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  locationUpdatedAt == null
-                                      ? 'Waiting for GPS update'
-                                      : 'Last GPS ping ${_formatDateTime(locationUpdatedAt)}',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: AdminTheme.textSecondary,
-                                  ),
-                                ),
-                                if (busyAssignment != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Trip ${_bookingReference(busyAssignment)} • ${busyAssignment['pickupAddress'] ?? 'No pickup'} → ${busyAssignment['dropoffAddress'] ?? 'No drop-off'}',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: AdminTheme.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                    const SizedBox(height: 12),
-                    if (selectedUnitName != null &&
-                        selectedUnitRiders.isNotEmpty) ...[
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'Selected Unit Activity',
+                        'Logged-in Drivers',
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -1353,253 +994,402 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AdminTheme.surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: AdminTheme.divider),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    selectedUnitName,
+                      if (loggedInRiders.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AdminTheme.surface,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: AdminTheme.divider),
+                          ),
+                          child: Text(
+                            'No drivers are logged in right now.',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: AdminTheme.textSecondary,
+                            ),
+                          ),
+                        )
+                      else
+                        ...loggedInRiders.map((rider) {
+                          final riderId = (rider['id'] ?? '').toString();
+                          final busyAssignment = activeAssignments[riderId];
+                          final activityLabel = _activityLabel(
+                            busyAssignment,
+                            rider,
+                          );
+                          final activityColor = _statusColor(
+                            (busyAssignment?['status'] ?? '').toString(),
+                            isOnline: true,
+                          );
+                          final isHighlighted = riderId == highlightedRiderId;
+                          final locationUpdatedAt =
+                              AdminRepository.parseTimestamp(
+                                rider['locationUpdatedAt'],
+                              );
+
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () => _selectRider(rider),
+                            child: Container(
+                              key: _loggedInRiderCardKeyFor(riderId),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: isHighlighted
+                                    ? AdminTheme.primary.withValues(alpha: 0.06)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isHighlighted
+                                      ? AdminTheme.primary
+                                      : AdminTheme.divider,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              rider['name']?.toString() ??
+                                                  'Unknown rider',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: AdminTheme.textPrimary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${rider['unitName'] ?? 'Independent Units'} • ${_riderSubtitle(rider)}',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                color: AdminTheme.textSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      _InfoChip(
+                                        label: activityLabel,
+                                        color: activityColor,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    _formatLocation(rider),
                                     style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
                                       color: AdminTheme.textPrimary,
                                     ),
                                   ),
-                                ),
-                                _InfoChip(
-                                  label:
-                                      '${selectedUnitRiders.where(_isLoggedInRider).length}/${selectedUnitRiders.length} logged in',
-                                  color: AdminTheme.statusActive,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            ...selectedUnitRiders.map((rider) {
-                              final riderId = (rider['id'] ?? '').toString();
-                              final activityBooking =
-                                  activeAssignments[riderId];
-                              final activityLabel = _activityLabel(
-                                activityBooking,
-                                rider,
-                              );
-                              final canAssign =
-                                  selectedBooking != null &&
-                                  activityBooking == null &&
-                                  !_isAssigning;
-                              final activityColor = _statusColor(
-                                (activityBooking?['status'] ?? '').toString(),
-                                isOnline: rider['isOnline'] == true,
-                              );
-                              final locationUpdatedAt =
-                                  AdminRepository.parseTimestamp(
-                                    rider['locationUpdatedAt'],
-                                  );
-
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: AdminTheme.divider),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            rider['name']?.toString() ??
-                                                'Unknown rider',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w700,
-                                              color: AdminTheme.textPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                        _InfoChip(
-                                          label: activityLabel,
-                                          color: activityColor,
-                                        ),
-                                      ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    locationUpdatedAt == null
+                                        ? 'Waiting for GPS update'
+                                        : 'Last GPS ping ${_formatDateTime(locationUpdatedAt)}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      color: AdminTheme.textSecondary,
                                     ),
-                                    const SizedBox(height: 6),
+                                  ),
+                                  if (busyAssignment != null) ...[
+                                    const SizedBox(height: 8),
                                     Text(
-                                      _riderSubtitle(rider),
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: AdminTheme.textSecondary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      _formatLocation(rider),
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: AdminTheme.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      locationUpdatedAt == null
-                                          ? 'Waiting for GPS update'
-                                          : 'Last GPS ping ${_formatDateTime(locationUpdatedAt)}',
+                                      'Trip ${_bookingReference(busyAssignment)} • ${busyAssignment['pickupAddress'] ?? 'No pickup'} → ${busyAssignment['dropoffAddress'] ?? 'No drop-off'}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.inter(
                                         fontSize: 11,
                                         color: AdminTheme.textSecondary,
                                       ),
                                     ),
-                                    if (activityBooking != null) ...[
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        'Trip ${_bookingReference(activityBooking)}',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: AdminTheme.primary,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${activityBooking['pickupAddress'] ?? 'No pickup'} → ${activityBooking['dropoffAddress'] ?? 'No drop-off'}',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          color: AdminTheme.textSecondary,
-                                        ),
-                                      ),
-                                    ] else if (selectedBooking != null) ...[
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        'Available for trip ${_bookingReference(selectedBooking)}',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: AdminTheme.statusActive,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 12),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: ElevatedButton.icon(
-                                        onPressed: canAssign
-                                            ? () => _assignBookingToRider(
-                                                selectedBooking,
-                                                rider,
-                                              )
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.assignment_turned_in_outlined,
-                                        ),
-                                        label: Text(
-                                          selectedBooking == null
-                                              ? 'Select Booking'
-                                              : activityBooking != null
-                                              ? 'Busy on Current Trip'
-                                              : _isAssigning
-                                              ? 'Assigning...'
-                                              : 'Assign to Trip',
-                                        ),
-                                      ),
-                                    ),
                                   ],
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    Text(
-                      'All Registered Units',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AdminTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...groupedRiders.entries.map((entry) {
-                      final unitRiders = entry.value;
-                      final onlineCount = unitRiders
-                          .where(_isLoggedInRider)
-                          .length;
-                      final isSelectedUnit = entry.key == selectedUnitName;
-
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () => setState(() {
-                          _selectedUnitName = entry.key;
-                          final preferredRider = unitRiders.firstWhere(
-                            (rider) => _isLoggedInRider(rider),
-                            orElse: () => unitRiders.first,
+                                ],
+                              ),
+                            ),
                           );
-                          _highlightedRiderId = (preferredRider['id'] ?? '')
-                              .toString();
                         }),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 16),
+                      const SizedBox(height: 12),
+                      if (selectedUnitName != null &&
+                          selectedUnitRiders.isNotEmpty) ...[
+                        Text(
+                          'Selected Unit Activity',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AdminTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: isSelectedUnit
-                                ? AdminTheme.primary.withValues(alpha: 0.07)
-                                : AdminTheme.surface,
+                            color: AdminTheme.surface,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: isSelectedUnit
-                                  ? AdminTheme.primary
-                                  : AdminTheme.divider,
-                            ),
+                            border: Border.all(color: AdminTheme.divider),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      entry.key,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      selectedUnitName,
                                       style: GoogleFonts.inter(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
                                         color: AdminTheme.textPrimary,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${unitRiders.length} riders • $onlineCount logged in',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: AdminTheme.textSecondary,
-                                      ),
+                                  ),
+                                  _InfoChip(
+                                    label:
+                                        '${selectedUnitRiders.where(_isLoggedInRider).length}/${selectedUnitRiders.length} logged in',
+                                    color: AdminTheme.statusActive,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              ...selectedUnitRiders.map((rider) {
+                                final riderId = (rider['id'] ?? '').toString();
+                                final activityBooking =
+                                    activeAssignments[riderId];
+                                final isHighlighted =
+                                    riderId == highlightedRiderId;
+                                final activityLabel = _activityLabel(
+                                  activityBooking,
+                                  rider,
+                                );
+                                final canAssign =
+                                    selectedBooking != null &&
+                                    activityBooking == null &&
+                                    !_isAssigning;
+                                final activityColor = _statusColor(
+                                  (activityBooking?['status'] ?? '').toString(),
+                                  isOnline: rider['isOnline'] == true,
+                                );
+                                final locationUpdatedAt =
+                                    AdminRepository.parseTimestamp(
+                                      rider['locationUpdatedAt'],
+                                    );
+
+                                return Container(
+                                  key: _selectedUnitRiderCardKeyFor(riderId),
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: isHighlighted
+                                        ? AdminTheme.primary.withValues(
+                                            alpha: 0.06,
+                                          )
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isHighlighted
+                                          ? AdminTheme.primary
+                                          : AdminTheme.divider,
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.chevron_right,
-                                color: AdminTheme.textSecondary,
-                              ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              rider['name']?.toString() ??
+                                                  'Unknown rider',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: AdminTheme.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                          _InfoChip(
+                                            label: activityLabel,
+                                            color: activityColor,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        _riderSubtitle(rider),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: AdminTheme.textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        _formatLocation(rider),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: AdminTheme.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        locationUpdatedAt == null
+                                            ? 'Waiting for GPS update'
+                                            : 'Last GPS ping ${_formatDateTime(locationUpdatedAt)}',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          color: AdminTheme.textSecondary,
+                                        ),
+                                      ),
+                                      if (activityBooking != null) ...[
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Trip ${_bookingReference(activityBooking)}',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AdminTheme.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${activityBooking['pickupAddress'] ?? 'No pickup'} → ${activityBooking['dropoffAddress'] ?? 'No drop-off'}',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 11,
+                                            color: AdminTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ] else if (selectedBooking != null) ...[
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Available for trip ${_bookingReference(selectedBooking)}',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AdminTheme.statusActive,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 12),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: ElevatedButton.icon(
+                                          onPressed: canAssign
+                                              ? () => _assignBookingToRider(
+                                                  selectedBooking,
+                                                  rider,
+                                                )
+                                              : null,
+                                          icon: const Icon(
+                                            Icons.assignment_turned_in_outlined,
+                                          ),
+                                          label: Text(
+                                            selectedBooking == null
+                                                ? 'Select Booking'
+                                                : activityBooking != null
+                                                ? 'Busy on Current Trip'
+                                                : _isAssigning
+                                                ? 'Assigning...'
+                                                : 'Assign to Trip',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                         ),
-                      );
-                    }),
-                  ],
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        'All Registered Units',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AdminTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...groupedRiders.entries.map((entry) {
+                        final unitRiders = entry.value;
+                        final onlineCount = unitRiders
+                            .where(_isLoggedInRider)
+                            .length;
+                        final isSelectedUnit = entry.key == selectedUnitName;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () => setState(() {
+                            _selectedUnitName = entry.key;
+                            final preferredRider = unitRiders.firstWhere(
+                              (rider) => _isLoggedInRider(rider),
+                              orElse: () => unitRiders.first,
+                            );
+                            _highlightedRiderId = (preferredRider['id'] ?? '')
+                                .toString();
+                          }),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: isSelectedUnit
+                                  ? AdminTheme.primary.withValues(alpha: 0.07)
+                                  : AdminTheme.surface,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: isSelectedUnit
+                                    ? AdminTheme.primary
+                                    : AdminTheme.divider,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        entry.key,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: AdminTheme.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${unitRiders.length} riders • $onlineCount logged in',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: AdminTheme.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
                 ),
               ),
           ],
