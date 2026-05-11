@@ -127,6 +127,19 @@ class RiderAuthService {
     return _firestore.collection('riders').doc(normalizedPhoneNumber);
   }
 
+  /// Prefer server data when online so access checks are not based on a stale
+  /// offline cache (which could incorrectly look “pending” and wipe the session).
+  Future<DocumentSnapshot<Map<String, dynamic>>> _getRiderDocPreferServer(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    try {
+      return await ref.get(const GetOptions(source: Source.server));
+    } catch (e) {
+      debugPrint('Rider doc read falling back to cache: $e');
+      return await ref.get();
+    }
+  }
+
   RiderAccessState _resolveAccessState(Map<String, dynamic> data) {
     final accountStatus =
         (data['accountStatus'] ?? data['status'] ?? 'pending').toString();
@@ -551,7 +564,7 @@ class RiderAuthService {
           normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
 
       final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
-      final docSnap = await riderDocRef.get();
+      final docSnap = await _getRiderDocPreferServer(riderDocRef);
 
       Map<String, dynamic>? data;
       if (docSnap.exists) {
@@ -635,9 +648,17 @@ class RiderAuthService {
   /// Get current rider
   Future<RiderModel?> getCurrentRider() async {
     try {
+      // Match [AuthService.getCurrentUser]: trust restored session from storage
+      // instead of calling [loginRider] on every access. Repeated Firestore
+      // logins during delivery / app resume could hit stale cache, fail open,
+      // or trip the non-approved branch and clear storage — appearing as a
+      // random logout (“loopback”) to drivers.
+      if (_currentRider != null) return _currentRider;
+
       _loadRiderFromStorage();
-      final storedPhoneNumber = _currentRider?.phoneNumber ??
-          (_storage.read('riderPhoneNumber') as String?);
+      if (_currentRider != null) return _currentRider;
+
+      final storedPhoneNumber = _storage.read('riderPhoneNumber') as String?;
       if (storedPhoneNumber == null || storedPhoneNumber.isEmpty) {
         return null;
       }
