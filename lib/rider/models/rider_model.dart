@@ -15,11 +15,22 @@ class HelperModel {
   });
 
   factory HelperModel.fromMap(Map<String, dynamic> json) {
+    String? stringOrNull(dynamic value) {
+      if (value == null) return null;
+      final normalized = value.toString().trim();
+      if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+        return null;
+      }
+      return normalized;
+    }
+
     return HelperModel(
-      name: (json['name'] ?? '').toString(),
-      phoneNumber: json['phoneNumber'] as String?,
-      photoUrl: json['photoUrl'] as String?,
-      documents: json['documents'] as Map<String, dynamic>?,
+      name: stringOrNull(json['name']) ?? '',
+      phoneNumber: stringOrNull(json['phoneNumber']),
+      photoUrl: stringOrNull(json['photoUrl']),
+      documents: json['documents'] is Map
+          ? Map<String, dynamic>.from(json['documents'] as Map)
+          : null,
     );
   }
 
@@ -269,6 +280,48 @@ class RiderModel {
       return fallback;
     }
 
+    double? parseNullableDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        final normalized = value.trim();
+        if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+          return null;
+        }
+        return double.tryParse(normalized);
+      }
+      return null;
+    }
+
+    bool parseBool(dynamic value, {bool fallback = false}) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        switch (value.trim().toLowerCase()) {
+          case 'true':
+          case '1':
+          case 'yes':
+          case 'y':
+            return true;
+          case 'false':
+          case '0':
+          case 'no':
+          case 'n':
+            return false;
+        }
+      }
+      return fallback;
+    }
+
+    String? stringOrNull(dynamic value) {
+      if (value == null) return null;
+      final normalized = value.toString().trim();
+      if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+        return null;
+      }
+      return normalized;
+    }
+
     Map<String, dynamic>? parseMap(dynamic value) {
       if (value is Map) {
         return value.map((key, value) => MapEntry(key.toString(), value));
@@ -326,61 +379,62 @@ class RiderModel {
       h1 = buildHelper(
         helperData: parseMap(helpersList[0]),
         prefix: 'helper_1_',
-        fallbackName: json['helper1Name']?.toString(),
-        fallbackPhone: json['helper1Phone']?.toString(),
-        fallbackPhotoUrl: json['helper1PhotoUrl']?.toString(),
+        fallbackName: stringOrNull(json['helper1Name']),
+        fallbackPhone: stringOrNull(json['helper1Phone']),
+        fallbackPhotoUrl: stringOrNull(json['helper1PhotoUrl']),
       );
       if (helpersList.length > 1) {
         h2 = buildHelper(
           helperData: parseMap(helpersList[1]),
           prefix: 'helper_2_',
-          fallbackName: json['helper2Name']?.toString(),
-          fallbackPhone: json['helper2Phone']?.toString(),
-          fallbackPhotoUrl: json['helper2PhotoUrl']?.toString(),
+          fallbackName: stringOrNull(json['helper2Name']),
+          fallbackPhone: stringOrNull(json['helper2Phone']),
+          fallbackPhotoUrl: stringOrNull(json['helper2PhotoUrl']),
         );
       }
     }
 
     // Also check individual helper fields (alternative format)
-    if (h1 == null && json['helper1Name'] != null) {
+    if (h1 == null && (json['helper1'] != null || json['helper1Name'] != null)) {
       h1 = buildHelper(
         helperData: parseMap(json['helper1']),
         prefix: 'helper_1_',
-        fallbackName: json['helper1Name']?.toString(),
-        fallbackPhone: json['helper1Phone']?.toString(),
-        fallbackPhotoUrl: json['helper1PhotoUrl']?.toString(),
+        fallbackName: stringOrNull(json['helper1Name']),
+        fallbackPhone: stringOrNull(json['helper1Phone']),
+        fallbackPhotoUrl: stringOrNull(json['helper1PhotoUrl']),
       );
     }
-    if (h2 == null && json['helper2Name'] != null) {
+    if (h2 == null && (json['helper2'] != null || json['helper2Name'] != null)) {
       h2 = buildHelper(
         helperData: parseMap(json['helper2']),
         prefix: 'helper_2_',
-        fallbackName: json['helper2Name']?.toString(),
-        fallbackPhone: json['helper2Phone']?.toString(),
-        fallbackPhotoUrl: json['helper2PhotoUrl']?.toString(),
+        fallbackName: stringOrNull(json['helper2Name']),
+        fallbackPhone: stringOrNull(json['helper2Phone']),
+        fallbackPhotoUrl: stringOrNull(json['helper2PhotoUrl']),
       );
     }
 
     return RiderModel(
-      riderId: (json['riderId'] ?? '').toString(),
-      name: (json['name'] ?? '').toString(),
-      phoneNumber:
-          (json['phoneNumber'] ?? json['phone'] ?? json['contactNumber'] ?? '')
-              .toString(),
-      email: json['email'] as String?,
-      photoUrl: json['photoUrl'] as String?,
-      vehicleType: (json['vehicleType'] ?? 'AUV').toString(),
-      vehiclePlateNumber: json['vehiclePlateNumber'] as String?,
-      vehicleModel: json['vehicleModel'] as String?,
-      vehicleColor: json['vehicleColor'] as String?,
-      vehiclePhotoUrl: json['vehiclePhotoUrl'] as String?,
-      status: (json['accountStatus'] ?? json['status'] ?? 'pending').toString(),
-      isOnline: (json['isOnline'] as bool?) ?? false,
+      riderId: stringOrNull(json['riderId']) ?? '',
+      name: stringOrNull(json['name']) ?? '',
+      phoneNumber: stringOrNull(
+            json['phoneNumber'] ?? json['phone'] ?? json['contactNumber'],
+          ) ??
+          '',
+      email: stringOrNull(json['email']),
+      photoUrl: stringOrNull(json['photoUrl']),
+      vehicleType: stringOrNull(json['vehicleType']) ?? 'AUV',
+      vehiclePlateNumber: stringOrNull(json['vehiclePlateNumber']),
+      vehicleModel: stringOrNull(json['vehicleModel']),
+      vehicleColor: stringOrNull(json['vehicleColor']),
+      vehiclePhotoUrl: stringOrNull(json['vehiclePhotoUrl']),
+      status: stringOrNull(json['accountStatus'] ?? json['status']) ?? 'pending',
+      isOnline: parseBool(json['isOnline']),
       rating: parseDouble(json['rating']),
       totalDeliveries: parseInt(json['totalDeliveries']),
       totalEarnings: parseDouble(json['totalEarnings']),
-      currentLatitude: (json['currentLatitude'] as num?)?.toDouble(),
-      currentLongitude: (json['currentLongitude'] as num?)?.toDouble(),
+      currentLatitude: parseNullableDouble(json['currentLatitude']),
+      currentLongitude: parseNullableDouble(json['currentLongitude']),
       createdAt: parseDateTime(json['createdAt']),
       updatedAt: parseDateTime(json['updatedAt']),
       helper1: h1,

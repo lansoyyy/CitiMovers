@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -174,22 +175,88 @@ class RiderAuthService {
     }
   }
 
+  String? _stringOrNull(dynamic value) {
+    if (value == null) return null;
+    final normalized = value.toString().trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+      return null;
+    }
+    return normalized;
+  }
+
+  RiderModel? _restoreRiderFromLocalCache({
+    String? riderId,
+    String? phoneNumber,
+    dynamic riderData,
+  }) {
+    try {
+      final cachedData = riderData is Map
+          ? Map<String, dynamic>.from(riderData)
+          : <String, dynamic>{};
+
+      final cachedRiderId = _stringOrNull(cachedData['riderId']);
+      final cachedPhone = _stringOrNull(
+            cachedData['phoneNumber'] ??
+                cachedData['phone'] ??
+                cachedData['contactNumber'],
+          ) ??
+          _stringOrNull(phoneNumber);
+
+      final resolvedRiderId = _stringOrNull(riderId) ??
+          cachedRiderId ??
+          (cachedPhone != null ? _normalizePhoneNumber(cachedPhone) : null);
+      final resolvedPhone = cachedPhone ?? _stringOrNull(resolvedRiderId);
+
+      if (resolvedRiderId == null ||
+          resolvedRiderId.isEmpty ||
+          resolvedPhone == null ||
+          resolvedPhone.isEmpty) {
+        return null;
+      }
+
+      cachedData['riderId'] = resolvedRiderId;
+      cachedData['phoneNumber'] = _normalizePhoneNumber(resolvedPhone);
+      cachedData['status'] ??= cachedData['accountStatus'] ?? 'active';
+      cachedData['accountStatus'] ??= cachedData['status'] ?? 'active';
+      cachedData['createdAt'] ??= DateTime.now().toIso8601String();
+      cachedData['updatedAt'] ??= DateTime.now().toIso8601String();
+
+      final rider = RiderModel.fromMap(cachedData);
+      if (rider.riderId.isEmpty || rider.phoneNumber.isEmpty) {
+        return null;
+      }
+
+      _currentRider = rider;
+      _lastLoginBlockMessage = null;
+      return rider;
+    } catch (e) {
+      debugPrint('Error restoring cached rider session: $e');
+      return null;
+    }
+  }
+
   void _loadRiderFromStorage() {
     try {
-      final riderId = _storage.read('riderId') as String?;
-      final phoneNumber = _storage.read('riderPhoneNumber') as String?;
-
-      // Try to load full rider data first
+      final riderId = _stringOrNull(_storage.read('riderId'));
+      final phoneNumber = _stringOrNull(_storage.read('riderPhoneNumber'));
       final riderData = _storage.read('riderData');
-      if (riderData is Map && riderData.isNotEmpty) {
-        try {
-          _currentRider =
-              RiderModel.fromMap(Map<String, dynamic>.from(riderData));
-          debugPrint('Rider restored from storage: ${_currentRider?.name}');
-          return;
-        } catch (e) {
-          debugPrint('Error parsing stored rider data: $e');
+
+      final restoredRider = _restoreRiderFromLocalCache(
+        riderId: riderId,
+        phoneNumber: phoneNumber,
+        riderData: riderData,
+      );
+      if (restoredRider != null) {
+        if (riderId != restoredRider.riderId) {
+          unawaited(_storage.write('riderId', restoredRider.riderId));
         }
+        if (phoneNumber != restoredRider.phoneNumber) {
+          unawaited(
+              _storage.write('riderPhoneNumber', restoredRider.phoneNumber));
+        }
+        unawaited(_storage.write('riderData', restoredRider.toMap()));
+        debugPrint('Rider restored from storage: ${restoredRider.name}');
+        return;
       }
 
       // Legacy fallback: if only ID/phone stored, we need to re-fetch from Firestore
@@ -207,11 +274,11 @@ class RiderAuthService {
         final stored = _storage.read('riderData');
         if (stored is Map) {
           final data = Map<String, dynamic>.from(stored);
-          final legacyPhone = data['phoneNumber']?.toString();
+          final legacyPhone = _stringOrNull(data['phoneNumber']);
           if (legacyPhone != null && legacyPhone.isNotEmpty) {
             final normalized = _normalizePhoneNumber(legacyPhone);
-            _storage.write('riderId', normalized);
-            _storage.write('riderPhoneNumber', normalized);
+            unawaited(_storage.write('riderId', normalized));
+            unawaited(_storage.write('riderPhoneNumber', normalized));
           }
         }
       }

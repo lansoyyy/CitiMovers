@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:citimovers/rider/services/rider_location_service.dart';
 import 'package:image_picker/image_picker.dart';
@@ -85,6 +86,9 @@ class _RiderDeliveryProgressScreenState
   final WalletService _walletService = WalletService();
   final ChatService _chatService = ChatService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GetStorage _storage = GetStorage();
+
+  static const String _serviceInvoiceCaptureType = 'Service Invoice';
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -169,6 +173,7 @@ class _RiderDeliveryProgressScreenState
     _registerQueueCallbacks();
     _restoreSavedDeliveryState();
     _listenForBookingCancellation();
+    unawaited(_recoverLostDeliveryCameraCapture());
   }
 
   /// Register callbacks that fire whenever the queue successfully uploads a
@@ -395,6 +400,257 @@ class _RiderDeliveryProgressScreenState
     return false;
   }
 
+  String? _extractDeliveryPhotoUrl(dynamic value) {
+    if (value is String) {
+      final normalized = value.trim();
+      return normalized.isEmpty ? null : normalized;
+    }
+    if (value is Map) {
+      final url = value['url'];
+      if (url is String) {
+        final normalized = url.trim();
+        return normalized.isEmpty ? null : normalized;
+      }
+    }
+    return null;
+  }
+
+  List<String> _extractDeliveryPhotoUrlsByPrefix(
+    Map<String, dynamic>? bookingData,
+    String prefix,
+  ) {
+    final deliveryPhotos = _normalizeDeliveryPhotos(bookingData?['deliveryPhotos']);
+    final urls = <String>[];
+    for (final entry in deliveryPhotos.entries) {
+      if (!entry.key.startsWith(prefix)) continue;
+      final url = _extractDeliveryPhotoUrl(entry.value);
+      if (url != null && !urls.contains(url)) {
+        urls.add(url);
+      }
+    }
+    return urls;
+  }
+
+  String get _pendingCameraCaptureKey =>
+      'pendingDeliveryCameraCapture_${widget.request.id}';
+
+  Future<void> _savePendingCameraCapture(String captureType) async {
+    try {
+      await _storage.write(_pendingCameraCaptureKey, {
+        'captureType': captureType,
+        'savedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('Error saving pending camera capture: $e');
+    }
+  }
+
+  String? _readPendingCameraCapture() {
+    try {
+      final raw = _storage.read(_pendingCameraCaptureKey);
+      if (raw is! Map || raw.isEmpty) return null;
+
+      final captureType = raw['captureType']?.toString().trim();
+      if (captureType == null || captureType.isEmpty) return null;
+
+      final savedAt = raw['savedAt'];
+      if (savedAt is int) {
+        final savedTime = DateTime.fromMillisecondsSinceEpoch(savedAt);
+        if (DateTime.now().difference(savedTime).inHours > 12) {
+          unawaited(_clearPendingCameraCapture());
+          return null;
+        }
+      }
+
+      return captureType;
+    } catch (e) {
+      debugPrint('Error reading pending camera capture: $e');
+      return null;
+    }
+  }
+
+  Future<void> _clearPendingCameraCapture() async {
+    try {
+      await _storage.remove(_pendingCameraCaptureKey);
+    } catch (e) {
+      debugPrint('Error clearing pending camera capture: $e');
+    }
+  }
+
+  Future<XFile?> _pickDeliveryCameraImage(String captureType) async {
+    await _savePendingCameraCapture(captureType);
+    try {
+      final image = await _picker.pickImage(source: ImageSource.camera);
+      if (image == null) {
+        await _clearPendingCameraCapture();
+      }
+      return image;
+    } catch (e) {
+      await _clearPendingCameraCapture();
+      rethrow;
+    }
+  }
+
+  void _applyStandardPhotoToState(String photoType, File file,
+      {Function(File)? onPicked}) {
+    setState(() {
+      switch (photoType) {
+        case 'Start Loading':
+          _startLoadingPhoto = file;
+          break;
+        case 'Finished Loading':
+          _finishLoadingPhoto = file;
+          break;
+        case 'Start Unloading':
+          _startUnloadingPhoto = file;
+          break;
+        case 'Finished Unloading':
+          _finishUnloadingPhoto = file;
+          break;
+        case 'Damaged Boxes':
+        case 'Empty Truck':
+          if (!_damagePhotos.any((existing) => existing.path == file.path)) {
+            _damagePhotos.add(file);
+          }
+          break;
+        default:
+          onPicked?.call(file);
+      }
+    });
+
+    if (photoType == 'Start Loading') {
+      _startLoadingPhotoProcess();
+    } else if (photoType == 'Finished Loading') {
+      _finishLoadingPhotoProcess();
+    } else if (photoType == 'Start Unloading') {
+      _startUnloadingPhotoProcess();
+    } else if (photoType == 'Finished Unloading') {
+      _finishUnloadingPhotoProcess();
+    }
+  }
+
+  Future<void> _queueStandardPhotoUpload(String photoType, File file) async {
+    final firestoreStage = photoType.toLowerCase().replaceAll(' ', '_');
+    await _deliveryQueue.enqueuePhotoUpload(
+      bookingId: widget.request.id,
+      storageStage: photoType,
+      firestoreStage: firestoreStage,
+      localFilePath: file.path,
+    );
+
+    if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
+      _deliveryQueue.onUrlResolved(widget.request.id, firestoreStage, (url) {
+        if (!mounted) return;
+        if (_damagePhotoUrls.contains(url)) return;
+        setState(() => _damagePhotoUrls.add(url));
+      });
+    }
+  }
+
+  Future<void> _processStandardPhotoCapture(
+    String photoType,
+    File file, {
+    Function(File)? onPicked,
+    bool recovered = false,
+  }) async {
+    _applyStandardPhotoToState(photoType, file, onPicked: onPicked);
+    await _queueStandardPhotoUpload(photoType, file);
+    await _clearPendingCameraCapture();
+
+    if (!mounted) return;
+    final prefix = recovered ? 'Recovered ' : '';
+    UIHelpers.showSuccessToast(
+      '$prefix$photoType photo saved! Uploading in background.',
+    );
+  }
+
+  Future<void> _processServiceInvoicePhoto(
+    File file, {
+    bool recovered = false,
+  }) async {
+    if (!mounted) return;
+
+    setState(() {
+      if (!_serviceInvoicePhotos.any((existing) => existing.path == file.path)) {
+        _serviceInvoicePhotos.add(file);
+      }
+    });
+
+    final stage = 'service_invoice_${_serviceInvoicePhotos.length}';
+
+    await _deliveryQueue.enqueuePhotoUpload(
+      bookingId: widget.request.id,
+      storageStage: stage,
+      firestoreStage: stage,
+      localFilePath: file.path,
+    );
+
+    _deliveryQueue.onUrlResolved(widget.request.id, stage, (url) {
+      if (!mounted) return;
+      if (_serviceInvoicePhotoUrls.contains(url)) return;
+      setState(() => _serviceInvoicePhotoUrls.add(url));
+    });
+
+    await _clearPendingCameraCapture();
+
+    if (!mounted) return;
+    final prefix = recovered ? 'Recovered ' : '';
+    UIHelpers.showSuccessToast(
+      '$prefix service invoice photo saved! Uploading in background.',
+    );
+  }
+
+  Future<void> _recoverLostDeliveryCameraCapture() async {
+    final captureType = _readPendingCameraCapture();
+    if (captureType == null) return;
+
+    try {
+      final lostData = await _picker.retrieveLostData();
+      if (lostData.isEmpty) {
+        await _clearPendingCameraCapture();
+        return;
+      }
+
+      if (lostData.exception != null) {
+        debugPrint(
+            'Lost delivery camera capture could not be restored: ${lostData.exception}');
+        await _clearPendingCameraCapture();
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Camera returned unexpectedly. Please retry the photo.');
+        }
+        return;
+      }
+
+      final XFile? recoveredFile = lostData.file ??
+          ((lostData.files?.isNotEmpty ?? false) ? lostData.files!.first : null);
+
+      if (recoveredFile == null) {
+        await _clearPendingCameraCapture();
+        return;
+      }
+
+      final file = File(recoveredFile.path);
+      if (!file.existsSync()) {
+        await _clearPendingCameraCapture();
+        return;
+      }
+
+      if (captureType == _serviceInvoiceCaptureType) {
+        await _processServiceInvoicePhoto(file, recovered: true);
+      } else {
+        await _processStandardPhotoCapture(
+          captureType,
+          file,
+          recovered: true,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error recovering lost delivery camera capture: $e');
+      await _clearPendingCameraCapture();
+    }
+  }
+
   _DeliveryProgressStateSnapshot _inferDeliveryStateFromBooking(
       Map<String, dynamic>? bookingData) {
     final status = BookingStatusService.normalizeStatus(
@@ -564,6 +820,8 @@ class _RiderDeliveryProgressScreenState
       }
 
       final inferredSnapshot = _inferDeliveryStateFromBooking(bookingData);
+        final restoredServiceInvoiceUrls =
+          _extractDeliveryPhotoUrlsByPrefix(bookingData, 'service_invoice_');
       final mergedSnapshot = savedState == null
           ? inferredSnapshot
           : _mergeDeliveryStates(
@@ -622,6 +880,9 @@ class _RiderDeliveryProgressScreenState
             DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
         _unloadingDemurrageFee =
             DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
+        _serviceInvoicePhotoUrls
+          ..clear()
+          ..addAll(restoredServiceInvoiceUrls);
         // Store wall-clock start times so timer uses DateTime.now().difference
         // instead of accumulating ticks — survives app backgrounding
         if (loadingActive) _loadingStartTime = loadingStartedAt;
@@ -1430,46 +1691,11 @@ class _RiderDeliveryProgressScreenState
   Future<void> _takePhoto(Function(File) onPicked, String photoType,
       {Function(File)? onRemove}) async {
     _logActivity('take_photo:$photoType');
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    final XFile? image = await _pickDeliveryCameraImage(photoType);
     if (image == null) return;
 
     final file = File(image.path);
-
-    // ── Set file in local state immediately so the driver can proceed ──
-    setState(() {
-      onPicked(file);
-    });
-
-    // ── Advance the UI sub-step right away; no need to wait for upload ──
-    if (photoType == 'Start Loading') {
-      _startLoadingPhotoProcess();
-    } else if (photoType == 'Finished Loading') {
-      _finishLoadingPhotoProcess();
-    } else if (photoType == 'Start Unloading') {
-      _startUnloadingPhotoProcess();
-    } else if (photoType == 'Finished Unloading') {
-      _finishUnloadingPhotoProcess();
-    }
-    // Damage/truck photos — URL added to list by the queue callback
-
-    // ── Queue upload; retried every 10 min until it succeeds ──
-    final firestoreStage = photoType.toLowerCase().replaceAll(' ', '_');
-    await _deliveryQueue.enqueuePhotoUpload(
-      bookingId: widget.request.id,
-      storageStage: photoType,
-      firestoreStage: firestoreStage,
-      localFilePath: file.path,
-    );
-
-    // For damage photos, register a callback that appends the URL to the list
-    if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
-      _deliveryQueue.onUrlResolved(widget.request.id, firestoreStage, (url) {
-        if (mounted) setState(() => _damagePhotoUrls.add(url));
-      });
-    }
-
-    UIHelpers.showSuccessToast(
-        '$photoType photo saved! Uploading in background.');
+    await _processStandardPhotoCapture(photoType, file, onPicked: onPicked);
   }
 
   Future<void> _persistPicklistItems() async {
@@ -1549,32 +1775,11 @@ class _RiderDeliveryProgressScreenState
 
   Future<void> _takeServiceInvoicePhoto() async {
     _logActivity('service_invoice:take_photo');
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    final XFile? image = await _pickDeliveryCameraImage(_serviceInvoiceCaptureType);
     if (image == null) return;
 
     final file = File(image.path);
-    setState(() {
-      _serviceInvoicePhotos.add(file);
-    });
-
-    final index = _serviceInvoicePhotos.length;
-    final stage = 'service_invoice_$index';
-
-    // ── Queue upload; retried every 10 min until success ──
-    await _deliveryQueue.enqueuePhotoUpload(
-      bookingId: widget.request.id,
-      storageStage: stage,
-      firestoreStage: stage,
-      localFilePath: file.path,
-    );
-
-    // When the upload completes, append the URL to the in-memory list
-    _deliveryQueue.onUrlResolved(widget.request.id, stage, (url) {
-      if (mounted) setState(() => _serviceInvoicePhotoUrls.add(url));
-    });
-
-    UIHelpers.showSuccessToast(
-        'Service Invoice photo saved! Uploading in background.');
+    await _processServiceInvoicePhoto(file);
   }
 
   void _finishLoading() async {
@@ -1588,7 +1793,7 @@ class _RiderDeliveryProgressScreenState
     // Driver can proceed as soon as both photos are taken.
 
     // Require Service Invoice photo after finish loading
-    if (_serviceInvoicePhotos.isEmpty) {
+    if (_serviceInvoicePhotos.isEmpty && _serviceInvoicePhotoUrls.isEmpty) {
       UIHelpers.showInfoToast(
           'Please take a photo of the Service Invoice issued by the POD department.');
       return;
