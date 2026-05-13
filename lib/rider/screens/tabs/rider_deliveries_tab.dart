@@ -395,6 +395,8 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                     ),
                     child: TabBar(
                       controller: _tabController,
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
                       indicatorSize: TabBarIndicatorSize.tab,
                       indicator: BoxDecoration(
                         color: AppColors.primaryRed,
@@ -410,6 +412,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
                         fontFamily: 'Medium',
                         fontSize: 13,
                       ),
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 16),
                       tabs: const [
                         Tab(text: 'Active'),
                         Tab(text: 'Completed'),
@@ -972,88 +975,91 @@ class DeliveryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header with vehicle type, ID and status
+                // Header: vehicle row, then status chip (full width, wraps)
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primaryRed,
-                                AppColors.primaryRed.withValues(alpha: 0.8),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    AppColors.primaryRed.withValues(alpha: 0.2),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.local_shipping,
-                            color: AppColors.white,
-                            size: 26,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              delivery.vehicleType,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontFamily: 'Bold',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'ID: ${delivery.id}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Medium',
-                                color: AppColors.textSecondary,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: delivery.statusColor.withValues(alpha: 0.1),
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primaryRed,
+                            AppColors.primaryRed.withValues(alpha: 0.8),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: delivery.statusColor.withValues(alpha: 0.2),
-                          width: 1,
-                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                AppColors.primaryRed.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        delivery.status,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'Medium',
-                          color: delivery.statusColor,
-                          height: 1.2,
-                        ),
+                      child: const Icon(
+                        Icons.local_shipping,
+                        color: AppColors.white,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            delivery.vehicleType,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontFamily: 'Bold',
+                              color: AppColors.textPrimary,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'ID: ${delivery.id}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Medium',
+                              color: AppColors.textSecondary,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: delivery.statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: delivery.statusColor.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      delivery.status,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Medium',
+                        color: delivery.statusColor,
+                        height: 1.2,
+                      ),
+                      softWrap: true,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
@@ -1147,7 +1153,7 @@ class DeliveryCard extends StatelessWidget {
 
                 const SizedBox(height: 20),
 
-                // Simplified Route
+                // Route: stacked From / To so long addresses wrap fully
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -1158,23 +1164,28 @@ class DeliveryCard extends StatelessWidget {
                       width: 1,
                     ),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryRed,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.primaryRed,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
                                 const Text(
                                   'From',
                                   style: TextStyle(
@@ -1183,46 +1194,53 @@ class DeliveryCard extends StatelessWidget {
                                     color: AppColors.textSecondary,
                                   ),
                                 ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  delivery.pickupLocation,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.textPrimary,
+                                    height: 1.35,
+                                  ),
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              delivery.pickupLocation,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 16),
+                            Icon(
+                              Icons.arrow_downward,
+                              size: 16,
+                              color: AppColors.textHint.withValues(alpha: 0.8),
                             ),
                           ],
                         ),
                       ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        child: const Icon(
-                          Icons.arrow_forward,
-                          size: 16,
-                          color: AppColors.textHint,
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryBlue,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.primaryBlue,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
                                 const Text(
                                   'To',
                                   style: TextStyle(
@@ -1231,22 +1249,20 @@ class DeliveryCard extends StatelessWidget {
                                     color: AppColors.textSecondary,
                                   ),
                                 ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  delivery.deliveryLocation,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'Medium',
+                                    color: AppColors.textPrimary,
+                                    height: 1.35,
+                                  ),
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              delivery.deliveryLocation,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontFamily: 'Medium',
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1353,94 +1369,57 @@ class AvailableDeliveryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with vehicle type and status badge
+            // Header: vehicle row, then status badge (wraps)
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppColors.primaryRed,
-                            AppColors.primaryRed.withValues(alpha: 0.8),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primaryRed.withValues(alpha: 0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.local_shipping,
-                        color: AppColors.white,
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          delivery.vehicleType,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontFamily: 'Bold',
-                            color: AppColors.textPrimary,
-                            height: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'ID: ${delivery.id}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'Medium',
-                            color: AppColors.textSecondary,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.warning.withValues(alpha: 0.3),
-                      width: 1,
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryRed,
+                        AppColors.primaryRed.withValues(alpha: 0.8),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryRed.withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: const Icon(
+                    Icons.local_shipping,
+                    color: AppColors.white,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppColors.warning,
-                          shape: BoxShape.circle,
+                      Text(
+                        delivery.vehicleType,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontFamily: 'Bold',
+                          color: AppColors.textPrimary,
+                          height: 1.2,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'New Request',
-                        style: TextStyle(
+                      const SizedBox(height: 2),
+                      Text(
+                        'ID: ${delivery.id}',
+                        style: const TextStyle(
                           fontSize: 12,
-                          fontFamily: 'Bold',
-                          color: AppColors.warning,
+                          fontFamily: 'Medium',
+                          color: AppColors.textSecondary,
                           height: 1.2,
                         ),
                       ),
@@ -1448,6 +1427,45 @@ class AvailableDeliveryCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.warning.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: AppColors.warning,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'New Request',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Bold',
+                        color: AppColors.warning,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -1927,57 +1945,64 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
             ),
           ),
 
-          // Header
+          // Header: vehicle + id row, status chip below (wraps)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primaryRed,
-                        AppColors.primaryRed.withValues(alpha: 0.8),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primaryRed,
+                            AppColors.primaryRed.withValues(alpha: 0.8),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.local_shipping,
+                        color: AppColors.white,
+                        size: 24,
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.local_shipping,
-                    color: AppColors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        delivery.vehicleType,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontFamily: 'Bold',
-                          color: AppColors.textPrimary,
-                          height: 1.2,
-                        ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            delivery.vehicleType,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontFamily: 'Bold',
+                              color: AppColors.textPrimary,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Delivery ID: ${delivery.id}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Delivery ID: ${delivery.id}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontFamily: 'Regular',
-                          color: AppColors.textSecondary,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 12),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1997,6 +2022,7 @@ class DeliveryDetailsBottomSheet extends StatelessWidget {
                       color: delivery.statusColor,
                       height: 1.2,
                     ),
+                    softWrap: true,
                   ),
                 ),
               ],
