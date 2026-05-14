@@ -468,12 +468,17 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Stay online. Assigned trips will appear here automatically after dispatch.',
-              style: TextStyle(
-                fontSize: 14,
-                fontFamily: 'Regular',
-                color: AppColors.textSecondary,
+            Padding(
+              padding: const EdgeInsets.only(left: 20, right: 20),
+              child: const Text(
+                textAlign: TextAlign.center,
+                'Stay online. Assigned trips will appear here automatically after dispatch.',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Regular',
+                  color: AppColors.textSecondary,
+                
+                ),
               ),
             ),
           ],
@@ -666,12 +671,16 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Open bookings are no longer rider-selectable. Wait for the coordinator to assign your next trip.',
-              style: TextStyle(
-                fontSize: 14,
-                fontFamily: 'Regular',
-                color: AppColors.textSecondary,
+            Padding(
+                padding: const EdgeInsets.only(left: 20, right: 20),
+              child: const Text(
+                textAlign: TextAlign.center,
+                'Open bookings are no longer rider-selectable. Wait for the coordinator to assign your next trip.',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Regular',
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
           ],

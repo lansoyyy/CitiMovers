@@ -588,12 +588,16 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                                       ),
                                     ),
                                     SizedBox(height: 4),
-                                    Text(
-                                      'Stay online. Dispatch will assign your next trip from the admin panel, and the rider app will open it automatically.',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontFamily: 'Regular',
-                                        color: AppColors.textSecondary,
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 20, right: 20),
+                                      child: Text(
+                                        textAlign: TextAlign.center,
+                                        'Stay online. Dispatch will assign your next trip from the admin panel, and the rider app will open it automatically.',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontFamily: 'Regular',
+                                          color: AppColors.textSecondary,
+                                        ),
                                       ),
                                     ),
                                   ],
