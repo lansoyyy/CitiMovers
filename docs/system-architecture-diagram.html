@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CitiMovers — System Architecture Diagram</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f0f4f8;
+      padding: 32px 24px 48px;
+      color: #1a2b3c;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+      color: #0d2137;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #5a6b7d;
+      margin-bottom: 28px;
+    }
+    .diagram {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 28px 20px 20px;
+      overflow-x: auto;
+    }
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      min-width: 1100px;
+    }
+    .column {
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .col-header {
+      padding: 12px 10px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      color: #fff;
+    }
+    .col-header.users { background: #64748b; }
+    .col-header.client { background: #2563eb; }
+    .col-header.api { background: #16a34a; }
+    .col-header.data { background: #7c3aed; }
+    .col-header.storage { background: #0d9488; }
+
+    .col-body {
+      padding: 14px 12px 16px;
+      flex: 1;
+      background: #fafbfc;
+    }
+    .tech-badge {
+      text-align: center;
+      padding: 10px 8px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      font-size: 0.75rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .tech-badge .logo {
+      font-size: 1.5rem;
+      margin-bottom: 4px;
+    }
+    .item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 0;
+      font-size: 0.72rem;
+      line-height: 1.3;
+      border-bottom: 1px solid #eef2f6;
+    }
+    .item:last-child { border-bottom: none; }
+    .item .icon {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+    }
+    .users .icon { background: #e2e8f0; }
+    .client .icon { background: #dbeafe; }
+    .api .icon { background: #dcfce7; }
+    .data .icon { background: #ede9fe; }
+    .storage .icon { background: #ccfbf1; }
+
+    .arrows-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      min-width: 1100px;
+      margin: 8px 0 4px;
+      padding: 0 4px;
+    }
+    .arrow-cell {
+      text-align: center;
+      font-size: 1.1rem;
+      color: #94a3b8;
+    }
+    .arrow-between {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+
+    .infra-bar {
+      margin-top: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #1e3a5f;
+    }
+    .infra-header {
+      background: #1e3a5f;
+      color: #fff;
+      text-align: center;
+      padding: 10px 16px;
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+    }
+    .infra-items {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px 28px;
+      padding: 16px 20px;
+      background: #0f2744;
+      color: #e2e8f0;
+    }
+    .infra-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+    }
+    .infra-item .icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .infra-connectors {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      min-width: 1100px;
+      margin-top: 6px;
+      padding: 0 20px;
+    }
+    .connector {
+      text-align: center;
+      font-size: 0.65rem;
+      color: #3b82f6;
+    }
+    .connector::before {
+      content: '↑';
+      display: block;
+      font-size: 1rem;
+      line-height: 1;
+    }
+    .footer-note {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.7rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <h1>CITIMOVERS — SYSTEM ARCHITECTURE DIAGRAM</h1>
+  <p class="subtitle">Overall operational flow across Customer, Rider, and Operations (Admin)</p>
+
+  <div class="diagram">
+    <div class="columns">
+      <!-- USERS -->
+      <div class="column users">
+        <div class="col-header users">USERS</div>
+        <div class="col-body users">
+          <div class="item"><span class="icon">👤</span><span>Customer</span></div>
+          <div class="item"><span class="icon">🛵</span><span>Rider / Crew</span></div>
+          <div class="item"><span class="icon">👔</span><span>Admin</span></div>
+          <div class="item"><span class="icon">📋</span><span>Coordinator</span></div>
+          <div class="item"><span class="icon">📊</span><span>Manager</span></div>
+          <div class="item"><span class="icon">🏛️</span><span>President</span></div>
+          <div class="item"><span class="icon">🌐</span><span>Public Visitor</span></div>
+        </div>
+      </div>
+
+      <!-- CLIENT LAYER -->
+      <div class="column client">
+        <div class="col-header client">CLIENT LAYER</div>
+        <div class="col-body client">
+          <div class="tech-badge">
+            <div class="logo">📱</div>
+            Flutter Mobile App<br/>
+            <span style="font-weight:400;color:#64748b">Customer & Rider</span>
+          </div>
+          <div class="item"><span class="icon">📦</span><span>Book a Move / Delivery</span></div>
+          <div class="item"><span class="icon">💳</span><span>Wallet & Payments</span></div>
+          <div class="item"><span class="icon">🗺️</span><span>Live Trip Tracking</span></div>
+          <div class="item"><span class="icon">✅</span><span>Delivery Completion & Rating</span></div>
+          <div class="item"><span class="icon">🚚</span><span>Rider Deliveries & Earnings</span></div>
+          <div class="item"><span class="icon">📍</span><span>Rider Location Updates</span></div>
+          <div class="tech-badge" style="margin-top:10px">
+            <div class="logo">🖥️</div>
+            Flutter Web — Admin Portal
+          </div>
+          <div class="item"><span class="icon">🎯</span><span>Dispatch Board</span></div>
+          <div class="item"><span class="icon">📑</span><span>Bookings & Assignments</span></div>
+          <div class="item"><span class="icon">💰</span><span>Finance & Reports</span></div>
+          <div class="item"><span class="icon">🎫</span><span>Support Tickets</span></div>
+          <div class="tech-badge" style="margin-top:10px">
+            <div class="logo">🌍</div>
+            Landing Page (Web)
+          </div>
+        </div>
+      </div>
+
+      <!-- APPLICATION LAYER -->
+      <div class="column api">
+        <div class="col-header api">APPLICATION LAYER</div>
+        <div class="col-body api">
+          <div class="tech-badge">
+            <div class="logo">🔥</div>
+            Firebase Platform<br/>
+            <span style="font-weight:400;color:#64748b">Backend Services</span>
+          </div>
+          <div class="item"><span class="icon">🔐</span><span>User Authentication (Phone / OTP)</span></div>
+          <div class="item"><span class="icon">📋</span><span>Booking & Trip Management</span></div>
+          <div class="item"><span class="icon">🎯</span><span>Dispatch & Rider Assignment</span></div>
+          <div class="item"><span class="icon">🔄</span><span>Trip Status Workflow</span></div>
+          <div class="item"><span class="icon">💵</span><span>Fare, Wallet & Finance Rules</span></div>
+          <div class="item"><span class="icon">🔔</span><span>Notifications</span></div>
+          <div class="item"><span class="icon">🎫</span><span>Support Ticket Handling</span></div>
+          <div class="item"><span class="icon">🗺️</span><span>Maps, Routes & Geocoding</span></div>
+          <div class="item"><span class="icon">👥</span><span>Role-Based Admin Access</span></div>
+        </div>
+      </div>
+
+      <!-- DATA LAYER -->
+      <div class="column data">
+        <div class="col-header data">DATA LAYER</div>
+        <div class="col-body data">
+          <div class="tech-badge">
+            <div class="logo">🗄️</div>
+            Cloud Firestore<br/>
+            <span style="font-weight:400;color:#64748b">NoSQL Database</span>
+          </div>
+          <div class="item"><span class="icon">✓</span><span>Customers & User Profiles</span></div>
+          <div class="item"><span class="icon">✓</span><span>Riders & Crew Profiles</span></div>
+          <div class="item"><span class="icon">✓</span><span>Bookings & Delivery Requests</span></div>
+          <div class="item"><span class="icon">✓</span><span>Wallet & Transactions</span></div>
+          <div class="item"><span class="icon">✓</span><span>Trip Numbers & Finance Records</span></div>
+          <div class="item"><span class="icon">✓</span><span>Notifications</span></div>
+          <div class="item"><span class="icon">✓</span><span>Support Tickets</span></div>
+          <div class="item"><span class="icon">✓</span><span>Promos, Audit Logs & Settings</span></div>
+        </div>
+      </div>
+
+      <!-- STORAGE LAYER -->
+      <div class="column storage">
+        <div class="col-header storage">STORAGE LAYER</div>
+        <div class="col-body storage">
+          <div class="tech-badge">
+            <div class="logo">☁️</div>
+            Firebase Cloud Storage<br/>
+            <span style="font-weight:400;color:#64748b">File & Media Storage</span>
+          </div>
+          <div class="item"><span class="icon">🖼️</span><span>Profile Photos</span></div>
+          <div class="item"><span class="icon">📸</span><span>Proof of Delivery Photos</span></div>
+          <div class="item"><span class="icon">📄</span><span>Rider Documents (IDs, Licenses)</span></div>
+          <div class="item"><span class="icon">📤</span><span>Report Exports (CSV)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrows-row">
+      <div class="arrow-cell">↔</div>
+      <div class="arrow-cell">↔</div>
+      <div class="arrow-cell">↔</div>
+      <div class="arrow-cell">↔</div>
+      <div class="arrow-cell">↔</div>
+    </div>
+
+    <div class="infra-bar">
+      <div class="infra-header">INFRASTRUCTURE &amp; SECURITY LAYER</div>
+      <div class="infra-items">
+        <div class="infra-item"><span class="icon">🔒</span><span>HTTPS / SSL Encryption</span></div>
+        <div class="infra-item"><span class="icon">🛡️</span><span>Firebase Security Rules</span></div>
+        <div class="infra-item"><span class="icon">🔑</span><span>Authentication &amp; Role-Based Access</span></div>
+        <div class="infra-item"><span class="icon">📶</span><span>Offline Support &amp; Sync</span></div>
+        <div class="infra-item"><span class="icon">💾</span><span>Cloud Backups &amp; Recovery</span></div>
+        <div class="infra-item"><span class="icon">📈</span><span>Monitoring &amp; Logging</span></div>
+      </div>
+    </div>
+
+    <div class="infra-connectors">
+      <div class="connector">supports all layers</div>
+      <div class="connector">supports all layers</div>
+      <div class="connector">supports all layers</div>
+      <div class="connector">supports all layers</div>
+      <div class="connector">supports all layers</div>
+    </div>
+  </div>
+
+  <p class="footer-note">CitiMovers — Delivery &amp; Moving Operations Platform</p>
+</body>
+</html>

@@ -36,7 +36,17 @@ void main() {
       ],
     );
 
+    expect(csv, startsWith(AdminCsvExportService.utf8Bom));
     expect(csv, contains('"Trip Ticket","Reason"'));
     expect(csv, contains('"Customer said ""late"", reschedule"'));
+  });
+
+  test('AdminCsvExportService normalizes em dashes for Excel', () {
+    final normalized = AdminCsvExportService.normalizeExportText(
+      'Booking payment (on hold \u2014 captured on completion)',
+    );
+
+    expect(normalized, 'Booking payment (on hold  -  captured on completion)');
+    expect(normalized, isNot(contains('\u2014')));
   });
 }

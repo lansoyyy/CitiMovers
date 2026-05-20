@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
+import '../../utils/dispatch_map_colocation.dart';
 import '../../widgets/common_widgets.dart';
 
 class DispatchBoardScreen extends StatefulWidget {
@@ -71,6 +72,195 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         alignment: 0.08,
       );
     });
+  }
+
+  Future<void> _handleMapRiderSelection({
+    required Map<String, dynamic> tappedRider,
+    required List<Map<String, dynamic>> liveRiders,
+    required Map<String, Map<String, dynamic>> activeAssignments,
+  }) async {
+    final point = DispatchMapColocation.riderPoint(tappedRider);
+    if (point == null) return;
+
+    await _handleMapPointSelection(
+      point: point,
+      liveRiders: liveRiders,
+      activeAssignments: activeAssignments,
+    );
+  }
+
+  Future<void> _handleMapPointSelection({
+    required LatLng point,
+    required List<Map<String, dynamic>> liveRiders,
+    required Map<String, Map<String, dynamic>> activeAssignments,
+  }) async {
+    final nearby = DispatchMapColocation.ridersNear(liveRiders, point);
+    if (nearby.isEmpty) return;
+
+    if (nearby.length == 1) {
+      _selectRider(nearby.first);
+      return;
+    }
+
+    final selected = await _showColocatedRidersPicker(
+      nearby,
+      activeAssignments: activeAssignments,
+    );
+    if (selected != null) {
+      _selectRider(selected);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _showColocatedRidersPicker(
+    List<Map<String, dynamic>> riders, {
+    required Map<String, Map<String, dynamic>> activeAssignments,
+  }) {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final maxHeight = MediaQuery.sizeOf(sheetContext).height * 0.55;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Select driver',
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AdminTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${riders.length} drivers are at this location. Choose one to view details.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: AdminTheme.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxHeight),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: riders.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final rider = riders[index];
+                      final riderId = (rider['id'] ?? '').toString();
+                      final busyAssignment = activeAssignments[riderId];
+                      final isBusy = busyAssignment != null;
+                      final activityLabel = _activityLabel(
+                        busyAssignment,
+                        rider,
+                      );
+                      final activityColor = _statusColor(
+                        (busyAssignment?['status'] ?? '').toString(),
+                        isOnline: true,
+                      );
+                      final plate = (rider['plateNumber'] ?? '')
+                          .toString()
+                          .trim()
+                          .toUpperCase();
+                      final unitName = _unitNameForRider(rider);
+
+                      return Material(
+                        color: AdminTheme.surface,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () =>
+                              Navigator.pop(sheetContext, rider),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: AdminTheme.divider),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: activityColor.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.local_shipping,
+                                    color: activityColor,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        plate.isEmpty
+                                            ? (rider['name'] ?? 'Driver')
+                                                .toString()
+                                            : plate,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: AdminTheme.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${rider['name'] ?? 'Unknown'} • $unitName',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: AdminTheme.textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _riderSubtitle(rider),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          color: AdminTheme.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _InfoChip(
+                                  label: activityLabel,
+                                  color: isBusy
+                                      ? AdminTheme.statusPending
+                                      : AdminTheme.statusActive,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _selectRider(
@@ -707,7 +897,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'As soon as admin opens this page, all logged-in drivers with live GPS are visible here.',
+              'As soon as admin opens this page, all logged-in drivers with live GPS are visible here. If several drivers share the same spot, tap a marker to pick from the list.',
               style: GoogleFonts.inter(
                 fontSize: 12,
                 color: AdminTheme.textSecondary,
@@ -732,6 +922,13 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                             options: MapOptions(
                               initialCenter: mapCenter,
                               initialZoom: 11,
+                              onTap: (_, point) {
+                                _handleMapPointSelection(
+                                  point: point,
+                                  liveRiders: liveRiders,
+                                  activeAssignments: activeAssignments,
+                                );
+                              },
                             ),
                             children: [
                               TileLayer(
@@ -775,7 +972,12 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                     child: MouseRegion(
                                       cursor: SystemMouseCursors.click,
                                       child: GestureDetector(
-                                        onTap: () => _selectRider(rider),
+                                        onTap: () => _handleMapRiderSelection(
+                                          tappedRider: rider,
+                                          liveRiders: liveRiders,
+                                          activeAssignments:
+                                              activeAssignments,
+                                        ),
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           crossAxisAlignment:

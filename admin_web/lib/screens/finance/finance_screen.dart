@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
 import '../../services/csv_export_service.dart';
+import '../../services/export_account_resolver.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -39,12 +40,23 @@ class _FinanceScreenState extends State<FinanceScreen>
       throw StateError('No payment records available to export.');
     }
 
+    final accountIds = payments
+        .map((payment) => (payment['userId'] ?? '').toString())
+        .where((id) => id.isNotEmpty);
+    final accounts = await AdminExportAccountResolver.resolveProfiles(
+      accountIds,
+    );
+
     final rows = payments.map((payment) {
       final createdAt = AdminRepository.parseTimestamp(payment['createdAt']);
       final amount = (payment['amount'] ?? 0) as num;
+      final userId = (payment['userId'] ?? '').toString();
+      final account = accounts[userId] ?? ExportAccountProfile.unknown(userId);
 
       return <String>[
         (payment['id'] ?? '').toString(),
+        ...AdminExportAccountResolver.accountColumns(account),
+        userId,
         (payment['bookingId'] ?? '').toString(),
         (payment['paymentMethod'] ?? payment['method'] ?? '').toString(),
         (payment['paymentStatus'] ?? payment['status'] ?? '').toString(),
@@ -59,8 +71,10 @@ class _FinanceScreenState extends State<FinanceScreen>
     AdminCsvExportService.downloadCsv(
       fileName:
           'payments_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
-      headers: const [
+      headers: [
         'Payment ID',
+        ...AdminExportAccountResolver.accountHeaders,
+        'User ID',
         'Booking ID',
         'Method',
         'Status',
@@ -82,6 +96,13 @@ class _FinanceScreenState extends State<FinanceScreen>
       throw StateError('No wallet transactions available to export.');
     }
 
+    final accountIds = transactions
+        .map((transaction) => (transaction['userId'] ?? '').toString())
+        .where((id) => id.isNotEmpty);
+    final accounts = await AdminExportAccountResolver.resolveProfiles(
+      accountIds,
+    );
+
     final rows = transactions.map((transaction) {
       final createdAt = AdminRepository.parseTimestamp(
         transaction['createdAt'],
@@ -89,10 +110,13 @@ class _FinanceScreenState extends State<FinanceScreen>
       final amount = (transaction['amount'] ?? 0) as num;
       final balance =
           (transaction['newBalance'] ?? transaction['balance'] ?? 0) as num;
+      final userId = (transaction['userId'] ?? '').toString();
+      final account = accounts[userId] ?? ExportAccountProfile.unknown(userId);
 
       return <String>[
         (transaction['id'] ?? '').toString(),
-        (transaction['userId'] ?? '').toString(),
+        ...AdminExportAccountResolver.accountColumns(account),
+        userId,
         (transaction['type'] ?? transaction['transactionType'] ?? '')
             .toString(),
         amount.toStringAsFixed(2),
@@ -104,11 +128,17 @@ class _FinanceScreenState extends State<FinanceScreen>
       ];
     }).toList();
 
+    final summaryRows = AdminExportAccountResolver.buildWalletAccountSummaryRows(
+      transactions: transactions,
+      accounts: accounts,
+    );
+
     AdminCsvExportService.downloadCsv(
       fileName:
           'wallet_ledger_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
-      headers: const [
+      headers: [
         'Transaction ID',
+        ...AdminExportAccountResolver.accountHeaders,
         'User ID',
         'Type',
         'Amount',
@@ -116,7 +146,7 @@ class _FinanceScreenState extends State<FinanceScreen>
         'Description',
         'Created At',
       ],
-      rows: rows,
+      rows: [...rows, ...summaryRows],
     );
 
     return rows.length;
@@ -233,7 +263,7 @@ class _FinanceScreenState extends State<FinanceScreen>
               );
 
               final helperText = Text(
-                'Download the current finance tab as CSV for Excel.',
+                'Download the current finance tab as CSV for Excel, including account details.',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: AdminTheme.textSecondary,
