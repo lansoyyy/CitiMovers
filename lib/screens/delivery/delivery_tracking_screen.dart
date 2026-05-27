@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart' hide Timestamp;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/app_colors.dart';
+import '../../widgets/map_marker_icon_factory.dart';
 import '../../utils/delivery_photo_resolver.dart';
 import '../../utils/demurrage_utils.dart';
 import '../../utils/ui_helpers.dart';
@@ -279,10 +280,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   Future<BitmapDescriptor> _getVehicleIcon() async {
-    // Use a vehicle-like icon for driver marker
-    // For now, we'll use default marker with green hue to represent a vehicle
-    // In a real app, you would use custom asset images for truck/van icons
-    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+    return MapMarkerIconFactory.vehicleIcon(AppColors.success);
   }
 
   /// Start real-time location tracking from Firestore

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,6 +7,8 @@ import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
 import '../../utils/dispatch_map_colocation.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/driver_map_marker.dart';
+import '../../widgets/truck_plate_list_item.dart';
 
 class DispatchBoardScreen extends StatefulWidget {
   const DispatchBoardScreen({super.key});
@@ -18,6 +19,7 @@ class DispatchBoardScreen extends StatefulWidget {
 
 class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final MapController _mapController = MapController();
   final Map<String, GlobalKey> _loggedInRiderCardKeys = <String, GlobalKey>{};
   final Map<String, GlobalKey> _selectedUnitRiderCardKeys =
       <String, GlobalKey>{};
@@ -30,6 +32,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -275,9 +278,27 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
       _selectedUnitName = _unitNameForRider(rider);
     });
 
+    _focusMapOnRider(rider);
+
     if (revealInUnitsPanel) {
       _scrollUnitsPanelToRider(riderId);
     }
+  }
+
+  void _focusMapOnRider(Map<String, dynamic> rider) {
+    if (rider['hasLiveLocation'] != true) return;
+
+    final lat = rider['currentLatitude'];
+    final lng = rider['currentLongitude'];
+    if (lat is! num || lng is! num) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.move(
+        LatLng(lat.toDouble(), lng.toDouble()),
+        16.5,
+      );
+    });
   }
 
   Map<String, List<Map<String, dynamic>>> _groupRidersByUnit(
@@ -372,13 +393,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     return indexed;
   }
 
-  String _formatMoney(dynamic amount) {
-    final value = amount is num
-        ? amount.toDouble()
-        : double.tryParse((amount ?? '').toString()) ?? 0;
-    return NumberFormat.currency(symbol: 'P', decimalDigits: 0).format(value);
-  }
-
   String _formatDateTime(DateTime? value) {
     if (value == null) return 'No timestamp';
     return DateFormat('MMM d, h:mm a').format(value);
@@ -424,24 +438,8 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
 
   String? _resolveHighlightedRiderId(List<Map<String, dynamic>> riders) {
     final selected = _findRider(riders, _highlightedRiderId);
-    if (selected != null) {
-      return (selected['id'] ?? '').toString();
-    }
-
-    for (final rider in riders) {
-      if (_isLoggedInRider(rider) && rider['hasLiveLocation'] == true) {
-        return (rider['id'] ?? '').toString();
-      }
-    }
-
-    for (final rider in riders) {
-      if (_isLoggedInRider(rider)) {
-        return (rider['id'] ?? '').toString();
-      }
-    }
-
-    if (riders.isEmpty) return null;
-    return (riders.first['id'] ?? '').toString();
+    if (selected == null) return null;
+    return (selected['id'] ?? '').toString();
   }
 
   String? _resolveSelectedUnitName(
@@ -533,6 +531,71 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     }
 
     return 'No live location yet';
+  }
+
+  String _formatSelectedUnitOverlay(Map<String, dynamic> rider) {
+    final plate = (rider['plateNumber'] ?? '').toString().trim().toUpperCase();
+    final location = _formatLocation(rider);
+    if (plate.isEmpty) return location;
+    return '$plate • $location';
+  }
+
+  List<Marker> _buildDriverMapMarkers({
+    required List<Map<String, dynamic>> liveRiders,
+    required Map<String, Map<String, dynamic>> activeAssignments,
+    required String? highlightedRiderId,
+  }) {
+    final orderedRiders = List<Map<String, dynamic>>.from(liveRiders);
+    if (highlightedRiderId != null) {
+      orderedRiders.sort((a, b) {
+        final aId = (a['id'] ?? '').toString();
+        final bId = (b['id'] ?? '').toString();
+        if (aId == highlightedRiderId && bId != highlightedRiderId) return 1;
+        if (bId == highlightedRiderId && aId != highlightedRiderId) return -1;
+        return 0;
+      });
+    }
+
+    return orderedRiders.map((rider) {
+      final riderId = (rider['id'] ?? '').toString();
+      final busyAssignment = activeAssignments[riderId];
+      final isBusy = busyAssignment != null;
+      final isOnline = rider['isOnline'] == true;
+      final isHighlighted = riderId == highlightedRiderId;
+      final plate = (rider['plateNumber'] ?? '').toString();
+      final markerColor = isHighlighted
+          ? AdminTheme.primary
+          : isBusy
+          ? AdminTheme.statusPending
+          : isOnline
+          ? AdminTheme.statusActive
+          : AdminTheme.textSecondary;
+
+      return Marker(
+        width: isHighlighted ? 88 : 30,
+        height: isHighlighted ? 62 : 30,
+        alignment: Alignment.bottomCenter,
+        point: LatLng(
+          (rider['currentLatitude'] as num).toDouble(),
+          (rider['currentLongitude'] as num).toDouble(),
+        ),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => _handleMapRiderSelection(
+              tappedRider: rider,
+              liveRiders: liveRiders,
+              activeAssignments: activeAssignments,
+            ),
+            child: DriverMapMarker(
+              plateNumber: plate,
+              markerColor: markerColor,
+              isSelected: isHighlighted,
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   LatLng _resolveMapCenter(List<Map<String, dynamic>> riders) {
@@ -669,10 +732,18 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
     }
   }
 
-  Widget _buildQueuePanel(List<Map<String, dynamic>> queue) {
-    final selectedBooking =
-        _findBooking(queue, _selectedBookingId) ??
-        (queue.isNotEmpty ? queue.first : null);
+  Widget _buildTruckPlatesPanel(
+    List<Map<String, dynamic>> riders,
+    String? highlightedRiderId,
+  ) {
+    final loggedInRiders = riders.where(_isLoggedInRider).toList()
+      ..sort((a, b) {
+        final plateA = (a['plateNumber'] ?? '').toString().trim().toUpperCase();
+        final plateB = (b['plateNumber'] ?? '').toString().trim().toUpperCase();
+        if (plateA.isEmpty && plateB.isNotEmpty) return 1;
+        if (plateB.isEmpty && plateA.isNotEmpty) return -1;
+        return plateA.compareTo(plateB);
+      });
 
     return Card(
       child: Padding(
@@ -681,169 +752,58 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeader(
-              title: 'Dispatch Queue',
+              title: 'Logged-in Trucks',
               trailing: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: AdminTheme.primary.withValues(alpha: 0.08),
+                  color: AdminTheme.statusActive.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '${queue.length} waiting',
+                  '${loggedInRiders.length} online',
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: AdminTheme.primary,
+                    color: AdminTheme.statusActive,
                   ),
                 ),
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Bookings stay here until a coordinator manually assigns a registered unit.',
+              'Tap a plate to locate the truck on the map and mark it as the selected unit.',
               style: GoogleFonts.inter(
                 fontSize: 12,
                 color: AdminTheme.textSecondary,
               ),
             ),
             const SizedBox(height: 16),
-            if (queue.isEmpty)
+            if (loggedInRiders.isEmpty)
               const Expanded(
                 child: EmptyState(
-                  message: 'No bookings are waiting for dispatch.',
-                  icon: Icons.assignment_turned_in_outlined,
+                  message: 'No trucks are logged in right now.',
+                  icon: Icons.local_shipping_outlined,
                 ),
               )
             else
               Expanded(
                 child: ListView.separated(
-                  itemCount: queue.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemCount: loggedInRiders.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
-                    final booking = queue[index];
-                    final isSelected =
-                        (selectedBooking?['id'] ?? '') == (booking['id'] ?? '');
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      onTap: () => setState(
-                        () => _selectedBookingId = (booking['id'] ?? '')
-                            .toString(),
-                      ),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AdminTheme.primary.withValues(alpha: 0.07)
-                              : AdminTheme.surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: isSelected
-                                ? AdminTheme.primary
-                                : AdminTheme.divider,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _bookingReference(booking),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: AdminTheme.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AdminTheme.statusPending.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    (booking['status'] ?? 'pending')
-                                        .toString()
-                                        .replaceAll('_', ' '),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: AdminTheme.statusPending,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              booking['customerName']?.toString() ??
-                                  'Unknown customer',
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AdminTheme.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${booking['pickupAddress'] ?? 'No pickup'} → ${booking['dropoffAddress'] ?? 'No drop-off'}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: AdminTheme.textSecondary,
-                                height: 1.4,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _formatMoney(booking['grossAmount']),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: AdminTheme.primary,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  _formatDateTime(
-                                    AdminRepository.parseTimestamp(
-                                      booking['createdAt'],
-                                    ),
-                                  ),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: AdminTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: () =>
-                                    context.go('/bookings/${booking['id']}'),
-                                child: const Text('Open booking'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    final rider = loggedInRiders[index];
+                    final riderId = (rider['id'] ?? '').toString();
+                    final plate = (rider['plateNumber'] ?? '').toString();
+                    final isSelected = riderId == highlightedRiderId;
+
+                    return TruckPlateListItem(
+                      plateNumber: plate,
+                      isSelected: isSelected,
+                      hasLiveLocation: rider['hasLiveLocation'] == true,
+                      onTap: () => _selectRider(rider),
                     );
                   },
                 ),
@@ -866,13 +826,20 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
               _isLoggedInRider(rider) && rider['hasLiveLocation'] == true,
         )
         .toList();
-    final mapCenter = _resolveMapCenter(liveRiders);
-    final focusedRider = _findRider(liveRiders, highlightedRiderId);
-    final mapOverlayRider =
-        focusedRider ?? (liveRiders.isNotEmpty ? liveRiders.first : null);
-    final mapOverlayLocation = mapOverlayRider == null
-        ? 'No live location yet'
-        : _formatLocation(mapOverlayRider);
+    final focusedRider = highlightedRiderId == null
+        ? null
+        : _findRider(liveRiders, highlightedRiderId);
+    final mapCenter = focusedRider != null &&
+            focusedRider['hasLiveLocation'] == true
+        ? LatLng(
+            (focusedRider['currentLatitude'] as num).toDouble(),
+            (focusedRider['currentLongitude'] as num).toDouble(),
+          )
+        : _resolveMapCenter(liveRiders);
+    final initialZoom = focusedRider != null ? 16.5 : 11.0;
+    final mapOverlayLocation = focusedRider == null
+        ? 'Select a plate to view the unit address on the map.'
+        : _formatSelectedUnitOverlay(focusedRider);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -897,7 +864,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'As soon as admin opens this page, all logged-in drivers with live GPS are visible here. If several drivers share the same spot, tap a marker to pick from the list.',
+              'All logged-in trucks appear as icons on the map. Tap a plate on the left to show its label, address, and exact location.',
               style: GoogleFonts.inter(
                 fontSize: 12,
                 color: AdminTheme.textSecondary,
@@ -916,12 +883,11 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                       child: Stack(
                         children: [
                           FlutterMap(
-                            key: ValueKey(
-                              '${liveRiders.length}-${mapCenter.latitude.toStringAsFixed(3)}-${mapCenter.longitude.toStringAsFixed(3)}',
-                            ),
+                            mapController: _mapController,
+                            key: ValueKey('dispatch-map-${liveRiders.length}'),
                             options: MapOptions(
                               initialCenter: mapCenter,
-                              initialZoom: 11,
+                              initialZoom: initialZoom,
                               onTap: (_, point) {
                                 _handleMapPointSelection(
                                   point: point,
@@ -938,116 +904,11 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                     'com.citimovers.admin_web',
                               ),
                               MarkerLayer(
-                                markers: liveRiders.map((rider) {
-                                  final riderId = (rider['id'] ?? '')
-                                      .toString();
-                                  final busyAssignment =
-                                      activeAssignments[riderId];
-                                  final isBusy = busyAssignment != null;
-                                  final isOnline = rider['isOnline'] == true;
-                                  final isHighlighted =
-                                      riderId == highlightedRiderId;
-                                  final plate = (rider['plateNumber'] ?? '')
-                                      .toString()
-                                      .trim()
-                                      .toUpperCase();
-                                  final markerColor = isHighlighted
-                                      ? AdminTheme.primary
-                                      : isBusy
-                                      ? AdminTheme.statusPending
-                                      : isOnline
-                                      ? AdminTheme.statusActive
-                                      : AdminTheme.textSecondary;
-
-                                  return Marker(
-                                    width: 96,
-                                    height: 72,
-                                    alignment: Alignment.bottomCenter,
-                                    point: LatLng(
-                                      (rider['currentLatitude'] as num)
-                                          .toDouble(),
-                                      (rider['currentLongitude'] as num)
-                                          .toDouble(),
-                                    ),
-                                    child: MouseRegion(
-                                      cursor: SystemMouseCursors.click,
-                                      child: GestureDetector(
-                                        onTap: () => _handleMapRiderSelection(
-                                          tappedRider: rider,
-                                          liveRiders: liveRiders,
-                                          activeAssignments:
-                                              activeAssignments,
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            // Plate number label bubble
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 7,
-                                                    vertical: 3,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: markerColor,
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                    color: Color(0x44000000),
-                                                    blurRadius: 6,
-                                                    offset: Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Text(
-                                                plate.isEmpty ? '—' : plate,
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w800,
-                                                  color: Colors.white,
-                                                  letterSpacing: 0.5,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            // Truck icon circle
-                                            Container(
-                                              width: 42,
-                                              height: 42,
-                                              decoration: BoxDecoration(
-                                                color: markerColor,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: isHighlighted
-                                                      ? Colors.black
-                                                      : Colors.white,
-                                                  width: isHighlighted ? 3 : 2,
-                                                ),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                    color: Color(0x22000000),
-                                                    blurRadius: 10,
-                                                    offset: Offset(0, 3),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(
-                                                Icons.local_shipping,
-                                                color: Colors.white,
-                                                size: 22,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
+                                markers: _buildDriverMapMarkers(
+                                  liveRiders: liveRiders,
+                                  activeAssignments: activeAssignments,
+                                  highlightedRiderId: highlightedRiderId,
+                                ),
                               ),
                               RichAttributionWidget(
                                 attributions: const [
@@ -1072,7 +933,9 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                     vertical: 8,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xCC111827),
+                                    color: focusedRider == null
+                                        ? const Color(0xCC374151)
+                                        : const Color(0xCC111827),
                                     borderRadius: BorderRadius.circular(10),
                                     boxShadow: const [
                                       BoxShadow(
@@ -1652,7 +1515,10 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth >= 1380;
-                      final queuePanel = _buildQueuePanel(queue);
+                      final truckPlatesPanel = _buildTruckPlatesPanel(
+                        riders,
+                        highlightedRiderId,
+                      );
                       final mapPanel = _buildMapPanel(
                         riders,
                         activeAssignments,
@@ -1699,7 +1565,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'This opens with live logged-in drivers first, then lets you inspect each unit\'s current activity before assigning bookings.',
+                            'Select a truck plate to locate it on the map, then assign waiting bookings from the units panel.',
                             style: GoogleFonts.inter(
                               fontSize: 13,
                               color: AdminTheme.textSecondary,
@@ -1712,7 +1578,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      SizedBox(width: 360, child: queuePanel),
+                                      SizedBox(width: 360, child: truckPlatesPanel),
                                       const SizedBox(width: 16),
                                       Expanded(flex: 6, child: mapPanel),
                                       const SizedBox(width: 16),
@@ -1721,7 +1587,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                   )
                                 : ListView(
                                     children: [
-                                      SizedBox(height: 340, child: queuePanel),
+                                      SizedBox(height: 340, child: truckPlatesPanel),
                                       const SizedBox(height: 16),
                                       SizedBox(height: 460, child: mapPanel),
                                       const SizedBox(height: 16),

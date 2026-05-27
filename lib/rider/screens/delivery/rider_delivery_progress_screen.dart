@@ -9,6 +9,7 @@ import 'package:citimovers/services/storage_service.dart';
 import 'package:citimovers/services/location_service.dart';
 import 'package:citimovers/services/maps_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
+import 'package:citimovers/widgets/map_marker_icon_factory.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -167,6 +168,7 @@ class _RiderDeliveryProgressScreenState
     RiderForegroundLocationService.instance.pauseTracking();
     _geocodeAddresses();
     _startLocationTracking();
+    _loadDriverMarkerIcon();
     // Start the offline-first upload queue (10-min retry + connectivity trigger)
     _deliveryQueue.start();
     // Register URL-resolved callbacks so in-memory state stays up-to-date
@@ -1025,6 +1027,17 @@ class _RiderDeliveryProgressScreenState
 
   // Route points for polyline (from Google Maps Directions API)
   List<LatLng> _routePoints = [];
+  BitmapDescriptor? _driverMarkerIcon;
+
+  Future<void> _loadDriverMarkerIcon() async {
+    final icon = await MapMarkerIconFactory.vehicleIcon(AppColors.success);
+    if (!mounted) return;
+    setState(() => _driverMarkerIcon = icon);
+  }
+
+  BitmapDescriptor get _driverMarker =>
+      _driverMarkerIcon ??
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
 
   Set<Marker> _createMarkersWithDriver(
       LatLng position, String id, String title) {
@@ -1045,8 +1058,7 @@ class _RiderDeliveryProgressScreenState
             title: 'My Location',
             snippet: _currentDriverAddress ?? 'Locating...',
           ),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          icon: _driverMarker,
         ),
       );
     }
@@ -1080,8 +1092,7 @@ class _RiderDeliveryProgressScreenState
             title: 'My Location',
             snippet: _currentDriverAddress ?? 'Locating...',
           ),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          icon: _driverMarker,
         ),
       );
     }

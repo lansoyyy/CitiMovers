@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:citimovers/rider/services/rider_auth_service.dart';
 import 'package:citimovers/rider/services/rider_foreground_location_service.dart';
 import 'package:citimovers/utils/app_colors.dart';
+import 'package:citimovers/widgets/map_marker_icon_factory.dart';
 import 'package:citimovers/utils/ui_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -23,12 +24,20 @@ class _RiderMyLocationScreenState extends State<RiderMyLocationScreen> {
   GoogleMapController? _mapController;
   String? _riderId;
   bool _isLoadingRider = true;
+  BitmapDescriptor? _unitMarkerIcon;
 
   @override
   void initState() {
     super.initState();
     _locationService.stateNotifier.addListener(_handleLocationChanged);
     _initializeRider();
+    _loadUnitMarkerIcon();
+  }
+
+  Future<void> _loadUnitMarkerIcon() async {
+    final icon = await MapMarkerIconFactory.vehicleIcon(AppColors.success);
+    if (!mounted) return;
+    setState(() => _unitMarkerIcon = icon);
   }
 
   Future<void> _initializeRider() async {
@@ -454,6 +463,8 @@ class _RiderMyLocationScreenState extends State<RiderMyLocationScreen> {
                                             title: 'My Location',
                                             snippet: address,
                                           ),
+                                          icon: _unitMarkerIcon ??
+                                              BitmapDescriptor.defaultMarker,
                                         ),
                                       },
                                     ),
