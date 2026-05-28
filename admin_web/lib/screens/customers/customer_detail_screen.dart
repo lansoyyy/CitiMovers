@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
+import '../../services/rate_config_repository.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -21,6 +22,10 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
   late final TabController _tabs;
   Map<String, dynamic>? _userData;
   bool _loading = true;
+  String _customerAccountType = 'cod';
+  final Map<String, TextEditingController> _contractRateControllers = {};
+  final TextEditingController _billingCycleController =
+      TextEditingController(text: '30');
 
   @override
   void initState() {
@@ -32,15 +37,70 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
   Future<void> _loadUser() async {
     final userData = await AdminRepository.getNormalizedUser(widget.customerId);
     if (!mounted) return;
+
+    for (final controller in _contractRateControllers.values) {
+      controller.dispose();
+    }
+    _contractRateControllers.clear();
+
+    final accountType =
+        (userData?['customerAccountType'] ?? 'cod').toString();
+    final contractRates =
+        Map<String, dynamic>.from(userData?['contractRates'] ?? {});
+
+    for (final vehicle in AdminRateConfigRepository.vehicleTypes) {
+      _contractRateControllers[vehicle] = TextEditingController(
+        text: '${contractRates[vehicle] ?? ''}',
+      );
+    }
+
+    _billingCycleController.text =
+        '${userData?['billingCycleDays'] ?? 30}';
+
     setState(() {
       _userData = userData;
+      _customerAccountType = accountType;
       _loading = false;
     });
+  }
+
+  Future<void> _saveAccountSettings() async {
+    await AdminRepository.updateCustomerAccountType(
+      userId: widget.customerId,
+      customerAccountType: _customerAccountType,
+    );
+
+    if (_customerAccountType == 'warehouse_contract') {
+      final contractRates = <String, double>{};
+      for (final entry in _contractRateControllers.entries) {
+        final amount = double.tryParse(entry.value.text.trim());
+        if (amount != null) {
+          contractRates[entry.key] = amount;
+        }
+      }
+
+      await AdminRepository.updateContractRates(
+        userId: widget.customerId,
+        contractRates: contractRates,
+        billingCycleDays:
+            int.tryParse(_billingCycleController.text.trim()) ?? 30,
+      );
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Customer account settings saved.')),
+    );
+    _loadUser();
   }
 
   @override
   void dispose() {
     _tabs.dispose();
+    for (final controller in _contractRateControllers.values) {
+      controller.dispose();
+    }
+    _billingCycleController.dispose();
     super.dispose();
   }
 
@@ -247,6 +307,100 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Account Type',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _customerAccountType,
+                    decoration: const InputDecoration(
+                      labelText: 'Customer account type',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'cod',
+                        child: Text('Regular Customer (COD)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'warehouse_contract',
+                        child: Text('Warehouse Contract'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _customerAccountType = value);
+                    },
+                  ),
+                  if (_customerAccountType == 'warehouse_contract') ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _billingCycleController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Billing cycle (days)',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Fixed contract rates per vehicle',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: AdminRateConfigRepository.vehicleTypes
+                          .map((vehicle) {
+                        return SizedBox(
+                          width: 220,
+                          child: TextField(
+                            controller: _contractRateControllers[vehicle],
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: vehicle,
+                              isDense: true,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => context.go('/rate-settings'),
+                      child: const Text('Open global COD rate settings'),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      onPressed: _saveAccountSettings,
+                      child: const Text('Save Account Settings'),
                     ),
                   ),
                 ],

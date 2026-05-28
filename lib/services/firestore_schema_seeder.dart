@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'rate_config_service.dart';
+
 class FirestoreSchemaSeeder {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -20,6 +22,9 @@ class FirestoreSchemaSeeder {
               'email': 'string?',
               'photoUrl': 'string?',
               'userType': 'string',
+              'customerAccountType': 'string',
+              'contractRates': 'map<string, number>?',
+              'billingCycleDays': 'number?',
               'walletBalance': 'number',
               'favoriteLocations': 'array<string>',
               'emailVerified': 'bool?',
@@ -68,6 +73,9 @@ class FirestoreSchemaSeeder {
               'finalFare': 'number?',
               'status': 'string',
               'paymentMethod': 'string',
+              'customerAccountType': 'string?',
+              'billingType': 'string?',
+              'paymentStatus': 'string?',
               'notes': 'string?',
               'createdAt': 'number',
               'completedAt': 'number?',
@@ -219,6 +227,11 @@ class FirestoreSchemaSeeder {
       SetOptions(merge: true),
     );
 
+    await _firestore.collection('configs').doc('rates').set(
+      RateConfigService.defaultRatesDocument(),
+      SetOptions(merge: true),
+    );
+
     // Sample Customer Users
     await _firestore.collection('users').doc('+6391234567').set(
       {
@@ -228,6 +241,9 @@ class FirestoreSchemaSeeder {
         'email': 'juan.delacruz@example.com',
         'photoUrl': null,
         'userType': 'customer',
+        'customerAccountType': 'cod',
+        'billingCycleDays': 30,
+        'contractRates': <String, dynamic>{},
         'walletBalance': 10000000.00,
         'favoriteLocations': <String>[],
         'emailVerified': true,
@@ -244,6 +260,9 @@ class FirestoreSchemaSeeder {
         'email': 'maria.santos@example.com',
         'photoUrl': null,
         'userType': 'customer',
+        'customerAccountType': 'cod',
+        'billingCycleDays': 30,
+        'contractRates': <String, dynamic>{},
         'walletBalance': 10000000.00,
         'favoriteLocations': <String>[],
         'emailVerified': true,

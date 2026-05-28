@@ -8,6 +8,7 @@ import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/maps_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
 import '../../services/wallet_service.dart';
 import '../../services/language_service.dart';
 import '../../utils/app_constants.dart';
@@ -49,6 +50,18 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   bool _showAmounts = true; // Toggle for showing/hiding amounts
   double _estimatedFare = 0.0;
 
+  bool get _showFare {
+    final user = AuthService().currentUser;
+    if (user == null) return _showAmounts;
+    return CustomerProfileHelper.shouldShowFare(user);
+  }
+
+  bool get _useWallet {
+    final user = AuthService().currentUser;
+    if (user == null) return true;
+    return CustomerProfileHelper.shouldUseWallet(user);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -64,14 +77,27 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       widget.dropoffLocation,
     );
     if (mounted) {
+      final user = AuthService().currentUser;
+      double fare = 0;
+      if (user != null) {
+        fare = await BookingService.resolveBookingFare(
+          user: user,
+          distanceKm: widget.distance,
+          vehicleType: widget.vehicle.name,
+        );
+      } else {
+        fare = _mapsService.calculateFare(
+          distanceKm: widget.distance,
+          vehicleType: widget.vehicle.name,
+        );
+      }
+
+      if (!mounted) return;
       setState(() {
         if (routeInfo != null) {
           _travelDurationMinutes = routeInfo.durationMinutes;
         }
-        _estimatedFare = _mapsService.calculateFare(
-          distanceKm: widget.distance,
-          vehicleType: widget.vehicle.name,
-        );
+        _estimatedFare = fare;
       });
     }
   }
@@ -121,10 +147,12 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     final confirmed = await _showBookingConfirmationDialog(user.userId);
     if (!confirmed) return;
 
-    final walletBalance = await WalletService().getWalletBalance(user.userId);
-    if (walletBalance < _estimatedFare) {
-      UIHelpers.showErrorToast('Insufficient wallet balance for this booking');
-      return;
+    if (_useWallet) {
+      final walletBalance = await WalletService().getWalletBalance(user.userId);
+      if (walletBalance < _estimatedFare) {
+        UIHelpers.showErrorToast('Insufficient wallet balance for this booking');
+        return;
+      }
     }
 
     // Proceed with booking creation
@@ -449,6 +477,60 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   }
 
   Future<bool> _showBookingConfirmationDialog(String userId) async {
+    if (!_useWallet) {
+      return await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text(
+                'Confirm Booking',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Please review your booking details:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Regular',
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildConfirmRow('Vehicle:', widget.vehicle.name),
+                  _buildConfirmRow('Billing:', '30-day warehouse contract'),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Trip amounts are billed on your contract cycle. No wallet deduction will be made for this booking.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Medium',
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Proceed with Booking'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+
     return await showDialog<bool>(
           context: context,
           builder: (context) => FutureBuilder<double>(
@@ -661,7 +743,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                   ),
 
                   // Amount Display Toggle
-                  if (_showAmounts)
+                  if (_showFare)
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 12),
@@ -940,7 +1022,32 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
 
                   const SizedBox(height: 24),
 
+                  if (!_useWallet) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: const Text(
+                        'This booking will be billed on your 30-day warehouse contract. No wallet deduction applies.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'Medium',
+                          color: AppColors.textPrimary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
                   // Payment Method
+                  if (_useWallet) ...[
                   const Text(
                     'Payment Method',
                     style: TextStyle(
@@ -968,6 +1075,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                       ],
                     ),
                   ),
+                  ],
                 ],
               ),
             ),

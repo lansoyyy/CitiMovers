@@ -44,6 +44,7 @@ final _navItems = [
   _NavItem('Bookings', Icons.receipt_long_outlined, '/bookings'),
   _NavItem('Dispatch Board', Icons.map_outlined, '/dispatch'),
   _NavItem('Finance', Icons.account_balance_wallet_outlined, '/finance'),
+  _NavItem('Rate Settings', Icons.price_change_outlined, '/rate-settings'),
   _NavItem('Notifications', Icons.notifications_outlined, '/notifications'),
   _NavItem('Promo Banners', Icons.campaign_outlined, '/promos'),
   _NavItem('Support Tickets', Icons.support_agent_outlined, '/support-tickets'),

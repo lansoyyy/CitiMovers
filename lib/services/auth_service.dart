@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
 import '../models/user_model.dart';
+import '../utils/app_constants.dart';
 import 'emailjs_service.dart';
 import 'otp_service.dart';
 import 'storage_service.dart';
@@ -464,6 +465,7 @@ class AuthService {
     required String name,
     required String phoneNumber,
     String? email,
+    String customerAccountType = AppConstants.customerAccountTypeCod,
   }) async {
     try {
       final now = DateTime.now();
@@ -485,12 +487,32 @@ class AuthService {
 
       final createdAtIso = _toIsoString(existingData?['createdAt'], now);
 
+      final isNewUser = existingData == null;
+      final resolvedAccountType = isNewUser
+          ? customerAccountType
+          : (existingData?['customerAccountType'] ?? customerAccountType)
+              .toString();
+      final resolvedBillingCycleDays = switch (existingData?['billingCycleDays']) {
+        num v => v.toInt(),
+        String v =>
+          int.tryParse(v) ?? AppConstants.defaultContractBillingCycleDays,
+        _ => AppConstants.defaultContractBillingCycleDays,
+      };
+      final existingContractRates = existingData?['contractRates'];
+
       final user = UserModel(
         userId: normalizedPhoneNumber,
         name: name,
         phoneNumber: normalizedPhoneNumber,
         email: email,
         userType: (existingData?['userType'] ?? 'customer').toString(),
+        customerAccountType: resolvedAccountType,
+        contractRates: UserModel.fromMap({
+          'contractRates': existingContractRates ?? {},
+          'createdAt': createdAtIso,
+          'updatedAt': now.toIso8601String(),
+        }).contractRates,
+        billingCycleDays: resolvedBillingCycleDays,
         walletBalance: switch (existingData?['walletBalance']) {
           num v => v.toDouble(),
           String v => double.tryParse(v) ?? 0.0,
@@ -509,6 +531,11 @@ class AuthService {
           ...user.toMap(),
           'userId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
+          'customerAccountType': resolvedAccountType,
+          'billingCycleDays': resolvedAccountType ==
+                  AppConstants.customerAccountTypeWarehouseContract
+              ? resolvedBillingCycleDays
+              : user.billingCycleDays,
           'updatedAt': now.toIso8601String(),
           'createdAt': createdAtIso,
         },

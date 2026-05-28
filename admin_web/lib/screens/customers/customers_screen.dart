@@ -88,6 +88,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       final status = d['isSuspended'] == true
                           ? 'suspended'
                           : 'active';
+                      final accountType =
+                          (d['customerAccountType'] ?? 'cod').toString();
+                      final accountLabel =
+                          accountType == 'warehouse_contract'
+                              ? 'Contract'
+                              : 'COD';
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundColor: AdminTheme.primary.withOpacity(0.1),
@@ -126,6 +132,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                 color: AdminTheme.primary,
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            StatusBadge(accountLabel),
                             const SizedBox(width: 12),
                             StatusBadge(status),
                             const SizedBox(width: 12),

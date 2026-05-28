@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
 import '../../services/booking_service.dart';
 import '../../services/booking_status_service.dart';
 import '../../services/driver_service.dart';
@@ -907,6 +908,9 @@ class _BookingCardState extends State<BookingCard> {
   }
 
   String getFare() {
+    if (!CustomerProfileHelper.shouldShowFare(AuthService().currentUser)) {
+      return 'Contract billing';
+    }
     return 'P${widget.booking.totalFare.toStringAsFixed(2)}';
   }
 
@@ -1593,6 +1597,9 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
   }
 
   String getFare() {
+    if (!CustomerProfileHelper.shouldShowFare(AuthService().currentUser)) {
+      return 'Contract billing';
+    }
     return 'P${widget.booking.totalFare.toStringAsFixed(2)}';
   }
 

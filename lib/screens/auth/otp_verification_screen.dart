@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../../utils/app_colors.dart';
+import '../../utils/app_constants.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../services/auth_service.dart';
@@ -12,6 +13,7 @@ class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
   final bool isSignup;
   final String? name;
+  final String customerAccountType;
   final VoidCallback? onVerified;
   final bool isBookingFlow;
   final BookingModel? booking;
@@ -21,6 +23,7 @@ class OTPVerificationScreen extends StatefulWidget {
     required this.phoneNumber,
     required this.isSignup,
     this.name,
+    this.customerAccountType = AppConstants.customerAccountTypeCod,
     this.booking,
     this.onVerified,
     this.isBookingFlow = false,
@@ -156,6 +159,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       final user = await _authService.registerUser(
         name: widget.name!.trim(),
         phoneNumber: widget.phoneNumber,
+        customerAccountType: widget.customerAccountType,
       );
 
       if (!mounted) return;

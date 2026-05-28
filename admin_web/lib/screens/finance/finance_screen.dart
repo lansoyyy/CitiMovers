@@ -25,7 +25,7 @@ class _FinanceScreenState extends State<FinanceScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -307,6 +307,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                       Tab(text: 'Payment Transactions'),
                       Tab(text: 'Wallet Ledger'),
                       Tab(text: 'Reconciliation Queue'),
+                      Tab(text: 'Contract Billing'),
                     ],
                   ),
                   Expanded(
@@ -316,6 +317,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                         _PaymentsTab(),
                         _WalletLedgerTab(),
                         _ReconciliationQueueTab(),
+                        _ContractBillingTab(),
                       ],
                     ),
                   ),
@@ -657,5 +659,101 @@ class _ReconciliationQueueTab extends StatelessWidget {
         SnackBar(content: Text('Updated booking reconciliation to $status.')),
       );
     }
+  }
+}
+
+class _ContractBillingTab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: AdminRepository.streamContractBillingBookings(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final bookings = (snapshot.data ?? [])
+            .where((booking) => booking['paymentStatus'] != 'invoiced')
+            .toList();
+
+        if (bookings.isEmpty) {
+          return const EmptyState(
+            message: 'No pending contract billing trips',
+            icon: Icons.receipt_long_outlined,
+          );
+        }
+
+        final grouped = <String, List<Map<String, dynamic>>>{};
+        for (final booking in bookings) {
+          final customerId = (booking['customerId'] ?? 'unknown').toString();
+          grouped.putIfAbsent(customerId, () => []).add(booking);
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: grouped.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final customerId = grouped.keys.elementAt(index);
+            final customerBookings = grouped[customerId]!;
+            final total = customerBookings.fold<double>(
+              0,
+              (sum, booking) =>
+                  sum +
+                  ((booking['estimatedFare'] ?? booking['finalFare'] ?? 0)
+                          as num)
+                      .toDouble(),
+            );
+
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customerId,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${customerBookings.length} trips · ₱ ${total.toStringAsFixed(2)} pending (30-day contract)',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AdminTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          await AdminRepository.markContractBookingsInvoiced(
+                            customerBookings
+                                .map((booking) => booking['id'].toString())
+                                .toList(),
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Contract period marked invoiced.'),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Mark Period Invoiced'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }

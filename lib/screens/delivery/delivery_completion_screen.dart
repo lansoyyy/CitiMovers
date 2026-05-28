@@ -5,6 +5,7 @@ import '../../utils/ui_helpers.dart';
 import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
 import '../../services/driver_service.dart';
 
 class DeliveryCompletionScreen extends StatefulWidget {
@@ -65,6 +66,12 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   double get _totalFare {
     return widget.booking.totalFare;
   }
+
+  bool get _showFare =>
+      CustomerProfileHelper.shouldShowFare(_authService.currentUser);
+
+  bool get _showTips =>
+      CustomerProfileHelper.shouldShowTips(_authService.currentUser);
 
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -518,12 +525,14 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                       '${widget.booking.createdAt.hour}:${widget.booking.createdAt.minute.toString().padLeft(2, '0')}'),
                   _buildSummaryRow(Icons.route, 'Distance',
                       '${widget.booking.distance.toStringAsFixed(0)} KM'),
-                  _buildSummaryRow(Icons.payments, 'Total Fare',
-                      'P${_totalFare.toStringAsFixed(2)}'),
+                  if (_showFare)
+                    _buildSummaryRow(Icons.payments, 'Total Fare',
+                        'P${_totalFare.toStringAsFixed(2)}'),
                 ],
               ),
             ),
 
+            if (_showFare) ...[
             const SizedBox(height: 16),
 
             Container(
@@ -562,6 +571,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                 ],
               ),
             ),
+            ],
 
             const SizedBox(height: 16),
 
@@ -1069,7 +1079,7 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
             const SizedBox(height: 16),
 
             // Tip Section
-            if (_rating >= 4)
+            if (_showTips && _rating >= 4)
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 padding: const EdgeInsets.all(20),

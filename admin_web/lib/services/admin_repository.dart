@@ -17,7 +17,9 @@ class AdminRepository {
   static bool _needsUserBackfill(Map<String, dynamic> raw) {
     return !raw.containsKey('isSuspended') ||
         _isMissing(raw['accountStatus']) ||
-        raw['walletBalance'] == null;
+        raw['walletBalance'] == null ||
+        (_isMissing(raw['customerAccountType']) &&
+            (raw['userType'] ?? 'customer').toString() == 'customer');
   }
 
   static bool _needsRiderDocumentsBackfill(Map<String, dynamic> raw) {
@@ -568,6 +570,14 @@ class AdminRepository {
       ]),
       'email': _coalesceString([raw['email'], raw['emailAddress']]),
       'walletBalance': _asDouble(raw['walletBalance']),
+      'customerAccountType':
+          _coalesceString([raw['customerAccountType']], fallback: 'cod'),
+      'billingCycleDays': switch (raw['billingCycleDays']) {
+        num v => v.toInt(),
+        String v => int.tryParse(v) ?? 30,
+        _ => 30,
+      },
+      'contractRates': _asMap(raw['contractRates']),
       'isSuspended': isSuspended,
       'accountStatus': accountStatus,
       'createdAt':
@@ -2135,6 +2145,12 @@ class AdminRepository {
       if (raw['walletBalance'] == null) {
         payload['walletBalance'] = normalized['walletBalance'];
       }
+      if (_isMissing(raw['customerAccountType']) &&
+          (raw['userType'] ?? 'customer').toString() == 'customer') {
+        payload['customerAccountType'] = 'cod';
+        payload['billingCycleDays'] = 30;
+        payload['contractRates'] = {};
+      }
       if (payload.isEmpty) continue;
 
       payload['updatedAt'] = FieldValue.serverTimestamp();
@@ -2850,6 +2866,89 @@ class AdminRepository {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  static Future<void> updateCustomerAccountType({
+    required String userId,
+    required String customerAccountType,
+  }) async {
+    await _db.collection(AdminConstants.colUsers).doc(userId).set(
+      {
+        'customerAccountType': customerAccountType,
+        if (customerAccountType == 'warehouse_contract') ...{
+          'billingCycleDays': 30,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  static Future<void> updateContractRates({
+    required String userId,
+    required Map<String, double> contractRates,
+    int billingCycleDays = 30,
+  }) async {
+    await _db.collection(AdminConstants.colUsers).doc(userId).set(
+      {
+        'contractRates': contractRates,
+        'billingCycleDays': billingCycleDays,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamContractBillingBookings() {
+    return _db
+        .collection(AdminConstants.colBookings)
+        .where('billingType', isEqualTo: 'contract_30day')
+        .snapshots()
+        .map((snapshot) {
+      final bookings = snapshot.docs.map((doc) {
+        final data = _asMap(doc.data());
+        return {
+          ...data,
+          'id': doc.id,
+          'createdAt': parseTimestamp(data['createdAt']),
+        };
+      }).toList();
+      bookings.sort((a, b) {
+        final aDate = a['createdAt'] as DateTime?;
+        final bDate = b['createdAt'] as DateTime?;
+        if (aDate == null || bDate == null) return 0;
+        return bDate.compareTo(aDate);
+      });
+      return bookings;
+    });
+  }
+
+  static Future<void> markContractBookingsInvoiced(List<String> bookingIds) async {
+    if (bookingIds.isEmpty) return;
+    var batch = _db.batch();
+    var count = 0;
+    final now = FieldValue.serverTimestamp();
+
+    for (final bookingId in bookingIds) {
+      batch.set(
+        _db.collection(AdminConstants.colBookings).doc(bookingId),
+        {
+          'paymentStatus': 'invoiced',
+          'invoicedAt': now,
+        },
+        SetOptions(merge: true),
+      );
+      count++;
+      if (count >= _batchWriteLimit) {
+        await batch.commit();
+        batch = _db.batch();
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
     }
   }
 }

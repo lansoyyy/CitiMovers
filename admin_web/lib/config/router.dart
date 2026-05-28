@@ -15,6 +15,7 @@ import '../screens/notifications/notifications_screen.dart';
 import '../screens/promos/promos_screen.dart';
 import '../screens/audit_logs/audit_logs_screen.dart';
 import '../screens/maintenance/maintenance_screen.dart';
+import '../screens/settings/rate_settings_screen.dart';
 import '../screens/support/support_tickets_screen.dart';
 import '../services/auth_service.dart';
 
@@ -85,6 +86,10 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
         GoRoute(
           path: '/finance',
           builder: (context, state) => const FinanceScreen(),
+        ),
+        GoRoute(
+          path: '/rate-settings',
+          builder: (context, state) => const RateSettingsScreen(),
         ),
         GoRoute(
           path: '/notifications',

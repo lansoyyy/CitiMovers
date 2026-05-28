@@ -105,7 +105,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                   _BackfillCard(
                     title: 'Users',
                     description:
-                        'Backfill missing isSuspended, accountStatus, and walletBalance defaults.',
+                        'Backfill missing isSuspended, accountStatus, walletBalance, and customerAccountType defaults.',
                     count: _summary['users'] ?? 0,
                     running: _runningTask == 'users',
                     onRun: () => _runBackfill('users'),

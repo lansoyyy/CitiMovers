@@ -3,6 +3,9 @@ import '../../utils/app_colors.dart';
 import '../../models/vehicle_model.dart';
 import '../../models/location_model.dart';
 import '../../services/maps_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
+import '../../services/booking_service.dart';
 import 'booking_summary_screen.dart';
 
 class VehicleSelectionScreen extends StatefulWidget {
@@ -27,6 +30,12 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   final Map<String, double> _estimatedFares = <String, double>{};
   VehicleModel? _selectedVehicle;
 
+  bool get _showFare {
+    final user = AuthService().currentUser;
+    if (user == null) return true;
+    return CustomerProfileHelper.shouldShowFare(user);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -34,14 +43,25 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   }
 
   Future<void> _loadEstimatedFares() async {
+    if (!_showFare) return;
+
     await _mapsService.fetchFuelPrice();
+    final user = AuthService().currentUser;
 
     final calculatedFares = <String, double>{};
     for (final vehicle in _vehicles) {
-      calculatedFares[vehicle.id] = _mapsService.calculateFare(
-        distanceKm: widget.distance,
-        vehicleType: vehicle.name,
-      );
+      if (user != null) {
+        calculatedFares[vehicle.id] = await BookingService.resolveBookingFare(
+          user: user,
+          distanceKm: widget.distance,
+          vehicleType: vehicle.name,
+        );
+      } else {
+        calculatedFares[vehicle.id] = _mapsService.calculateFare(
+          distanceKm: widget.distance,
+          vehicleType: vehicle.name,
+        );
+      }
     }
 
     if (!mounted) return;
@@ -236,36 +256,46 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                         ),
                       ],
                     ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (estimatedFare == null)
-                          const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                    trailing: _showFare
+                        ? Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              if (estimatedFare == null)
+                                const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              else
+                                Text(
+                                  'P${estimatedFare.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontFamily: 'Bold',
+                                    color: AppColors.primaryRed,
+                                  ),
+                                ),
+                              const SizedBox(height: 4),
+                              Text(
+                                estimatedFare == null ? 'Loading' : 'Estimated',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontFamily: 'Regular',
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
                           )
-                        else
-                          Text(
-                            'P${estimatedFare.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontFamily: 'Bold',
-                              color: AppColors.primaryRed,
+                        : const Text(
+                            'Contract',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Medium',
+                              color: AppColors.textSecondary,
                             ),
                           ),
-                        const SizedBox(height: 4),
-                        Text(
-                          estimatedFare == null ? 'Loading' : 'Estimated',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontFamily: 'Regular',
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 );
               },

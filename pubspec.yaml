@@ -62,6 +62,7 @@ dependencies:
   get_storage:
   firebase_database:
   connectivity_plus: ^5.0.2
+  google_fonts: ^6.3.2
 
 dev_dependencies:
   flutter_test:

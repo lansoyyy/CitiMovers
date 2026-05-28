@@ -27,6 +27,17 @@ class AppConstants {
   static const String userTypeDriver = 'driver';
   static const String userTypeAdmin = 'admin';
 
+  // Customer account types
+  static const String customerAccountTypeCod = 'cod';
+  static const String customerAccountTypeWarehouseContract =
+      'warehouse_contract';
+
+  // Billing types
+  static const String billingTypeWallet = 'wallet';
+  static const String billingTypeContract30Day = 'contract_30day';
+
+  static const int defaultContractBillingCycleDays = 30;
+
   // Firebase Collections
   static const String collectionUsers = 'users';
   static const String collectionDrivers = 'drivers';

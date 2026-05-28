@@ -14,6 +14,7 @@ import '../../models/promo_banner_model.dart';
 import '../../models/user_model.dart';
 import '../why_choose_us_screen.dart';
 import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
 import '../../services/saved_location_service.dart';
 import '../../services/promo_banner_service.dart';
 import '../../services/booking_service.dart';
@@ -631,7 +632,10 @@ class _HomeTabState extends State<HomeTab> {
                                 statusColor: _getStatusColor(booking.status),
                                 from: booking.pickupLocation.address,
                                 to: booking.dropoffLocation.address,
-                                fare: 'P${booking.estimatedFare.toInt()}',
+                                fare: CustomerProfileHelper.shouldShowFare(
+                                        _authService.currentUser)
+                                    ? 'P${booking.estimatedFare.toInt()}'
+                                    : '',
                                 onTap: () async {
                                   final bookingId = booking.bookingId;
                                   if (bookingId != null &&
@@ -2175,23 +2179,25 @@ class _RecentBookingCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  fare,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontFamily: 'Bold',
-                    color: AppColors.primaryBlue,
-                    height: 1.2,
+              if (fare.isNotEmpty) ...[
+                const SizedBox(width: 16),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    fare,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontFamily: 'Bold',
+                      color: AppColors.primaryBlue,
+                      height: 1.2,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ]),

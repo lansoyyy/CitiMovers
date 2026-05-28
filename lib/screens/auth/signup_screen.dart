@@ -2,8 +2,10 @@ import 'package:citimovers/screens/auth/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/app_constants.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/customer_account_type_dropdown.dart';
 import 'otp_verification_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _authService = AuthService();
   bool _isLoading = false;
   bool _agreedToTerms = false;
+  String _customerAccountType = AppConstants.customerAccountTypeCod;
 
   @override
   void dispose() {
@@ -80,6 +83,7 @@ class _SignupScreenState extends State<SignupScreen> {
             phoneNumber: phoneNumber,
             isSignup: true,
             name: _nameController.text,
+            customerAccountType: _customerAccountType,
           ),
         ),
       );
@@ -230,6 +234,20 @@ class _SignupScreenState extends State<SignupScreen> {
                     }
                     return null;
                   },
+                ),
+
+                const SizedBox(height: 24),
+
+                CustomerAccountTypeDropdown(
+                  value: _customerAccountType,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _customerAccountType = value);
+                  },
+                ),
+                const SizedBox(height: 8),
+                CustomerAccountTypeHelperText(
+                  accountType: _customerAccountType,
                 ),
 
                 const SizedBox(height: 24),

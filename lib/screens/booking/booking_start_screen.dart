@@ -4,6 +4,10 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/location_model.dart';
 import '../../services/maps_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
+import '../../services/booking_service.dart';
+import '../../models/user_model.dart';
 import 'map_view_screen.dart';
 import 'vehicle_selection_screen.dart';
 
@@ -35,6 +39,12 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
   Timer? _debounceTimer;
   int _searchCounter = 0; // Prevents stale results from overwriting newer ones
   String? _lastSearchError; // Stores last error for user feedback
+
+  bool get _showFare {
+    final user = AuthService().currentUser;
+    if (user == null) return true;
+    return CustomerProfileHelper.shouldShowFare(user);
+  }
 
   void _onSearchChanged(String query) {
     _debounceTimer?.cancel();
@@ -166,25 +176,34 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
       if (routeInfo != null) {
         // Refresh fuel price from Firestore before calculating the fare
         await _mapsService.fetchFuelPrice();
+
+        double? estimatedFare;
+        if (_showFare) {
+          final user = AuthService().currentUser;
+          if (user != null) {
+            estimatedFare = await BookingService.resolveBookingFare(
+              user: user,
+              distanceKm: routeInfo.distanceKm,
+              vehicleType: '10-Wheeler Wingvan',
+            );
+          } else {
+            estimatedFare = _mapsService.calculateFare(
+              distanceKm: routeInfo.distanceKm,
+              vehicleType: '10-Wheeler Wingvan',
+            );
+          }
+        }
+
         setState(() {
           _distance = routeInfo.distanceKm;
           _durationMinutes = routeInfo.durationMinutes;
-          // Calculate ETA based on current time + duration
           if (_durationMinutes != null) {
             _estimatedArrival =
                 DateTime.now().add(Duration(minutes: _durationMinutes!));
-
-            // Calculate estimated delivery time (ETA + 2 hours for loading/unloading)
             _estimatedDelivery =
                 _estimatedArrival!.add(const Duration(hours: 2));
           }
-
-          // Calculate estimated fare using default vehicle type
-          _estimatedFare = _mapsService.calculateFare(
-            distanceKm: _distance!,
-            vehicleType: '10-Wheeler Wingvan',
-          );
-
+          _estimatedFare = estimatedFare;
           _isCalculating = false;
         });
       } else {
@@ -719,7 +738,7 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
                                   ),
                                 ],
                                 // Fare Row
-                                if (_estimatedFare != null) ...[
+                                if (_showFare && _estimatedFare != null) ...[
                                   const SizedBox(height: 8),
                                   Container(
                                     padding: const EdgeInsets.all(8),

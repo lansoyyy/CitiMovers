@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_model.dart';
+import '../models/user_model.dart';
+import '../utils/app_constants.dart';
 import 'notification_service.dart';
 import 'booking_status_service.dart';
 import 'booking_finance_service.dart';
 import 'trip_number_service.dart';
+import 'customer_profile_helper.dart';
+import 'rate_config_service.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
 
@@ -143,6 +147,29 @@ class BookingService {
           date: tripCounterDate,
         );
 
+        final bookingSnapshot = await transaction.get(bookingRef);
+        if (bookingSnapshot.exists) {
+          throw Exception('Booking already exists: $bookingId');
+        }
+
+        final userSnap = await transaction.get(userRef);
+        if (!userSnap.exists) {
+          throw Exception('Customer not found: $customerId');
+        }
+
+        final userData = userSnap.data() ?? {};
+        final customerAccountType =
+            CustomerProfileHelper.resolveAccountTypeFromMap(userData);
+        final isContractCustomer = customerAccountType ==
+            AppConstants.customerAccountTypeWarehouseContract;
+        final billingType = isContractCustomer
+            ? AppConstants.billingTypeContract30Day
+            : AppConstants.billingTypeWallet;
+        final paymentMethodValue =
+            isContractCustomer ? 'Contract' : enforcedPaymentMethod;
+        final paymentStatusValue =
+            isContractCustomer ? 'contract_pending' : 'held';
+
         booking = BookingModel(
           bookingId: bookingId,
           tripNumber: tripAllocation.tripNumber,
@@ -167,81 +194,85 @@ class BookingService {
           vatAmount: initialFinance.vatAmount,
           adminNetAmount: initialFinance.adminNetAmount,
           status: initialStatus,
-          paymentMethod: enforcedPaymentMethod,
+          paymentMethod: paymentMethodValue,
           notes: notes,
           createdAt: now,
           completedAt: null,
           cancellationReason: null,
         );
 
-        // Check if booking already exists
-        final bookingSnapshot = await transaction.get(bookingRef);
-        if (bookingSnapshot.exists) {
-          throw Exception('Booking already exists: $bookingId');
+        if (!isContractCustomer) {
+          final currentBalance =
+              (userData['walletBalance'] as num?)?.toDouble() ?? 0.0;
+
+          if (currentBalance < estimatedFare) {
+            throw Exception('Insufficient wallet balance for this booking');
+          }
+
+          final newBalance = currentBalance - estimatedFare;
+
+          transaction.set(bookingRef, {
+            ...booking.toMap(),
+            if (customerName != null && customerName.trim().isNotEmpty)
+              'customerName': customerName.trim(),
+            if (customerPhone != null && customerPhone.trim().isNotEmpty)
+              'customerPhone': customerPhone.trim(),
+            if (estimatedDurationMinutes != null)
+              'estimatedDuration': estimatedDurationMinutes,
+            if (reportRecipients != null && reportRecipients.trim().isNotEmpty)
+              'reportRecipients': reportRecipients.trim(),
+            'userId': customerId,
+            'riderId': null,
+            'customerAccountType': customerAccountType,
+            'billingType': billingType,
+            'issueNotesCount': 0,
+            'issueStatus': '',
+            'reconciliationStatus': '',
+            'paymentHeldAt': now.millisecondsSinceEpoch,
+            'paymentCapturedAmount': estimatedFare,
+            'paymentCapturedFromBalance': currentBalance,
+            'paymentCapturedToBalance': newBalance,
+            'paymentStatus': paymentStatusValue,
+          });
+
+          transaction.update(userRef, {
+            'walletBalance': newBalance,
+            'updatedAt': now.toIso8601String(),
+          });
+
+          transaction.set(walletTxnRef, {
+            'id': walletTxnRef.id,
+            'userId': customerId,
+            'type': 'payment_hold',
+            'amount': -estimatedFare,
+            'previousBalance': currentBalance,
+            'newBalance': newBalance,
+            'description': 'Booking payment (on hold — captured on completion)',
+            'referenceId': bookingId,
+            'createdAt': Timestamp.fromDate(now),
+          });
+        } else {
+          transaction.set(bookingRef, {
+            ...booking.toMap(),
+            if (customerName != null && customerName.trim().isNotEmpty)
+              'customerName': customerName.trim(),
+            if (customerPhone != null && customerPhone.trim().isNotEmpty)
+              'customerPhone': customerPhone.trim(),
+            if (estimatedDurationMinutes != null)
+              'estimatedDuration': estimatedDurationMinutes,
+            if (reportRecipients != null && reportRecipients.trim().isNotEmpty)
+              'reportRecipients': reportRecipients.trim(),
+            'userId': customerId,
+            'riderId': null,
+            'customerAccountType': customerAccountType,
+            'billingType': billingType,
+            'issueNotesCount': 0,
+            'issueStatus': '',
+            'reconciliationStatus': '',
+            'paymentStatus': paymentStatusValue,
+          });
         }
 
-        // Validate wallet balance (no minimum requirement - removed since no payment gateway)
-        final userSnap = await transaction.get(userRef);
-        if (!userSnap.exists) {
-          throw Exception('Customer not found: $customerId');
-        }
-
-        final userData = userSnap.data();
-        final currentBalance =
-            (userData?['walletBalance'] as num?)?.toDouble() ?? 0.0;
-
-        if (currentBalance < estimatedFare) {
-          throw Exception('Insufficient wallet balance for this booking');
-        }
-
-        final newBalance = currentBalance - estimatedFare;
-
-        // Create booking document
-        transaction.set(bookingRef, {
-          ...booking.toMap(),
-          if (customerName != null && customerName.trim().isNotEmpty)
-            'customerName': customerName.trim(),
-          if (customerPhone != null && customerPhone.trim().isNotEmpty)
-            'customerPhone': customerPhone.trim(),
-          if (estimatedDurationMinutes != null)
-            'estimatedDuration': estimatedDurationMinutes,
-          if (reportRecipients != null && reportRecipients.trim().isNotEmpty)
-            'reportRecipients': reportRecipients.trim(),
-          'userId': customerId,
-          'riderId': null,
-          'issueNotesCount': 0,
-          'issueStatus': '',
-          'reconciliationStatus': '',
-          'paymentHeldAt': now.millisecondsSinceEpoch,
-          'paymentCapturedAmount': estimatedFare,
-          'paymentCapturedFromBalance': currentBalance,
-          'paymentCapturedToBalance': newBalance,
-          // Payment is ON HOLD — deducted from wallet now, but only finalised
-          // once delivery is completed. If the customer cancels, the held
-          // amount is captured as a cancellation fee (not refunded).
-          'paymentStatus': 'held',
-        });
-
-        // Deduct from wallet (hold)
-        transaction.update(userRef, {
-          'walletBalance': newBalance,
-          'updatedAt': now.toIso8601String(),
-        });
-
-        // Wallet transaction record
-        transaction.set(walletTxnRef, {
-          'id': walletTxnRef.id,
-          'userId': customerId,
-          'type': 'payment_hold',
-          'amount': -estimatedFare,
-          'previousBalance': currentBalance,
-          'newBalance': newBalance,
-          'description': 'Booking payment (on hold — captured on completion)',
-          'referenceId': bookingId,
-          'createdAt': Timestamp.fromDate(now),
-        });
-
-        // Create delivery request document
         transaction.set(deliveryRequestRef, {
           'requestId': bookingId,
           'bookingId': bookingId,
@@ -272,6 +303,25 @@ class BookingService {
       debugPrint('Error creating booking: $e');
       return null;
     }
+  }
+
+  static Future<double> resolveBookingFare({
+    required UserModel user,
+    required double distanceKm,
+    required String vehicleType,
+  }) async {
+    if (CustomerProfileHelper.isContractCustomer(user)) {
+      return RateConfigService.instance.resolveContractFare(
+        vehicleType: vehicleType,
+        userContractRates: user.contractRates,
+      );
+    }
+
+    await RateConfigService.instance.ensureLoaded();
+    return RateConfigService.instance.calculateCodFare(
+      distanceKm: distanceKm,
+      vehicleType: vehicleType,
+    );
   }
 
   /// Get bookings for a specific customer

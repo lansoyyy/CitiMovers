@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/location_model.dart';
 import '../utils/retry_utility.dart';
+import 'rate_config_service.dart';
 
 /// Maps Service for CitiMovers
 /// Handles Google Maps API interactions
@@ -292,51 +293,10 @@ class MapsService {
     required double distanceKm,
     required String vehicleType,
   }) {
-    double calculatedFare = 0.0;
-
-    switch (vehicleType) {
-      case 'Sedan':
-        calculatedFare = 150 + (distanceKm * 12);
-        break;
-      case 'AUV':
-        calculatedFare = 100 + (distanceKm * 15);
-        break;
-      case '4-Wheeler Closed Van':
-        calculatedFare = 150 + (distanceKm * 20);
-        break;
-      case '6-Wheeler Closed Van':
-        calculatedFare = 300 + (distanceKm * 35);
-        break;
-      case '6-Wheeler Forward Wingvan':
-        calculatedFare = 500 + (distanceKm * 50);
-        break;
-      case '10-Wheeler Wingvan':
-        // Formula: Distance × 3/2 × fuelPricePerLiter (from Firestore configs/app)
-        calculatedFare = (distanceKm * 3 / 2) * _fuelPricePerLiter;
-        if (calculatedFare < 19500) calculatedFare = 19500; // min at 100km × 130/L
-        break;
-      case '20-Footer Trailer':
-        // Formula: Distance × 3/2.5 × ₱130/L (fuel hardcoded per client spec)
-        calculatedFare = (distanceKm * 3 / 2.5) * 130.0;
-        if (calculatedFare < 15600) calculatedFare = 15600; // min at 100km
-        break;
-      case '40-Footer Trailer':
-        // Formula: Distance × 4/2.5 × ₱130/L (fuel hardcoded per client spec)
-        calculatedFare = (distanceKm * 4 / 2.5) * 130.0;
-        if (calculatedFare < 20800) calculatedFare = 20800; // min at 100km
-        break;
-      default:
-        calculatedFare = 150 + (distanceKm * 12);
-    }
-
-    // Add peak hour surcharge (20%) if needed
-    final now = DateTime.now();
-    if ((now.hour >= 7 && now.hour <= 9) ||
-        (now.hour >= 17 && now.hour <= 19)) {
-      calculatedFare *= 1.2;
-    }
-
-    return calculatedFare;
+    return RateConfigService.instance.calculateCodFare(
+      distanceKm: distanceKm,
+      vehicleType: vehicleType,
+    );
   }
 
   /// Calculate distance using Haversine formula

@@ -18,6 +18,7 @@ import '../../models/location_model.dart';
 import '../../rider/models/rider_model.dart';
 import '../../rider/services/rider_location_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/customer_profile_helper.dart';
 import '../../services/booking_status_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/maps_service.dart';
@@ -2159,6 +2160,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   Widget _buildTripSummaryCard() {
+    final showFare =
+        CustomerProfileHelper.shouldShowFare(_authService.currentUser);
     final totalFare = _booking.totalFare;
 
     return Container(
@@ -2225,28 +2228,30 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total Fare',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontFamily: 'Bold',
-                  color: AppColors.textSecondary,
+          if (showFare) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Total Fare',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Bold',
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              ),
-              Text(
-                'P${totalFare.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontFamily: 'Bold',
-                  color: AppColors.primaryRed,
+                Text(
+                  'P${totalFare.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.primaryRed,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
