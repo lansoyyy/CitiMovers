@@ -13,6 +13,7 @@ class EmailVerificationScreen extends StatefulWidget {
   final String? phoneNumber;
   final bool isSignup;
   final String? name;
+  final String? password;
   final bool isBookingFlow;
   final BookingModel? booking;
 
@@ -22,6 +23,7 @@ class EmailVerificationScreen extends StatefulWidget {
     this.phoneNumber,
     required this.isSignup,
     this.name,
+    this.password,
     this.booking,
     this.isBookingFlow = false,
   });
@@ -123,6 +125,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       final user = await _authService.registerUser(
         name: widget.name!,
         phoneNumber: widget.phoneNumber!,
+        password: widget.password ?? '',
         email: widget.email,
       );
 
@@ -137,7 +140,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       }
     } else {
       // If login, authenticate user
-      final user = await _authService.loginUser(widget.phoneNumber!);
+      final user = await _authService.loginUser(widget.phoneNumber!, widget.password ?? '');
 
       if (!mounted) return;
       setState(() => _isLoading = false);

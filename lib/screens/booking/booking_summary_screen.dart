@@ -12,7 +12,7 @@ import '../../services/customer_profile_helper.dart';
 import '../../services/wallet_service.dart';
 import '../../services/language_service.dart';
 import '../../utils/app_constants.dart';
-import '../auth/otp_verification_screen.dart';
+import '../delivery/delivery_tracking_screen.dart';
 import '../terms_conditions_screen.dart';
 
 class BookingSummaryScreen extends StatefulWidget {
@@ -183,24 +183,10 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     setState(() => _isLoading = false);
 
     if (booking != null && mounted) {
-      setState(() => _isLoading = true);
-      final otpSent = await authService.sendOTP(user.phoneNumber);
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      if (!otpSent) {
-        UIHelpers.showErrorToast('Failed to send OTP. Please try again.');
-        return;
-      }
-
-      // Navigate to OTP verification first, then email verification
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => OTPVerificationScreen(
-            phoneNumber: user.phoneNumber,
-            isSignup: false,
-            isBookingFlow: true,
+          builder: (context) => DeliveryTrackingScreen(
             booking: BookingModel(
               bookingId: booking.bookingId!,
               customerId: user.userId,

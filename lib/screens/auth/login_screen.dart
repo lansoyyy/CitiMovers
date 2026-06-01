@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
-import 'otp_verification_screen.dart';
+import '../home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,20 +16,21 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   String _formatPhoneNumber(String value) {
-    // Remove all non-digit characters
     String digits = value.replaceAll(RegExp(r'\D'), '');
 
-    // Add +63 prefix if not present
     if (digits.startsWith('0')) {
       digits = '63${digits.substring(1)}';
     }
@@ -46,38 +47,23 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     final phoneNumber = _formatPhoneNumber(_phoneController.text);
+    final password = _passwordController.text;
 
-    // Check if phone is registered
-    final isRegistered = await _authService.isPhoneRegistered(phoneNumber);
-
-    if (!mounted) return;
-
-    if (!isRegistered) {
-      setState(() => _isLoading = false);
-      UIHelpers.showErrorToast(
-          'Phone number not registered. Please sign up first.');
-      return;
-    }
-
-    // Send OTP
-    final otpSent = await _authService.sendOTP(phoneNumber);
+    final user = await _authService.loginUser(phoneNumber, password);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (otpSent) {
-      UIHelpers.showSuccessToast('OTP sent to your phone');
-      Navigator.push(
+    if (user != null) {
+      UIHelpers.showSuccessToast('Login successful!');
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (context) => OTPVerificationScreen(
-            phoneNumber: phoneNumber,
-            isSignup: false,
-          ),
-        ),
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
       );
     } else {
-      UIHelpers.showErrorToast('Failed to send OTP. Please try again.');
+      UIHelpers.showErrorToast(
+          'Invalid mobile number or password.');
     }
   }
 
@@ -103,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 const SizedBox(height: 20),
 
-                // Title
                 const Text(
                   'Welcome Back!',
                   style: TextStyle(
@@ -126,7 +111,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 48),
 
-                // Phone Number Field
                 const Text(
                   'Mobile Number',
                   style: TextStyle(
@@ -190,47 +174,52 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                 ),
 
-                // const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
-                // // Email Field
-                // const Text(
-                //   'Email Address',
-                //   style: TextStyle(
-                //     fontSize: 14,
-                //     fontFamily: 'Medium',
-                //     color: AppColors.textPrimary,
-                //   ),
-                // ),
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
 
-                // const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-                // TextFormField(
-                //   controller: _emailController,
-                //   keyboardType: TextInputType.emailAddress,
-                //   decoration: InputDecoration(
-                //     hintText: 'Enter your email address',
-                //     prefixIcon: const Icon(
-                //       Icons.email_outlined,
-                //       color: AppColors.textSecondary,
-                //     ),
-                //     filled: true,
-                //     fillColor: AppColors.white,
-                //   ),
-                //   validator: (value) {
-                //     // Email is optional for login
-                //     if (value != null && value.isNotEmpty) {
-                //       if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                //           .hasMatch(value)) {
-                //         return 'Please enter a valid email address';
-                //       }
-                //     }
-                //     return null;
-                //   },
-                // ),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your password',
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    return null;
+                  },
+                ),
 
                 const SizedBox(height: 32),
 
-                // Login Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -247,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             size: 20,
                           )
                         : const Text(
-                            'Continue',
+                            'Login',
                             style: TextStyle(
                               fontSize: 18,
                               fontFamily: 'Bold',
@@ -258,7 +247,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 24),
 
-                // Sign Up Link
                 Center(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,

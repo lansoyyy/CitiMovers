@@ -1,12 +1,13 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
 import '../models/user_model.dart';
 import '../utils/app_constants.dart';
 import 'emailjs_service.dart';
-import 'otp_service.dart';
 import 'storage_service.dart';
 
 /// Authentication service for CitiMovers
@@ -23,7 +24,6 @@ class AuthService {
 
   final GetStorage _storage = GetStorage();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
 
   // Current user (in-memory for now, will be replaced with Firebase)
   UserModel? _currentUser;
@@ -233,35 +233,9 @@ class AuthService {
     return clearFocusedBookingState(bookingId: bookingId);
   }
 
-  /// Send OTP to phone number
-  Future<bool> sendOTP(String phoneNumber) async {
-    try {
-      final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
-      final success = await OtpService.sendOtp(normalizedPhoneNumber);
-      if (success) {
-        debugPrint('OTP sent to: $normalizedPhoneNumber');
-      }
-      return success;
-    } catch (e) {
-      debugPrint('Error sending OTP: $e');
-      return false;
-    }
-  }
-
-  /// Verify OTP code
-  Future<bool> verifyOTP(String phoneNumber, String otpCode) async {
-    try {
-      final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
-      final success =
-          await OtpService.verifyOtp(normalizedPhoneNumber, otpCode);
-      if (success) {
-        debugPrint('OTP verified for: $normalizedPhoneNumber');
-      }
-      return success;
-    } catch (e) {
-      debugPrint('Error verifying OTP: $e');
-      return false;
-    }
+  static String _hashPassword(String password, String salt) {
+    final bytes = utf8.encode('$salt:$password');
+    return sha256.convert(bytes).toString();
   }
 
   /// Send email verification code
@@ -442,13 +416,6 @@ class AuthService {
   /// Check if user's email is verified
   Future<bool> isEmailVerified(String email) async {
     try {
-      final user = _firebaseAuth.currentUser;
-      if (user != null && user.email == email) {
-        await user.reload();
-        return user.emailVerified;
-      }
-
-      // Check Firestore for emailVerified status
       if (_currentUser != null && _currentUser!.email == email) {
         return _currentUser!.emailVerified ?? false;
       }
@@ -464,6 +431,7 @@ class AuthService {
   Future<UserModel?> registerUser({
     required String name,
     required String phoneNumber,
+    required String password,
     String? email,
     String customerAccountType = AppConstants.customerAccountTypeCod,
   }) async {
@@ -500,6 +468,8 @@ class AuthService {
       };
       final existingContractRates = existingData?['contractRates'];
 
+      final hashedPassword = _hashPassword(password, normalizedPhoneNumber);
+
       final user = UserModel(
         userId: normalizedPhoneNumber,
         name: name,
@@ -521,6 +491,7 @@ class AuthService {
         favoriteLocations: (existingData?['favoriteLocations'] is List)
             ? List<String>.from(existingData?['favoriteLocations'] as List)
             : const [],
+        password: hashedPassword,
         createdAt: DateTime.tryParse(createdAtIso) ?? now,
         updatedAt: now,
       );
@@ -553,7 +524,7 @@ class AuthService {
   }
 
   /// Login existing user
-  Future<UserModel?> loginUser(String phoneNumber) async {
+  Future<UserModel?> loginUser(String phoneNumber, String password) async {
     try {
       final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
       final now = DateTime.now();
@@ -570,7 +541,14 @@ class AuthService {
         data = Map<String, dynamic>.from(snapshot.docs.first.data());
       }
 
-      data ??= <String, dynamic>{};
+      if (data == null) return null;
+
+      final storedHash = data['password'] as String?;
+      if (storedHash == null || storedHash.isEmpty) return null;
+
+      final inputHash = _hashPassword(password, normalizedPhoneNumber);
+      if (storedHash != inputHash) return null;
+
       data['userId'] = normalizedPhoneNumber;
       data['phoneNumber'] = normalizedPhoneNumber;
       data['createdAt'] = _toIsoString(data['createdAt'], now);
@@ -634,7 +612,23 @@ class AuthService {
         return null;
       }
 
-      return await loginUser(storedPhoneNumber);
+      final normalizedPhoneNumber = _normalizePhoneNumber(storedPhoneNumber);
+      final now = DateTime.now();
+      final userDocRef = _userDocByPhone(normalizedPhoneNumber);
+      final docSnap = await userDocRef.get();
+
+      if (!docSnap.exists) return null;
+
+      final data = docSnap.data() ?? <String, dynamic>{};
+      data['userId'] = normalizedPhoneNumber;
+      data['phoneNumber'] = normalizedPhoneNumber;
+      data['createdAt'] = _toIsoString(data['createdAt'], now);
+      data['updatedAt'] = _toIsoString(data['updatedAt'], now);
+
+      final user = UserModel.fromMap(data);
+      _currentUser = user;
+      await _saveUserToStorage(user);
+      return user;
     } catch (e) {
       debugPrint('Error getting current user: $e');
       return null;
@@ -688,59 +682,42 @@ class AuthService {
   }
 
   /// Change password
-  /// Note: This requires the user to have a Firebase Auth account with email/password.
-  /// For phone-based authentication, this method is not applicable.
-  /// Consider implementing a "Change Phone Number" feature instead.
   Future<bool> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
     try {
-      final user = _firebaseAuth.currentUser;
+      if (_currentUser == null) return false;
 
-      if (user == null) {
-        debugPrint('No authenticated user found');
+      final normalizedPhone = _currentUser!.phoneNumber;
+      final currentHash = _hashPassword(currentPassword, normalizedPhone);
+
+      final userDoc =
+          await _firestore.collection('users').doc(_currentUser!.userId).get();
+      final storedHash = userDoc.data()?['password'] as String?;
+
+      if (storedHash == null || storedHash != currentHash) {
+        debugPrint('Current password is incorrect');
         return false;
       }
 
-      // Re-authenticate user with current password
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: currentPassword,
+      final newHash = _hashPassword(newPassword, normalizedPhone);
+
+      await _firestore
+          .collection('users')
+          .doc(_currentUser!.userId)
+          .update({'password': newHash});
+
+      _currentUser = _currentUser!.copyWith(
+        password: newHash,
+        updatedAt: DateTime.now(),
       );
-
-      await user.reauthenticateWithCredential(credential);
-
-      // Update password
-      await user.updatePassword(newPassword);
+      await _saveUserToStorage(_currentUser!);
 
       debugPrint('Password changed successfully');
       return true;
-    } on FirebaseAuthException catch (e) {
-      debugPrint('Error changing password: ${e.message}');
-      if (e.code == 'wrong-password') {
-        debugPrint('Current password is incorrect');
-      } else if (e.code == 'weak-password') {
-        debugPrint('New password is too weak');
-      }
-      return false;
     } catch (e) {
       debugPrint('Error changing password: $e');
-      return false;
-    }
-  }
-
-  /// Reset password (send password reset email)
-  Future<bool> resetPassword(String email) async {
-    try {
-      await _firebaseAuth.sendPasswordResetEmail(email: email);
-      debugPrint('Password reset email sent to: $email');
-      return true;
-    } on FirebaseAuthException catch (e) {
-      debugPrint('Error sending password reset email: ${e.message}');
-      return false;
-    } catch (e) {
-      debugPrint('Error resetting password: $e');
       return false;
     }
   }

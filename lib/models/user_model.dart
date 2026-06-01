@@ -13,6 +13,7 @@ class UserModel {
   final double walletBalance;
   final List<String> favoriteLocations;
   final bool? emailVerified;
+  final String? password;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -29,6 +30,7 @@ class UserModel {
     this.walletBalance = 0.0,
     this.favoriteLocations = const [],
     this.emailVerified,
+    this.password,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -70,6 +72,7 @@ class UserModel {
       'walletBalance': walletBalance,
       'favoriteLocations': favoriteLocations,
       'emailVerified': emailVerified,
+      'password': password,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -100,6 +103,7 @@ class UserModel {
       walletBalance: (map['walletBalance'] ?? 0.0).toDouble(),
       favoriteLocations: List<String>.from(map['favoriteLocations'] ?? []),
       emailVerified: map['emailVerified'],
+      password: map['password'],
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
     );
@@ -119,6 +123,7 @@ class UserModel {
     double? walletBalance,
     List<String>? favoriteLocations,
     bool? emailVerified,
+    String? password,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -135,6 +140,7 @@ class UserModel {
       walletBalance: walletBalance ?? this.walletBalance,
       favoriteLocations: favoriteLocations ?? this.favoriteLocations,
       emailVerified: emailVerified ?? this.emailVerified,
+      password: password ?? this.password,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

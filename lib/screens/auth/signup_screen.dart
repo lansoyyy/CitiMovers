@@ -6,7 +6,7 @@ import '../../utils/app_constants.dart';
 import '../../utils/ui_helpers.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/customer_account_type_dropdown.dart';
-import 'otp_verification_screen.dart';
+import '../home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -19,15 +19,21 @@ class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
   bool _agreedToTerms = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String _customerAccountType = AppConstants.customerAccountTypeCod;
 
   @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -55,8 +61,8 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     final phoneNumber = _formatPhoneNumber(_phoneController.text);
+    final password = _passwordController.text;
 
-    // Check if phone is already registered
     final isRegistered = await _authService.isPhoneRegistered(phoneNumber);
 
     if (!mounted) return;
@@ -68,27 +74,25 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    // Send OTP
-    final otpSent = await _authService.sendOTP(phoneNumber);
+    final user = await _authService.registerUser(
+      name: _nameController.text.trim(),
+      phoneNumber: phoneNumber,
+      password: password,
+      customerAccountType: _customerAccountType,
+    );
 
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (otpSent) {
-      UIHelpers.showSuccessToast('OTP sent to your phone');
-      Navigator.push(
+    if (user != null) {
+      UIHelpers.showSuccessToast('Registration successful!');
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (context) => OTPVerificationScreen(
-            phoneNumber: phoneNumber,
-            isSignup: true,
-            name: _nameController.text,
-            customerAccountType: _customerAccountType,
-          ),
-        ),
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
       );
     } else {
-      UIHelpers.showErrorToast('Failed to send OTP. Please try again.');
+      UIHelpers.showErrorToast('Registration failed. Please try again.');
     }
   }
 
@@ -114,7 +118,6 @@ class _SignupScreenState extends State<SignupScreen> {
               children: [
                 const SizedBox(height: 20),
 
-                // Title
                 const Text(
                   'Create Account',
                   style: TextStyle(
@@ -137,7 +140,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 const SizedBox(height: 40),
 
-                // Full Name Field
                 const Text(
                   'Full Name',
                   style: TextStyle(
@@ -172,7 +174,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 const SizedBox(height: 20),
 
-                // Phone Number Field
                 const Text(
                   'Mobile Number',
                   style: TextStyle(
@@ -236,6 +237,101 @@ class _SignupScreenState extends State<SignupScreen> {
                   },
                 ),
 
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Create a password',
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a password';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Confirm Password',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  obscureText: _obscureConfirmPassword,
+                  decoration: InputDecoration(
+                    hintText: 'Confirm your password',
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword);
+                      },
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please confirm your password';
+                    }
+                    if (value != _passwordController.text) {
+                      return 'Passwords do not match';
+                    }
+                    return null;
+                  },
+                ),
+
                 const SizedBox(height: 24),
 
                 CustomerAccountTypeDropdown(
@@ -252,7 +348,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 const SizedBox(height: 24),
 
-                // Terms and Conditions Checkbox
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -300,7 +395,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 const SizedBox(height: 32),
 
-                // Sign Up Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -328,7 +422,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 const SizedBox(height: 24),
 
-                // Login Link
                 Center(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
