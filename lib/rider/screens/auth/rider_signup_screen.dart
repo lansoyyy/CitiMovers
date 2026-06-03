@@ -7,7 +7,7 @@ import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../../models/vehicle_model.dart';
 import '../../services/rider_auth_service.dart';
-import 'rider_otp_verification_screen.dart';
+import 'rider_login_screen.dart';
 
 class RiderSignupScreen extends StatefulWidget {
   const RiderSignupScreen({super.key});
@@ -20,6 +20,8 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _plateNumberController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehicleColorController = TextEditingController();
@@ -30,6 +32,8 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   final _authService = RiderAuthService();
   bool _isLoading = false;
   bool _agreedToTerms = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String _selectedVehicleType = 'AUV';
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -86,6 +90,8 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     _plateNumberController.dispose();
     _vehicleModelController.dispose();
     _vehicleColorController.dispose();
@@ -330,8 +336,8 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
     setState(() => _isLoading = true);
 
     final phoneNumber = _formatPhoneNumber(_phoneController.text);
+    final password = _passwordController.text;
 
-    // Check if phone is already registered
     final isRegistered = await _authService.isPhoneRegistered(phoneNumber);
 
     if (!mounted) return;
@@ -343,43 +349,62 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
       return;
     }
 
-    // Send OTP
-    final otpSent = await _authService.sendOTP(phoneNumber);
+    final rider = await _authService.registerRider(
+      name: _nameController.text.trim(),
+      phoneNumber: phoneNumber,
+      password: password,
+      vehicleType: _selectedVehicleType,
+      vehiclePlateNumber: _plateNumberController.text,
+      vehicleModel: _vehicleModelController.text.isEmpty
+          ? null
+          : _vehicleModelController.text,
+      vehicleColor: _vehicleColorController.text.isEmpty
+          ? null
+          : _vehicleColorController.text,
+      helper1Name: _helper1NameController.text.trim(),
+      helper1Phone: _helper1PhoneController.text.trim().isEmpty
+          ? null
+          : _formatPhoneNumber(_helper1PhoneController.text.trim()),
+      helper2Name: _helper2NameController.text.trim(),
+      helper2Phone: _helper2PhoneController.text.trim().isEmpty
+          ? null
+          : _formatPhoneNumber(_helper2PhoneController.text.trim()),
+      documentImagePaths: Map<String, String?>.from(_documentImagePaths),
+    );
 
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (otpSent) {
-      UIHelpers.showSuccessToast('OTP sent to your phone');
-      Navigator.push(
+    if (rider != null) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Application Submitted'),
+            content: const Text(
+              "Your data is safe with us. We will get back to you shortly once we have reviewed your requirements.\n\nOnly customers will have access to your information once they book a trip to know who the actual driver and helpers onboard are to deliver the items.\n\nCustomers can only view your data while you're still on delivery.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (context) => RiderOTPVerificationScreen(
-            phoneNumber: phoneNumber,
-            isSignup: true,
-            name: _nameController.text,
-            vehicleType: _selectedVehicleType,
-            vehiclePlateNumber: _plateNumberController.text,
-            vehicleModel: _vehicleModelController.text.isEmpty
-                ? null
-                : _vehicleModelController.text,
-            vehicleColor: _vehicleColorController.text.isEmpty
-                ? null
-                : _vehicleColorController.text,
-            helper1Name: _helper1NameController.text.trim(),
-            helper1Phone: _helper1PhoneController.text.trim().isEmpty
-                ? null
-                : _formatPhoneNumber(_helper1PhoneController.text.trim()),
-            helper2Name: _helper2NameController.text.trim(),
-            helper2Phone: _helper2PhoneController.text.trim().isEmpty
-                ? null
-                : _formatPhoneNumber(_helper2PhoneController.text.trim()),
-            documentImagePaths: Map<String, String?>.from(_documentImagePaths),
-          ),
+          builder: (context) => const RiderLoginScreen(),
         ),
+        (route) => false,
       );
     } else {
-      UIHelpers.showErrorToast('Failed to send OTP. Please try again.');
+      UIHelpers.showErrorToast('Registration failed. Please try again.');
     }
   }
 
@@ -558,6 +583,97 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
                     }
                     if (value.length < 10) {
                       return 'Please enter a valid mobile number';
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Create a password',
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a password';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Confirm Password',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  obscureText: _obscureConfirmPassword,
+                  decoration: InputDecoration(
+                    hintText: 'Confirm your password',
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword);
+                      },
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please confirm your password';
+                    }
+                    if (value != _passwordController.text) {
+                      return 'Passwords do not match';
                     }
                     return null;
                   },

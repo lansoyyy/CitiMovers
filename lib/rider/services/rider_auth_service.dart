@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -9,7 +11,6 @@ import 'package:get_storage/get_storage.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
-import '../../services/otp_service.dart';
 import '../../services/booking_service.dart';
 import '../../services/storage_service.dart';
 import 'rider_location_service.dart';
@@ -126,6 +127,19 @@ class RiderAuthService {
   ) {
     final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
     return _firestore.collection('riders').doc(normalizedPhoneNumber);
+  }
+
+  static const String _demoLoginPhone = '+639090104355';
+  static const String _demoRealPhone = '+639560288513';
+
+  String _resolveLoginPhoneNumber(String phoneNumber) {
+    final normalizedInput = _normalizePhoneNumber(phoneNumber);
+    return normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
+  }
+
+  static String _hashPassword(String password, String salt) {
+    final bytes = utf8.encode('$salt:$password');
+    return sha256.convert(bytes).toString();
   }
 
   /// Prefer server data when online so access checks are not based on a stale
@@ -441,41 +455,11 @@ class RiderAuthService {
     }
   }
 
-  /// Send OTP to phone number
-  Future<bool> sendOTP(String phoneNumber) async {
-    try {
-      final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
-      final success = await OtpService.sendOtp(normalizedPhoneNumber);
-      if (success) {
-        debugPrint('OTP sent to rider: $normalizedPhoneNumber');
-      }
-      return success;
-    } catch (e) {
-      debugPrint('Error sending OTP: $e');
-      return false;
-    }
-  }
-
-  /// Verify OTP code
-  Future<bool> verifyOTP(String phoneNumber, String otpCode) async {
-    try {
-      final normalizedPhoneNumber = _normalizePhoneNumber(phoneNumber);
-      final success =
-          await OtpService.verifyOtp(normalizedPhoneNumber, otpCode);
-      if (success) {
-        debugPrint('OTP verified for rider: $normalizedPhoneNumber');
-      }
-      return success;
-    } catch (e) {
-      debugPrint('Error verifying OTP: $e');
-      return false;
-    }
-  }
-
   /// Register new rider
   Future<RiderModel?> registerRider({
     required String name,
     required String phoneNumber,
+    required String password,
     String? email,
     required String vehicleType,
     String? vehiclePlateNumber,
@@ -510,6 +494,8 @@ class RiderAuthService {
         DateTime v => v.toIso8601String(),
         _ => now.toIso8601String(),
       };
+
+      final hashedPassword = _hashPassword(password, normalizedPhoneNumber);
 
       final rider = RiderModel(
         riderId: normalizedPhoneNumber,
@@ -549,6 +535,7 @@ class RiderAuthService {
         {
           ...?existingData,
           ...rider.toMap(),
+          'password': hashedPassword,
           'riderId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
           if (helper1Name != null && helper1Name.trim().isNotEmpty)
@@ -618,17 +605,11 @@ class RiderAuthService {
   }
 
   /// Login existing rider
-  Future<RiderModel?> loginRider(String phoneNumber) async {
+  Future<RiderModel?> loginRider(String phoneNumber, String password) async {
     try {
       _lastLoginBlockMessage = null;
 
-      // Demo driver account: the reviewer logs in with 09090104355 but we
-      // fetch details from the real account 09560288513.
-      const _demoLoginPhone = '+639090104355';
-      const _demoRealPhone = '+639560288513';
-      final normalizedInput = _normalizePhoneNumber(phoneNumber);
-      final normalizedPhoneNumber =
-          normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
+      final normalizedPhoneNumber = _resolveLoginPhoneNumber(phoneNumber);
 
       final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
       final docSnap = await _getRiderDocPreferServer(riderDocRef);
@@ -642,7 +623,14 @@ class RiderAuthService {
         data = Map<String, dynamic>.from(snapshot.docs.first.data());
       }
 
-      data ??= <String, dynamic>{};
+      if (data == null) return null;
+
+      final storedHash = data['password'] as String?;
+      if (storedHash == null || storedHash.isEmpty) return null;
+
+      final inputHash = _hashPassword(password, normalizedPhoneNumber);
+      if (storedHash != inputHash) return null;
+
       data['riderId'] = normalizedPhoneNumber;
       data['phoneNumber'] = normalizedPhoneNumber;
 
@@ -687,12 +675,7 @@ class RiderAuthService {
   /// Check if phone number is registered
   Future<bool> isPhoneRegistered(String phoneNumber) async {
     try {
-      const _demoLoginPhone = '+639090104355';
-      const _demoRealPhone = '+639560288513';
-      final normalizedInput = _normalizePhoneNumber(phoneNumber);
-      // Demo driver: remap to the real account for the Firestore lookup
-      final normalizedPhoneNumber =
-          normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
+      final normalizedPhoneNumber = _resolveLoginPhoneNumber(phoneNumber);
 
       final doc = await _riderDocByPhone(normalizedPhoneNumber).get();
       if (doc.exists) return true;
@@ -730,7 +713,36 @@ class RiderAuthService {
         return null;
       }
 
-      return await loginRider(storedPhoneNumber);
+      final normalizedPhoneNumber = _resolveLoginPhoneNumber(storedPhoneNumber);
+      final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
+      final docSnap = await _getRiderDocPreferServer(riderDocRef);
+
+      Map<String, dynamic>? data;
+      if (docSnap.exists) {
+        data = docSnap.data();
+      } else {
+        final snapshot = await _findRiderByPhone(normalizedPhoneNumber);
+        if (snapshot.docs.isEmpty) return null;
+        data = Map<String, dynamic>.from(snapshot.docs.first.data());
+      }
+
+      if (data == null) return null;
+
+      data['riderId'] = normalizedPhoneNumber;
+      data['phoneNumber'] = normalizedPhoneNumber;
+
+      final accessState = _resolveAccessState(data);
+      if (accessState != RiderAccessState.approved) {
+        _currentRider = null;
+        await _clearRiderFromStorage();
+        _lastLoginBlockMessage = _buildAccessBlockedMessage(accessState);
+        return null;
+      }
+
+      final rider = RiderModel.fromMap(data);
+      _currentRider = rider;
+      await _saveRiderToStorage(rider);
+      return rider;
     } catch (e) {
       debugPrint('Error getting current rider: $e');
       return null;

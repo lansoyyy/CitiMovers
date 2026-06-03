@@ -4,7 +4,7 @@ import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import 'rider_signup_screen.dart';
-import 'rider_otp_verification_screen.dart';
+import '../rider_home_screen.dart';
 
 class RiderLoginScreen extends StatefulWidget {
   const RiderLoginScreen({super.key});
@@ -16,20 +16,21 @@ class RiderLoginScreen extends StatefulWidget {
 class _RiderLoginScreenState extends State<RiderLoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _authService = RiderAuthService();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   String _formatPhoneNumber(String value) {
-    // Remove all non-digit characters
     String digits = value.replaceAll(RegExp(r'\D'), '');
 
-    // Add +63 prefix if not present
     if (digits.startsWith('0')) {
       digits = '63${digits.substring(1)}';
     }
@@ -46,8 +47,8 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
     setState(() => _isLoading = true);
 
     final phoneNumber = _formatPhoneNumber(_phoneController.text);
+    final password = _passwordController.text;
 
-    // Check if phone is registered
     final isRegistered = await _authService.isPhoneRegistered(phoneNumber);
 
     if (!mounted) return;
@@ -59,25 +60,23 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
       return;
     }
 
-    // Send OTP
-    final otpSent = await _authService.sendOTP(phoneNumber);
+    final rider = await _authService.loginRider(phoneNumber, password);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (otpSent) {
-      UIHelpers.showSuccessToast('OTP sent to your phone');
-      Navigator.push(
+    if (rider != null) {
+      UIHelpers.showSuccessToast('Login successful!');
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (context) => RiderOTPVerificationScreen(
-            phoneNumber: phoneNumber,
-            isSignup: false,
-          ),
-        ),
+        MaterialPageRoute(builder: (context) => const RiderHomeScreen()),
+        (route) => false,
       );
     } else {
-      UIHelpers.showErrorToast('Failed to send OTP. Please try again.');
+      UIHelpers.showErrorToast(
+        _authService.lastLoginBlockMessage ??
+            'Invalid mobile number or password.',
+      );
     }
   }
 
@@ -95,7 +94,6 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
               children: [
                 const SizedBox(height: 20),
 
-                // Rider Badge
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -138,7 +136,6 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
                 const SizedBox(height: 40),
 
-                // Title
                 const Text(
                   'Welcome Back,\nRider!',
                   style: TextStyle(
@@ -162,7 +159,6 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
                 const SizedBox(height: 48),
 
-                // Phone Number Field
                 const Text(
                   'Mobile Number',
                   style: TextStyle(
@@ -226,9 +222,52 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
                   },
                 ),
 
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Medium',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your password',
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    return null;
+                  },
+                ),
+
                 const SizedBox(height: 32),
 
-                // Login Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -246,7 +285,7 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
                             size: 20,
                           )
                         : const Text(
-                            'Continue',
+                            'Login',
                             style: TextStyle(
                               fontSize: 18,
                               fontFamily: 'Bold',
@@ -258,7 +297,6 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
                 const SizedBox(height: 32),
 
-                // Divider
                 Row(
                   children: [
                     const Expanded(child: Divider()),
@@ -279,7 +317,6 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
                 const SizedBox(height: 32),
 
-                // Sign Up Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -314,7 +351,6 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
                 const SizedBox(height: 40),
 
-                // Info Card
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
