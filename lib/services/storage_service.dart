@@ -430,6 +430,37 @@ class StorageService {
     return true;
   }
 
+  /// Compress and copy a camera capture into the persistent delivery uploads
+  /// directory so queue retries survive process restarts and memory use stays low.
+  Future<File> prepareDeliveryPhotoForQueue(
+    File source, {
+    required String bookingId,
+    required String stageKey,
+  }) async {
+    final compressed = await _compressImageIfNeeded(source);
+    final dir = await getApplicationDocumentsDirectory();
+    final deliveryDir = Directory('${dir.path}/delivery_uploads');
+    if (!deliveryDir.existsSync()) {
+      deliveryDir.createSync(recursive: true);
+    }
+
+    final safeStage = stageKey
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    final destPath = path.join(
+      deliveryDir.path,
+      '${bookingId}_${safeStage}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+
+    if (compressed.path == destPath) {
+      return compressed;
+    }
+
+    await compressed.copy(destPath);
+    return File(destPath);
+  }
+
   /// Get content type based on file extension
   String _getContentType(String extension) {
     switch (extension.toLowerCase()) {

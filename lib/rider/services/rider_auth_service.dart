@@ -1044,6 +1044,7 @@ class RiderAuthService {
     String? loadingSubStep,
     String? unloadingSubStep,
     String? receivingSubStep,
+    String? receiverName,
   }) async {
     try {
       final state = {
@@ -1052,6 +1053,8 @@ class RiderAuthService {
         'loadingSubStep': loadingSubStep,
         'unloadingSubStep': unloadingSubStep,
         'receivingSubStep': receivingSubStep,
+        if (receiverName != null && receiverName.trim().isNotEmpty)
+          'receiverName': receiverName.trim(),
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       };
       await _storage.write('activeDeliveryState', state);

@@ -33,6 +33,7 @@ import 'package:citimovers/screens/chat/chat_screen.dart';
 import 'package:citimovers/models/location_model.dart';
 import 'package:citimovers/services/delivery_queue_service.dart';
 import 'package:citimovers/services/booking_status_service.dart';
+import 'package:citimovers/utils/app_constants.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -77,8 +78,8 @@ class _DeliveryProgressStateSnapshot {
   });
 }
 
-class _RiderDeliveryProgressScreenState
-    extends State<RiderDeliveryProgressScreen> with TickerProviderStateMixin {
+class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final RiderAuthService _riderAuthService = RiderAuthService();
   final BookingService _bookingService = BookingService();
   final StorageService _storageService = StorageService();
@@ -165,6 +166,7 @@ class _RiderDeliveryProgressScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     RiderForegroundLocationService.instance.pauseTracking();
     _geocodeAddresses();
     _startLocationTracking();
@@ -176,6 +178,16 @@ class _RiderDeliveryProgressScreenState
     _restoreSavedDeliveryState();
     _listenForBookingCancellation();
     unawaited(_recoverLostDeliveryCameraCapture());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // After the native camera closes, Android may resume or restart the process.
+    // retrieveLostData() must run on resume — not only in initState.
+    if (state == AppLifecycleState.resumed &&
+        _readPendingCameraCapture() != null) {
+      unawaited(_recoverLostDeliveryCameraCapture());
+    }
   }
 
   /// Register callbacks that fire whenever the queue successfully uploads a
@@ -280,6 +292,7 @@ class _RiderDeliveryProgressScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bookingStatusSub?.cancel();
     _loadingTimer?.cancel();
     _unloadingTimer?.cancel();
@@ -325,7 +338,29 @@ class _RiderDeliveryProgressScreenState
       loadingSubStep: _loadingSubStep?.name,
       unloadingSubStep: _unloadingSubStep?.name,
       receivingSubStep: _receivingSubStep.name,
+      receiverName: _receiverNameController.text,
     );
+  }
+
+  String _firestoreStageForPhotoType(String photoType) {
+    switch (photoType) {
+      case 'Receiver ID':
+        return 'receiver_id';
+      case 'Start Loading':
+        return 'start_loading';
+      case 'Finished Loading':
+        return 'finish_loading';
+      case 'Start Unloading':
+        return 'start_unloading';
+      case 'Finished Unloading':
+        return 'finish_unloading';
+      case 'Damaged Boxes':
+        return 'damaged_boxes';
+      case 'Empty Truck':
+        return 'empty_truck';
+      default:
+        return photoType.toLowerCase().replaceAll(' ', '_');
+    }
   }
 
   T? _parseStoredEnum<T extends Enum>(List<T> values, dynamic rawValue) {
@@ -480,9 +515,16 @@ class _RiderDeliveryProgressScreenState
   }
 
   Future<XFile?> _pickDeliveryCameraImage(String captureType) async {
+    // Persist step before native camera — survives process death on low memory.
+    _saveDeliveryState();
     await _savePendingCameraCapture(captureType);
     try {
-      final image = await _picker.pickImage(source: ImageSource.camera);
+      final image = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1600,
+        imageQuality: AppConstants.imageQuality,
+        preferredCameraDevice: CameraDevice.rear,
+      );
       if (image == null) {
         await _clearPendingCameraCapture();
       }
@@ -509,6 +551,10 @@ class _RiderDeliveryProgressScreenState
         case 'Finished Unloading':
           _finishUnloadingPhoto = file;
           break;
+        case 'Receiver ID':
+          _idPhoto = file;
+          _receiverIdPhotoConfirmed = false;
+          break;
         case 'Damaged Boxes':
         case 'Empty Truck':
           if (!_damagePhotos.any((existing) => existing.path == file.path)) {
@@ -531,13 +577,18 @@ class _RiderDeliveryProgressScreenState
     }
   }
 
-  Future<void> _queueStandardPhotoUpload(String photoType, File file) async {
-    final firestoreStage = photoType.toLowerCase().replaceAll(' ', '_');
+  Future<void> _queueStandardPhotoUpload(
+    String photoType,
+    File file, {
+    bool flushImmediately = false,
+  }) async {
+    final firestoreStage = _firestoreStageForPhotoType(photoType);
     await _deliveryQueue.enqueuePhotoUpload(
       bookingId: widget.request.id,
       storageStage: photoType,
       firestoreStage: firestoreStage,
       localFilePath: file.path,
+      flushImmediately: flushImmediately,
     );
 
     if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
@@ -555,11 +606,35 @@ class _RiderDeliveryProgressScreenState
     Function(File)? onPicked,
     bool recovered = false,
   }) async {
-    _applyStandardPhotoToState(photoType, file, onPicked: onPicked);
-    await _queueStandardPhotoUpload(photoType, file);
+    File prepared = file;
+    try {
+      prepared = await _storageService.prepareDeliveryPhotoForQueue(
+        file,
+        bookingId: widget.request.id,
+        stageKey: _firestoreStageForPhotoType(photoType),
+      );
+    } catch (e) {
+      debugPrint('Error preparing delivery photo ($photoType): $e');
+      if (mounted) {
+        UIHelpers.showErrorToast(
+            'Could not save photo. Please try again.');
+      }
+      await _clearPendingCameraCapture();
+      return;
+    }
+
+    if (!mounted) return;
+
+    _applyStandardPhotoToState(photoType, prepared, onPicked: onPicked);
+    _saveDeliveryState();
+    await _queueStandardPhotoUpload(photoType, prepared);
     await _clearPendingCameraCapture();
 
     if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deliveryQueue.requestFlush();
+    });
+
     final prefix = recovered ? 'Recovered ' : '';
     UIHelpers.showSuccessToast(
       '$prefix$photoType photo saved! Uploading in background.',
@@ -572,9 +647,29 @@ class _RiderDeliveryProgressScreenState
   }) async {
     if (!mounted) return;
 
+    File prepared = file;
+    try {
+      prepared = await _storageService.prepareDeliveryPhotoForQueue(
+        file,
+        bookingId: widget.request.id,
+        stageKey: 'service_invoice',
+      );
+    } catch (e) {
+      debugPrint('Error preparing service invoice photo: $e');
+      if (mounted) {
+        UIHelpers.showErrorToast(
+            'Could not save photo. Please try again.');
+      }
+      await _clearPendingCameraCapture();
+      return;
+    }
+
+    if (!mounted) return;
+
     setState(() {
-      if (!_serviceInvoicePhotos.any((existing) => existing.path == file.path)) {
-        _serviceInvoicePhotos.add(file);
+      if (!_serviceInvoicePhotos
+          .any((existing) => existing.path == prepared.path)) {
+        _serviceInvoicePhotos.add(prepared);
       }
     });
 
@@ -584,7 +679,8 @@ class _RiderDeliveryProgressScreenState
       bookingId: widget.request.id,
       storageStage: stage,
       firestoreStage: stage,
-      localFilePath: file.path,
+      localFilePath: prepared.path,
+      flushImmediately: false,
     );
 
     _deliveryQueue.onUrlResolved(widget.request.id, stage, (url) {
@@ -594,8 +690,13 @@ class _RiderDeliveryProgressScreenState
     });
 
     await _clearPendingCameraCapture();
+    _saveDeliveryState();
 
     if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deliveryQueue.requestFlush();
+    });
+
     final prefix = recovered ? 'Recovered ' : '';
     UIHelpers.showSuccessToast(
       '$prefix service invoice photo saved! Uploading in background.',
@@ -863,6 +964,16 @@ class _RiderDeliveryProgressScreenState
           loadingStartedAt != null && loadingCompletedAt == null;
       final unloadingActive =
           unloadingStartedAt != null && unloadingCompletedAt == null;
+
+      final savedReceiverName =
+          savedState?['receiverName']?.toString().trim() ?? '';
+      final bookingReceiverName =
+          bookingData?['receiverName']?.toString().trim() ?? '';
+      if (savedReceiverName.isNotEmpty) {
+        _receiverNameController.text = savedReceiverName;
+      } else if (bookingReceiverName.isNotEmpty) {
+        _receiverNameController.text = bookingReceiverName;
+      }
 
       if (!mounted) return;
       setState(() {
@@ -1702,11 +1813,29 @@ class _RiderDeliveryProgressScreenState
   Future<void> _takePhoto(Function(File) onPicked, String photoType,
       {Function(File)? onRemove}) async {
     _logActivity('take_photo:$photoType');
-    final XFile? image = await _pickDeliveryCameraImage(photoType);
-    if (image == null) return;
+    try {
+      final XFile? image = await _pickDeliveryCameraImage(photoType);
+      if (image == null || !mounted) return;
 
-    final file = File(image.path);
-    await _processStandardPhotoCapture(photoType, file, onPicked: onPicked);
+      final file = File(image.path);
+      if (!file.existsSync()) {
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Photo file missing. Please take the photo again.');
+        }
+        await _clearPendingCameraCapture();
+        return;
+      }
+
+      await _processStandardPhotoCapture(photoType, file, onPicked: onPicked);
+    } catch (e) {
+      debugPrint('Error taking delivery photo ($photoType): $e');
+      await _clearPendingCameraCapture();
+      if (mounted) {
+        UIHelpers.showErrorToast(
+            'Could not capture photo. Please try again.');
+      }
+    }
   }
 
   Future<void> _persistPicklistItems() async {
@@ -4235,7 +4364,7 @@ class _RiderDeliveryProgressScreenState
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: (_idPhotoUrl == null || !_receiverIdPhotoConfirmed)
+                onPressed: (_idPhoto == null || !_receiverIdPhotoConfirmed)
                     ? null
                     : () {
                         _logActivity('receiving_next:receiver_id_photo');
@@ -4618,20 +4747,24 @@ class _RiderDeliveryProgressScreenState
         ),
         child: Row(
           children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 60,
+                height: 60,
                 color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-                image: image != null
-                    ? DecorationImage(
-                        image: FileImage(image), fit: BoxFit.cover)
-                    : null,
+                child: image != null
+                    ? Image.file(
+                        image,
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        cacheWidth: 180,
+                        cacheHeight: 180,
+                        filterQuality: FilterQuality.low,
+                      )
+                    : const Icon(Icons.camera_alt, color: Colors.grey),
               ),
-              child: image == null
-                  ? const Icon(Icons.camera_alt, color: Colors.grey)
-                  : null,
             ),
             const SizedBox(width: 16),
             Expanded(

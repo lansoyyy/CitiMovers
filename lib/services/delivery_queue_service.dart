@@ -187,6 +187,7 @@ class DeliveryQueueService {
     required String storageStage,
     required String firestoreStage,
     required String localFilePath,
+    bool flushImmediately = true,
   }) async {
     final entry = DeliveryQueueEntry(
       id: '${bookingId}__${firestoreStage}__${DateTime.now().millisecondsSinceEpoch}',
@@ -200,7 +201,14 @@ class DeliveryQueueService {
       createdAt: DateTime.now(),
     );
     await _enqueue(entry);
-    _flush(); // best-effort immediate attempt
+    if (flushImmediately) {
+      _flush(); // best-effort immediate attempt
+    }
+  }
+
+  /// Schedule a background flush (e.g. after returning from the camera).
+  void requestFlush() {
+    unawaited(_flush());
   }
 
   /// Queue a Firestore delivery-photo record when the URL is already known.

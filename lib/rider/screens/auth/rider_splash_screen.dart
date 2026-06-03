@@ -53,7 +53,12 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
   }
 
   Future<void> _navigateToHome() async {
-    await Future.delayed(const Duration(seconds: 3));
+    final authService = RiderAuthService();
+    // Faster resume when a delivery was interrupted (e.g. camera killed the app).
+    final splashDelay = authService.hasActiveDeliveryToResume()
+        ? const Duration(milliseconds: 600)
+        : const Duration(seconds: 3);
+    await Future.delayed(splashDelay);
 
     if (!mounted) return;
 
@@ -82,7 +87,6 @@ class _RiderSplashScreenState extends State<RiderSplashScreen>
     }
 
     // Check if user is logged in
-    final authService = RiderAuthService();
     final hadStoredSession = authService.isLoggedIn;
     final rider = await authService.getCurrentRider();
     if (!mounted) return;
