@@ -34,6 +34,8 @@ import 'package:citimovers/models/location_model.dart';
 import 'package:citimovers/services/delivery_queue_service.dart';
 import 'package:citimovers/services/booking_status_service.dart';
 import 'package:citimovers/utils/app_constants.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 class RiderDeliveryProgressScreen extends StatefulWidget {
   final DeliveryRequest request;
@@ -90,7 +92,12 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final GetStorage _storage = GetStorage();
 
+  /// Cached Firestore deliveryPhotos used to validate steps after app restart.
+  Map<String, dynamic> _cachedDeliveryPhotos = {};
+
   static const String _serviceInvoiceCaptureType = 'Service Invoice';
+  static const String _warehouseArrivalCaptureType = 'Warehouse Arrival GPS';
+  static const String _destinationArrivalCaptureType = 'Destination Arrival GPS';
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -303,7 +310,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _destinationArrivalRemarksController.dispose();
 
     // Save current delivery state before disposing
-    _saveDeliveryState();
+    unawaited(_saveDeliveryState());
 
     // Stop the offline queue and remove URL callbacks
     _deliveryQueue.stop();
@@ -324,15 +331,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     super.dispose();
   }
 
-  /// Save current delivery state for resume after login
-  void _saveDeliveryState() {
+  /// Save current delivery state for resume after login / process death.
+  Future<void> _saveDeliveryState() async {
     // Only save if not completed
     if (_currentStep == DeliveryStep.completed) {
-      _riderAuthService.clearActiveDeliveryState();
+      await _riderAuthService.clearActiveDeliveryState();
       return;
     }
 
-    _riderAuthService.saveActiveDeliveryState(
+    await _riderAuthService.saveActiveDeliveryState(
       bookingId: widget.request.id,
       currentStep: _currentStep.name,
       loadingSubStep: _loadingSubStep?.name,
@@ -468,6 +475,95 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     return urls;
   }
 
+  bool _hasPhotoEvidence(File? localFile, List<String> firestoreKeys) {
+    if (localFile != null && localFile.existsSync()) return true;
+    return _hasDeliveryPhoto(_cachedDeliveryPhotos, firestoreKeys);
+  }
+
+  /// Re-hydrate in-memory photo state after Android kills the app for the camera.
+  Future<void> _restorePhotosFromBookingAndDisk(
+    Map<String, dynamic>? bookingData,
+  ) async {
+    final deliveryPhotos = _normalizeDeliveryPhotos(bookingData?['deliveryPhotos']);
+    _cachedDeliveryPhotos = deliveryPhotos;
+
+    if (mounted) {
+      setState(() {
+        _warehouseArrivalPhotoUrl ??=
+            _extractDeliveryPhotoUrl(deliveryPhotos['warehouse_arrival']);
+        _destinationArrivalPhotoUrl ??=
+            _extractDeliveryPhotoUrl(deliveryPhotos['destination_arrival']);
+        _idPhotoUrl ??= _extractDeliveryPhotoUrl(deliveryPhotos['receiver_id']) ??
+            _extractDeliveryPhotoUrl(deliveryPhotos['receiver_id_photo']);
+        _signatureUrl ??=
+            _extractDeliveryPhotoUrl(deliveryPhotos['receiver_signature']) ??
+                _extractDeliveryPhotoUrl(deliveryPhotos['signature']);
+      });
+    }
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final deliveryDir = Directory(p.join(dir.path, 'delivery_uploads'));
+      if (!deliveryDir.existsSync()) return;
+
+      final prefix = '${widget.request.id}_';
+      final files = deliveryDir
+          .listSync()
+          .whereType<File>()
+          .where((file) => p.basename(file.path).startsWith(prefix))
+          .toList()
+        ..sort(
+          (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+        );
+
+      if (!mounted) return;
+
+      setState(() {
+        for (final file in files) {
+          final name = p.basenameWithoutExtension(file.path);
+          if (!name.startsWith(prefix)) continue;
+
+          final remainder = name.substring(prefix.length);
+          final lastUnderscore = remainder.lastIndexOf('_');
+          if (lastUnderscore <= 0) continue;
+          final stage = remainder.substring(0, lastUnderscore);
+
+          switch (stage) {
+            case 'start_loading':
+              _startLoadingPhoto ??= file;
+              break;
+            case 'finish_loading':
+              _finishLoadingPhoto ??= file;
+              break;
+            case 'start_unloading':
+              _startUnloadingPhoto ??= file;
+              break;
+            case 'finish_unloading':
+              _finishUnloadingPhoto ??= file;
+              break;
+            case 'receiver_id':
+              _idPhoto ??= file;
+              break;
+            case 'damaged_boxes':
+            case 'empty_truck':
+              if (!_damagePhotos.any((existing) => existing.path == file.path)) {
+                _damagePhotos.add(file);
+              }
+              break;
+            case 'service_invoice':
+              if (!_serviceInvoicePhotos
+                  .any((existing) => existing.path == file.path)) {
+                _serviceInvoicePhotos.add(file);
+              }
+              break;
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('Error restoring local delivery photos: $e');
+    }
+  }
+
   String get _pendingCameraCaptureKey =>
       'pendingDeliveryCameraCapture_${widget.request.id}';
 
@@ -516,7 +612,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   Future<XFile?> _pickDeliveryCameraImage(String captureType) async {
     // Persist step before native camera — survives process death on low memory.
-    _saveDeliveryState();
+    await _saveDeliveryState();
     await _savePendingCameraCapture(captureType);
     try {
       final image = await _picker.pickImage(
@@ -626,7 +722,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     if (!mounted) return;
 
     _applyStandardPhotoToState(photoType, prepared, onPicked: onPicked);
-    _saveDeliveryState();
+    await _saveDeliveryState();
     await _queueStandardPhotoUpload(photoType, prepared);
     await _clearPendingCameraCapture();
 
@@ -690,7 +786,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     });
 
     await _clearPendingCameraCapture();
-    _saveDeliveryState();
+    await _saveDeliveryState();
 
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -741,6 +837,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
       if (captureType == _serviceInvoiceCaptureType) {
         await _processServiceInvoicePhoto(file, recovered: true);
+      } else if (captureType == _warehouseArrivalCaptureType) {
+        await _processRecoveredGpsArrivalPhoto(file, recovered: true);
+      } else if (captureType == _destinationArrivalCaptureType) {
+        await _processRecoveredGpsDestinationPhoto(file, recovered: true);
       } else {
         await _processStandardPhotoCapture(
           captureType,
@@ -923,7 +1023,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       }
 
       final inferredSnapshot = _inferDeliveryStateFromBooking(bookingData);
-        final restoredServiceInvoiceUrls =
+      await _restorePhotosFromBookingAndDisk(bookingData);
+      final restoredServiceInvoiceUrls =
           _extractDeliveryPhotoUrlsByPrefix(bookingData, 'service_invoice_');
       final mergedSnapshot = savedState == null
           ? inferredSnapshot
@@ -1727,6 +1828,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       // Hide loading before opening camera (native activity)
       setLoading?.call(false);
 
+      await _saveDeliveryState();
+      await _savePendingCameraCapture(_warehouseArrivalCaptureType);
+
       // Take photo
       final XFile? image = await _picker.pickImage(
         source: ImageSource.camera,
@@ -1735,16 +1839,42 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         maxHeight: 1080,
       );
 
-      if (image == null) return;
+      if (image == null) {
+        await _clearPendingCameraCapture();
+        return;
+      }
 
-      // Show processing while adding watermark + uploading
-      setLoading?.call(true);
+      await _processRecoveredGpsArrivalPhoto(
+        File(image.path),
+        locationData: locationData,
+        onPhotoTaken: onPhotoTaken,
+        setLoading: setLoading,
+      );
+    } catch (e) {
+      setLoading?.call(false);
+      await _clearPendingCameraCapture();
+      debugPrint('Error taking GPS photo: $e');
+      if (mounted) {
+        UIHelpers.showErrorToast('Error taking GPS photo: $e');
+      }
+    }
+  }
 
-      // Add GPS watermark
-      final File originalFile = File(image.path);
+  Future<void> _processRecoveredGpsArrivalPhoto(
+    File originalFile, {
+    dynamic locationData,
+    VoidCallback? onPhotoTaken,
+    void Function(bool)? setLoading,
+    bool recovered = false,
+  }) async {
+    setLoading?.call(true);
+    try {
+      final resolvedLocationData =
+          locationData ?? await _gpsCameraService.getCurrentLocationData();
+
       final File watermarkedFile = await _gpsCameraService.addGpsWatermark(
         originalFile,
-        locationData,
+        resolvedLocationData,
       );
 
       if (mounted) {
@@ -1753,29 +1883,30 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         });
       }
 
-      // ── Upload queued in background; hide loading and let driver proceed ──
       setLoading?.call(false);
 
       await _deliveryQueue.enqueuePhotoUpload(
         bookingId: widget.request.id,
-        storageStage: 'Warehouse Arrival GPS',
+        storageStage: _warehouseArrivalCaptureType,
         firestoreStage: 'warehouse_arrival',
         localFilePath: watermarkedFile.path,
       );
 
+      await _clearPendingCameraCapture();
+      await _saveDeliveryState();
+
       if (mounted) {
+        final prefix = recovered ? 'Recovered ' : '';
         UIHelpers.showSuccessToast(
-            'Arrival photo saved! Uploading to cloud in background.');
+          '${prefix}Arrival photo saved! Uploading to cloud in background.',
+        );
       }
 
-      // Notify dialog to refresh photo preview
       onPhotoTaken?.call();
     } catch (e) {
       setLoading?.call(false);
-      debugPrint('Error taking GPS photo: $e');
-      if (mounted) {
-        UIHelpers.showErrorToast('Error taking GPS photo: $e');
-      }
+      await _clearPendingCameraCapture();
+      rethrow;
     }
   }
 
@@ -1924,7 +2055,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   void _finishLoading() async {
     _logActivity('finish_loading');
-    if (_startLoadingPhoto == null || _finishLoadingPhoto == null) {
+    final hasStartLoading = _hasPhotoEvidence(
+      _startLoadingPhoto,
+      const ['start_loading', 'start_loading_photo'],
+    );
+    final hasFinishLoading = _hasPhotoEvidence(
+      _finishLoadingPhoto,
+      const ['finish_loading', 'finish_loading_photo', 'finished_loading'],
+    );
+    if (!hasStartLoading || !hasFinishLoading) {
       UIHelpers.showInfoToast('Please take both photos to finish loading.');
       return;
     }
@@ -2380,6 +2519,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       // Hide loading before opening camera (native activity)
       setLoading?.call(false);
 
+      await _saveDeliveryState();
+      await _savePendingCameraCapture(_destinationArrivalCaptureType);
+
       // Take photo
       final XFile? image = await _picker.pickImage(
         source: ImageSource.camera,
@@ -2388,16 +2530,42 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         maxHeight: 1080,
       );
 
-      if (image == null) return;
+      if (image == null) {
+        await _clearPendingCameraCapture();
+        return;
+      }
 
-      // Show processing while adding watermark + uploading
-      setLoading?.call(true);
+      await _processRecoveredGpsDestinationPhoto(
+        File(image.path),
+        locationData: locationData,
+        onPhotoTaken: onPhotoTaken,
+        setLoading: setLoading,
+      );
+    } catch (e) {
+      setLoading?.call(false);
+      await _clearPendingCameraCapture();
+      debugPrint('Error taking GPS photo: $e');
+      if (mounted) {
+        UIHelpers.showErrorToast('Error taking GPS photo: $e');
+      }
+    }
+  }
 
-      // Add GPS watermark
-      final File originalFile = File(image.path);
+  Future<void> _processRecoveredGpsDestinationPhoto(
+    File originalFile, {
+    dynamic locationData,
+    VoidCallback? onPhotoTaken,
+    void Function(bool)? setLoading,
+    bool recovered = false,
+  }) async {
+    setLoading?.call(true);
+    try {
+      final resolvedLocationData =
+          locationData ?? await _gpsCameraService.getCurrentLocationData();
+
       final File watermarkedFile = await _gpsCameraService.addGpsWatermark(
         originalFile,
-        locationData,
+        resolvedLocationData,
       );
 
       if (mounted) {
@@ -2406,29 +2574,30 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         });
       }
 
-      // ── Upload queued in background; hide loading and let driver proceed ──
       setLoading?.call(false);
 
       await _deliveryQueue.enqueuePhotoUpload(
         bookingId: widget.request.id,
-        storageStage: 'Destination Arrival GPS',
+        storageStage: _destinationArrivalCaptureType,
         firestoreStage: 'destination_arrival',
         localFilePath: watermarkedFile.path,
       );
 
+      await _clearPendingCameraCapture();
+      await _saveDeliveryState();
+
       if (mounted) {
+        final prefix = recovered ? 'Recovered ' : '';
         UIHelpers.showSuccessToast(
-            'Arrival photo saved! Uploading to cloud in background.');
+          '${prefix}Arrival photo saved! Uploading to cloud in background.',
+        );
       }
 
-      // Notify dialog to refresh photo preview
       onPhotoTaken?.call();
     } catch (e) {
       setLoading?.call(false);
-      debugPrint('Error taking GPS photo: $e');
-      if (mounted) {
-        UIHelpers.showErrorToast('Error taking GPS photo: $e');
-      }
+      await _clearPendingCameraCapture();
+      rethrow;
     }
   }
 
@@ -2483,7 +2652,19 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   void _finishUnloading() async {
     _logActivity('finish_unloading');
-    if (_startUnloadingPhoto == null || _finishUnloadingPhoto == null) {
+    final hasStartUnloading = _hasPhotoEvidence(
+      _startUnloadingPhoto,
+      const ['start_unloading', 'start_unloading_photo'],
+    );
+    final hasFinishUnloading = _hasPhotoEvidence(
+      _finishUnloadingPhoto,
+      const [
+        'finish_unloading',
+        'finish_unloading_photo',
+        'finished_unloading',
+      ],
+    );
+    if (!hasStartUnloading || !hasFinishUnloading) {
       UIHelpers.showInfoToast('Please take both photos to finish unloading.');
       return;
     }
@@ -2526,7 +2707,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       UIHelpers.showInfoToast('Please enter receiver name.');
       return;
     }
-    if (_idPhoto == null) {
+    if (!_hasPhotoEvidence(
+      _idPhoto,
+      const ['receiver_id', 'receiver_id_photo'],
+    )) {
       UIHelpers.showInfoToast('Please take ID photo.');
       return;
     }
@@ -3538,6 +3722,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           _startLoadingPhoto,
           (file) => _startLoadingPhoto = file,
           photoType: 'Start Loading',
+          photoSaved: _hasPhotoEvidence(
+            _startLoadingPhoto,
+            const ['start_loading', 'start_loading_photo'],
+          ),
         ),
         const SizedBox(height: 16),
         _buildPhotoStep(
@@ -3545,6 +3733,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           _finishLoadingPhoto,
           (file) => _finishLoadingPhoto = file,
           photoType: 'Finished Loading',
+          photoSaved: _hasPhotoEvidence(
+            _finishLoadingPhoto,
+            const ['finish_loading', 'finish_loading_photo', 'finished_loading'],
+          ),
         ),
         const SizedBox(height: 24),
         _buildServiceInvoiceSection(),
@@ -3716,6 +3908,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           _startUnloadingPhoto,
           (file) => _startUnloadingPhoto = file,
           photoType: 'Start Unloading',
+          photoSaved: _hasPhotoEvidence(
+            _startUnloadingPhoto,
+            const ['start_unloading', 'start_unloading_photo'],
+          ),
         ),
         const SizedBox(height: 16),
         _buildPhotoStep(
@@ -3723,6 +3919,14 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           _finishUnloadingPhoto,
           (file) => _finishUnloadingPhoto = file,
           photoType: 'Finished Unloading',
+          photoSaved: _hasPhotoEvidence(
+            _finishUnloadingPhoto,
+            const [
+              'finish_unloading',
+              'finish_unloading_photo',
+              'finished_unloading',
+            ],
+          ),
         ),
         const SizedBox(height: 32),
         SizedBox(
@@ -4335,6 +4539,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               _idPhoto,
               (file) => _idPhoto = file,
               photoType: 'Receiver ID',
+              photoSaved: _hasPhotoEvidence(
+                _idPhoto,
+                const ['receiver_id', 'receiver_id_photo'],
+              ),
             ),
             const SizedBox(height: 12),
             Row(
@@ -4364,7 +4572,11 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: (_idPhoto == null || !_receiverIdPhotoConfirmed)
+                onPressed: (!_hasPhotoEvidence(
+                          _idPhoto,
+                          const ['receiver_id', 'receiver_id_photo'],
+                        ) ||
+                        !_receiverIdPhotoConfirmed)
                     ? null
                     : () {
                         _logActivity('receiving_next:receiver_id_photo');
@@ -4734,8 +4946,14 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     );
   }
 
-  Widget _buildPhotoStep(String label, File? image, Function(File) onPicked,
-      {required String photoType}) {
+  Widget _buildPhotoStep(
+    String label,
+    File? image,
+    Function(File) onPicked, {
+    required String photoType,
+    bool photoSaved = false,
+  }) {
+    final hasPhoto = image != null || photoSaved;
     return GestureDetector(
       onTap: () => _takePhoto(onPicked, photoType),
       child: Container(
@@ -4763,7 +4981,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                         cacheHeight: 180,
                         filterQuality: FilterQuality.low,
                       )
-                    : const Icon(Icons.camera_alt, color: Colors.grey),
+                    : photoSaved
+                        ? const Icon(Icons.cloud_done,
+                            color: AppColors.success, size: 28)
+                        : const Icon(Icons.camera_alt, color: Colors.grey),
               ),
             ),
             const SizedBox(width: 16),
@@ -4773,13 +4994,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                 children: [
                   Text(label,
                       style: const TextStyle(fontFamily: 'Bold', fontSize: 14)),
-                  Text(image != null ? 'Photo taken' : 'Tap to take photo',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary)),
+                  Text(
+                    hasPhoto ? 'Photo saved' : 'Tap to take photo',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
                 ],
               ),
             ),
-            if (image != null)
+            if (hasPhoto)
               const Icon(Icons.check_circle, color: AppColors.success),
           ],
         ),

@@ -158,18 +158,6 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
     _lastResumedBookingId = bookingId;
     _lastResumeAt = DateTime.now();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        backgroundColor: AppColors.success,
-        content: Text(
-          'Resuming your active delivery...',
-          style: TextStyle(color: Colors.white),
-        ),
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
 
     final request = _bookingToDeliveryRequest(booking);
