@@ -1045,6 +1045,7 @@ class RiderAuthService {
     String? unloadingSubStep,
     String? receivingSubStep,
     String? receiverName,
+    bool? receiverIdPhotoConfirmed,
   }) async {
     try {
       final state = {
@@ -1055,6 +1056,8 @@ class RiderAuthService {
         'receivingSubStep': receivingSubStep,
         if (receiverName != null && receiverName.trim().isNotEmpty)
           'receiverName': receiverName.trim(),
+        if (receiverIdPhotoConfirmed != null)
+          'receiverIdPhotoConfirmed': receiverIdPhotoConfirmed,
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       };
       await _storage.write('activeDeliveryState', state);
@@ -1069,13 +1072,13 @@ class RiderAuthService {
     try {
       final state = _storage.read('activeDeliveryState');
       if (state is Map && state.isNotEmpty) {
-        // Check if state is not too old (e.g., within last 24 hours)
+        // Keep resume data for long demurrage trips (matches auto-continue window).
         final savedAt = state['savedAt'] as int?;
         if (savedAt != null) {
           final savedTime = DateTime.fromMillisecondsSinceEpoch(savedAt);
           final now = DateTime.now();
           final diff = now.difference(savedTime);
-          if (diff.inHours > 24) {
+          if (diff.inHours > 72) {
             // State is too old, clear it
             clearActiveDeliveryState();
             return null;

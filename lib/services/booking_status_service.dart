@@ -22,6 +22,8 @@ class BookingStatusService {
   static const String STATUS_ARRIVED_DROPOFF = 'arrived_at_dropoff';
   static const String STATUS_UNLOADING = 'unloading';
   static const String STATUS_UNLOADING_COMPLETE = 'unloading_complete';
+  static const String STATUS_DAMAGE_REPORTED = 'damage_reported';
+  static const String STATUS_RECEIVING = 'receiving';
   static const String STATUS_COMPLETED = 'completed';
   static const String STATUS_CANCELLED = 'cancelled';
   static const String STATUS_CANCELLED_BY_RIDER = 'cancelled_by_rider';
@@ -40,6 +42,8 @@ class BookingStatusService {
     STATUS_ARRIVED_DROPOFF,
     STATUS_UNLOADING,
     STATUS_UNLOADING_COMPLETE,
+    STATUS_DAMAGE_REPORTED,
+    STATUS_RECEIVING,
     STATUS_COMPLETED,
     STATUS_CANCELLED,
     STATUS_CANCELLED_BY_RIDER,
@@ -62,6 +66,8 @@ class BookingStatusService {
     STATUS_ARRIVED_DROPOFF,
     STATUS_UNLOADING,
     STATUS_UNLOADING_COMPLETE,
+    STATUS_DAMAGE_REPORTED,
+    STATUS_RECEIVING,
   ];
 
   static const List<String> COMPLETED_STATUSES = [
@@ -211,6 +217,10 @@ class BookingStatusService {
         return 'Unloading';
       case STATUS_UNLOADING_COMPLETE:
         return 'Unloading Complete';
+      case STATUS_DAMAGE_REPORTED:
+        return 'Damage Reported';
+      case STATUS_RECEIVING:
+        return 'Receiving';
       case STATUS_COMPLETED:
         return 'Completed';
       case STATUS_CANCELLED:
@@ -408,6 +418,10 @@ class BookingStatusService {
         return 'Driver is unloading your items.';
       case STATUS_UNLOADING_COMPLETE:
         return 'Unloading is complete. Please receive your items.';
+      case STATUS_DAMAGE_REPORTED:
+        return 'Damage report submitted. Proceeding to receiver confirmation.';
+      case STATUS_RECEIVING:
+        return 'Confirming delivery with receiver.';
       case STATUS_COMPLETED:
         return 'Delivery completed! Thank you for using CitiMovers.';
       case STATUS_CANCELLED:

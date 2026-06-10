@@ -51,6 +51,8 @@ class AdminConstants {
     'arrived_at_dropoff',
     'unloading',
     'unloading_complete',
+    'damage_reported',
+    'receiving',
     'completed',
     'cancelled',
     'cancelled_by_rider',

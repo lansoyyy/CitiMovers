@@ -376,7 +376,9 @@ class BookingService {
         status == BookingStatusService.STATUS_IN_TRANSIT ||
         status == BookingStatusService.STATUS_ARRIVED_DROPOFF ||
         status == BookingStatusService.STATUS_UNLOADING ||
-        status == BookingStatusService.STATUS_UNLOADING_COMPLETE;
+        status == BookingStatusService.STATUS_UNLOADING_COMPLETE ||
+        status == BookingStatusService.STATUS_DAMAGE_REPORTED ||
+        status == BookingStatusService.STATUS_RECEIVING;
   }
 
   DateTime _lastActivityAt(BookingModel booking) {
@@ -1138,6 +1140,9 @@ class BookingService {
     int? totalDemurrageSeconds,
     List<Map<String, dynamic>>? picklistItems,
     Map<String, dynamic>? deliveryPhotos,
+    String? deliveryProgressStep,
+    String? receivingSubStep,
+    bool? receiverIdPhotoConfirmed,
   }) async {
     try {
       // Get booking details for notification and delivery photos merge
@@ -1181,6 +1186,18 @@ class BookingService {
 
       if (receiverName != null) {
         updateData['receiverName'] = receiverName;
+      }
+
+      if (deliveryProgressStep != null && deliveryProgressStep.isNotEmpty) {
+        updateData['deliveryProgressStep'] = deliveryProgressStep;
+      }
+
+      if (receivingSubStep != null && receivingSubStep.isNotEmpty) {
+        updateData['receivingSubStep'] = receivingSubStep;
+      }
+
+      if (receiverIdPhotoConfirmed != null) {
+        updateData['receiverIdPhotoConfirmed'] = receiverIdPhotoConfirmed;
       }
 
       if (loadingDemurrageFee != null) {

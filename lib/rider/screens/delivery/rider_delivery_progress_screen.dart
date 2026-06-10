@@ -346,7 +346,62 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       unloadingSubStep: _unloadingSubStep?.name,
       receivingSubStep: _receivingSubStep.name,
       receiverName: _receiverNameController.text,
+      receiverIdPhotoConfirmed: _receiverIdPhotoConfirmed,
     );
+  }
+
+  Future<void> _persistReceivingProgressToFirestore({
+    required ReceivingSubStep receivingSubStep,
+    String? receiverName,
+    bool? receiverIdPhotoConfirmed,
+    String? status,
+  }) async {
+    try {
+      await _bookingService.updateBookingStatusWithDetails(
+        bookingId: widget.request.id,
+        status: status ?? BookingStatusService.STATUS_RECEIVING,
+        receiverName: receiverName,
+        deliveryProgressStep: DeliveryStep.receiving.name,
+        receivingSubStep: receivingSubStep.name,
+        receiverIdPhotoConfirmed: receiverIdPhotoConfirmed,
+      );
+    } catch (e) {
+      debugPrint('Error persisting receiving progress: $e');
+    }
+  }
+
+  ReceivingSubStep? _receivingSubStepFromBooking(
+    Map<String, dynamic>? bookingData,
+  ) {
+    final fromFirestore = _parseStoredEnum(
+      ReceivingSubStep.values,
+      bookingData?['receivingSubStep'],
+    );
+    if (fromFirestore != null) return fromFirestore;
+
+    final deliveryPhotos =
+        _normalizeDeliveryPhotos(bookingData?['deliveryPhotos']);
+    final hasReceiverId = _hasDeliveryPhoto(
+      deliveryPhotos,
+      const ['receiver_id', 'receiver_id_photo'],
+    );
+    final hasReceiverName =
+        (bookingData?['receiverName']?.toString().trim().isNotEmpty ?? false);
+
+    if (hasReceiverId) return ReceivingSubStep.received;
+    if (hasReceiverName) return ReceivingSubStep.receiverIdPhoto;
+    return ReceivingSubStep.receiverName;
+  }
+
+  bool _isReceivingPhaseBooking(
+    Map<String, dynamic>? bookingData,
+    String status,
+  ) {
+    final progressStep =
+        bookingData?['deliveryProgressStep']?.toString().trim() ?? '';
+    return progressStep == DeliveryStep.receiving.name ||
+        status == BookingStatusService.STATUS_RECEIVING ||
+        status == BookingStatusService.STATUS_DAMAGE_REPORTED;
   }
 
   String _firestoreStageForPhotoType(String photoType) {
@@ -723,6 +778,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
     _applyStandardPhotoToState(photoType, prepared, onPicked: onPicked);
     await _saveDeliveryState();
+    if (photoType == 'Receiver ID') {
+      await _persistReceivingProgressToFirestore(
+        receivingSubStep: ReceivingSubStep.receiverIdPhoto,
+        receiverName: _receiverNameController.text.trim(),
+        receiverIdPhotoConfirmed: false,
+      );
+    }
     await _queueStandardPhotoUpload(photoType, prepared);
     await _clearPendingCameraCapture();
 
@@ -905,6 +967,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       );
     }
 
+    if (_isReceivingPhaseBooking(bookingData, status)) {
+      return _DeliveryProgressStateSnapshot(
+        step: DeliveryStep.receiving,
+        receivingSubStep:
+            _receivingSubStepFromBooking(bookingData) ??
+                ReceivingSubStep.receiverName,
+      );
+    }
+
     if (status == BookingStatusService.STATUS_UNLOADING_COMPLETE ||
         hasFinishUnloading) {
       return const _DeliveryProgressStateSnapshot(
@@ -1076,6 +1147,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _receiverNameController.text = bookingReceiverName;
       }
 
+      final savedIdConfirmed = savedState?['receiverIdPhotoConfirmed'];
+      final bookingIdConfirmed = bookingData?['receiverIdPhotoConfirmed'];
+      final restoredIdConfirmed = savedIdConfirmed == true ||
+          bookingIdConfirmed == true ||
+          _hasPhotoEvidence(
+            _idPhoto,
+            const ['receiver_id', 'receiver_id_photo'],
+          );
+
       if (!mounted) return;
       setState(() {
         _currentStep = mergedSnapshot.step;
@@ -1088,6 +1168,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _receivingSubStep = mergedSnapshot.step == DeliveryStep.receiving
             ? mergedSnapshot.receivingSubStep
             : ReceivingSubStep.receiverName;
+        _receiverIdPhotoConfirmed = restoredIdConfirmed;
         _loadingDuration = loadingDuration;
         _unloadingDuration = unloadingDuration;
         _loadingDemurrageFee =
@@ -4431,11 +4512,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                 return;
               }
 
-              // Save damaged items to Firestore
+              // Save damaged items to Firestore and mark receiving phase.
               await _bookingService.updateBookingStatusWithDetails(
                 bookingId: widget.request.id,
-                status: 'damage_reported',
+                status: BookingStatusService.STATUS_RECEIVING,
                 picklistItems: _picklistItems,
+                deliveryProgressStep: DeliveryStep.receiving.name,
+                receivingSubStep: ReceivingSubStep.receiverName.name,
                 deliveryPhotos: {
                   if (_hasDamage) 'damaged_items': _damagedItems,
                   'damage_photos': _damagePhotoUrls,
@@ -4449,7 +4532,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                 _receiverIdPhotoConfirmed = false;
               });
 
-              _saveDeliveryState();
+              await _saveDeliveryState();
               UIHelpers.showSuccessToast(
                   'Damage report saved. Proceed to receiver confirmation.');
             },
@@ -4506,12 +4589,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               child: ElevatedButton(
                 onPressed: _receiverNameController.text.trim().isEmpty
                     ? null
-                    : () {
+                    : () async {
                         _logActivity('receiving_next:receiver_name');
+                        final name = _receiverNameController.text.trim();
                         setState(() {
                           _receivingSubStep = ReceivingSubStep.receiverIdPhoto;
                         });
-                        _saveDeliveryState();
+                        await _persistReceivingProgressToFirestore(
+                          receivingSubStep: ReceivingSubStep.receiverIdPhoto,
+                          receiverName: name,
+                          receiverIdPhotoConfirmed: false,
+                        );
+                        await _saveDeliveryState();
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
@@ -4549,10 +4638,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               children: [
                 Checkbox(
                   value: _receiverIdPhotoConfirmed,
-                  onChanged: (v) {
+                  onChanged: (v) async {
                     setState(() {
                       _receiverIdPhotoConfirmed = v ?? false;
                     });
+                    if (_receiverIdPhotoConfirmed) {
+                      await _persistReceivingProgressToFirestore(
+                        receivingSubStep: ReceivingSubStep.receiverIdPhoto,
+                        receiverName: _receiverNameController.text.trim(),
+                        receiverIdPhotoConfirmed: true,
+                      );
+                      await _saveDeliveryState();
+                    }
                   },
                   activeColor: AppColors.success,
                 ),
@@ -4578,12 +4675,17 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                         ) ||
                         !_receiverIdPhotoConfirmed)
                     ? null
-                    : () {
+                    : () async {
                         _logActivity('receiving_next:receiver_id_photo');
                         setState(() {
                           _receivingSubStep = ReceivingSubStep.received;
                         });
-                        _saveDeliveryState();
+                        await _persistReceivingProgressToFirestore(
+                          receivingSubStep: ReceivingSubStep.received,
+                          receiverName: _receiverNameController.text.trim(),
+                          receiverIdPhotoConfirmed: true,
+                        );
+                        await _saveDeliveryState();
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
@@ -4635,14 +4737,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   _logActivity('receiving:received');
-                  // Unfocus any text fields before moving to signature
                   FocusScope.of(context).unfocus();
                   setState(() {
                     _receivingSubStep = ReceivingSubStep.signature;
                   });
-                  _saveDeliveryState();
+                  await _persistReceivingProgressToFirestore(
+                    receivingSubStep: ReceivingSubStep.signature,
+                    receiverName: _receiverNameController.text.trim(),
+                    receiverIdPhotoConfirmed: true,
+                  );
+                  await _saveDeliveryState();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
