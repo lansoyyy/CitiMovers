@@ -381,6 +381,17 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
                     ],
                   ),
                 ),
+                 const SizedBox(height: 20),
+               Center(
+                child:  Text(
+                          'v1.0.0',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'Regular',
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+               ),
               ],
             ),
           ),
