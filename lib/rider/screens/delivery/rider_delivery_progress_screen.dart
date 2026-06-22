@@ -80,6 +80,18 @@ class _DeliveryProgressStateSnapshot {
   });
 }
 
+class _PendingCaptureInfo {
+  final String captureType;
+  final String? localFilePath;
+  final DateTime savedAt;
+
+  const _PendingCaptureInfo({
+    required this.captureType,
+    this.localFilePath,
+    required this.savedAt,
+  });
+}
+
 class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final RiderAuthService _riderAuthService = RiderAuthService();
@@ -163,7 +175,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   final List<Map<String, dynamic>> _damagedItems = [];
   final List<File> _damagePhotos = [];
   final List<String> _damagePhotoUrls = [];
-  final TextEditingController _damageItemController = TextEditingController();
+  final TextEditingController _damagePicklistItemController = TextEditingController();
+  final TextEditingController _damageDescriptionController = TextEditingController();
   final TextEditingController _damageQtyController = TextEditingController();
 
   double get _baseFareAmount =>
@@ -185,6 +198,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _restoreSavedDeliveryState();
     _listenForBookingCancellation();
     unawaited(_recoverLostDeliveryCameraCapture());
+    unawaited(_processOrphanedPendingPhotos());
   }
 
   @override
@@ -194,6 +208,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     if (state == AppLifecycleState.resumed &&
         _readPendingCameraCapture() != null) {
       unawaited(_recoverLostDeliveryCameraCapture());
+    }
+    if (state == AppLifecycleState.resumed) {
+      _deliveryQueue.requestFlush();
+      unawaited(_processOrphanedPendingPhotos());
     }
   }
 
@@ -308,6 +326,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _receiverNameController.dispose();
     _arrivalRemarksController.dispose();
     _destinationArrivalRemarksController.dispose();
+    _damagePicklistItemController.dispose();
+    _damageDescriptionController.dispose();
+    _damageQtyController.dispose();
 
     // Save current delivery state before disposing
     unawaited(_saveDeliveryState());
@@ -619,21 +640,183 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
   }
 
+  /// Scans delivery_uploads for photos that were captured and persisted
+  /// but whose in-memory state was never set (e.g. app was killed between
+  /// `prepareDeliveryPhotoForQueue` and `_applyStandardPhotoToState`).
+  ///
+  /// This runs after the main state restoration and fills any gaps.
+  Future<void> _processOrphanedPendingPhotos() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final deliveryDir = Directory(p.join(dir.path, 'delivery_uploads'));
+      if (!deliveryDir.existsSync()) return;
+
+      final prefix = '${widget.request.id}_';
+      final files = deliveryDir
+          .listSync()
+          .whereType<File>()
+          .where((file) => p.basename(file.path).startsWith(prefix))
+          .toList()
+        ..sort(
+          (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+        );
+
+      if (!mounted) return;
+
+      bool needsStateUpdate = false;
+
+      for (final file in files) {
+        final name = p.basenameWithoutExtension(file.path);
+        if (!name.startsWith(prefix)) continue;
+
+        final remainder = name.substring(prefix.length);
+        final lastUnderscore = remainder.lastIndexOf('_');
+        if (lastUnderscore <= 0) continue;
+        final stage = remainder.substring(0, lastUnderscore);
+
+        switch (stage) {
+          case 'start_loading':
+            if (_startLoadingPhoto == null || !_startLoadingPhoto!.existsSync()) {
+              _startLoadingPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'finish_loading':
+            if (_finishLoadingPhoto == null || !_finishLoadingPhoto!.existsSync()) {
+              _finishLoadingPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'start_unloading':
+            if (_startUnloadingPhoto == null || !_startUnloadingPhoto!.existsSync()) {
+              _startUnloadingPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'finish_unloading':
+            if (_finishUnloadingPhoto == null || !_finishUnloadingPhoto!.existsSync()) {
+              _finishUnloadingPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'receiver_id':
+            if (_idPhoto == null || !_idPhoto!.existsSync()) {
+              _idPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'service_invoice':
+            if (!_serviceInvoicePhotos.any((existing) => existing.path == file.path)) {
+              _serviceInvoicePhotos.add(file);
+              needsStateUpdate = true;
+            }
+            break;
+          case 'warehouse_arrival':
+          case 'warehouse_arrival_wm':
+            if (_warehouseArrivalPhoto == null || !_warehouseArrivalPhoto!.existsSync()) {
+              _warehouseArrivalPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'destination_arrival':
+          case 'destination_arrival_wm':
+            if (_destinationArrivalPhoto == null || !_destinationArrivalPhoto!.existsSync()) {
+              _destinationArrivalPhoto = file;
+              needsStateUpdate = true;
+            }
+            break;
+          case 'damaged_boxes':
+          case 'empty_truck':
+            if (!_damagePhotos.any((existing) => existing.path == file.path)) {
+              _damagePhotos.add(file);
+              needsStateUpdate = true;
+            }
+            break;
+        }
+      }
+
+      // If we found any orphaned photos that weren't already queued for upload,
+      // add them to the delivery queue so they get uploaded in the background.
+      if (needsStateUpdate && mounted) {
+        setState(() {});
+        
+        // Ensure newly-found photos are queued for upload if they have no URL yet
+        await _queueOrphanedPhotoUploads();
+        
+        debugPrint('Orphaned pending photos restored for ${widget.request.id}');
+      }
+    } catch (e) {
+      debugPrint('Error processing orphaned pending photos: $e');
+    }
+  }
+
+  /// Enqueues any in-memory local photos that are not yet represented in the
+  /// delivery queue (e.g. photos restored from disk that have no URL).
+  Future<void> _queueOrphanedPhotoUploads() async {
+    Future<void> maybeQueue(File? file, String photoType) async {
+      if (file == null || !file.existsSync()) return;
+      await _queueStandardPhotoUpload(photoType, file, flushImmediately: false);
+    }
+
+    await Future.wait([
+      maybeQueue(_startLoadingPhoto, 'Start Loading'),
+      maybeQueue(_finishLoadingPhoto, 'Finished Loading'),
+      maybeQueue(_startUnloadingPhoto, 'Start Unloading'),
+      maybeQueue(_finishUnloadingPhoto, 'Finished Unloading'),
+      maybeQueue(_idPhoto, 'Receiver ID'),
+    ]);
+
+    // GPS arrival photos need to be queued with their dedicated storage/firestore keys
+    if (_warehouseArrivalPhoto != null && _warehouseArrivalPhoto!.existsSync()) {
+      await _deliveryQueue.enqueuePhotoUpload(
+        bookingId: widget.request.id,
+        storageStage: _warehouseArrivalCaptureType,
+        firestoreStage: 'warehouse_arrival',
+        localFilePath: _warehouseArrivalPhoto!.path,
+        flushImmediately: false,
+      );
+    }
+    if (_destinationArrivalPhoto != null && _destinationArrivalPhoto!.existsSync()) {
+      await _deliveryQueue.enqueuePhotoUpload(
+        bookingId: widget.request.id,
+        storageStage: _destinationArrivalCaptureType,
+        firestoreStage: 'destination_arrival',
+        localFilePath: _destinationArrivalPhoto!.path,
+        flushImmediately: false,
+      );
+    }
+    if (_damagePhotos.isNotEmpty) {
+      for (final p in _damagePhotos) {
+        await _deliveryQueue.enqueuePhotoUpload(
+          bookingId: widget.request.id,
+          storageStage: 'Damaged Boxes',
+          firestoreStage: 'damaged_boxes',
+          localFilePath: p.path,
+          flushImmediately: false,
+        );
+      }
+    }
+  }
+
   String get _pendingCameraCaptureKey =>
       'pendingDeliveryCameraCapture_${widget.request.id}';
 
-  Future<void> _savePendingCameraCapture(String captureType) async {
+  Future<void> _savePendingCameraCapture(String captureType, {String? localFilePath}) async {
     try {
-      await _storage.write(_pendingCameraCaptureKey, {
+      final data = <String, dynamic>{
         'captureType': captureType,
         'savedAt': DateTime.now().millisecondsSinceEpoch,
-      });
+      };
+      if (localFilePath != null && localFilePath.isNotEmpty) {
+        data['localFilePath'] = localFilePath;
+      }
+      await _storage.write(_pendingCameraCaptureKey, data);
     } catch (e) {
       debugPrint('Error saving pending camera capture: $e');
     }
   }
 
-  String? _readPendingCameraCapture() {
+  _PendingCaptureInfo? _readPendingCameraCapture() {
     try {
       final raw = _storage.read(_pendingCameraCaptureKey);
       if (raw is! Map || raw.isEmpty) return null;
@@ -650,7 +833,12 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         }
       }
 
-      return captureType;
+      final localFilePath = raw['localFilePath']?.toString().trim();
+      return _PendingCaptureInfo(
+        captureType: captureType,
+        localFilePath: (localFilePath != null && localFilePath.isNotEmpty) ? localFilePath : null,
+        savedAt: savedAt is int ? DateTime.fromMillisecondsSinceEpoch(savedAt) : DateTime.now(),
+      );
     } catch (e) {
       debugPrint('Error reading pending camera capture: $e');
       return null;
@@ -678,7 +866,27 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       );
       if (image == null) {
         await _clearPendingCameraCapture();
+        return null;
       }
+
+      // IMMEDIATE PERSISTENCE: Copy photo to delivery_uploads right after
+      // camera capture so it survives app kill / manual close before the
+      // async processing pipeline completes.
+      try {
+        final file = File(image.path);
+        final firestoreStage = _firestoreStageForPhotoType(captureType);
+        final persisted = await _storageService.prepareDeliveryPhotoForQueue(
+          file,
+          bookingId: widget.request.id,
+          stageKey: firestoreStage,
+        );
+        await _savePendingCameraCapture(captureType, localFilePath: persisted.path);
+        debugPrint('Photo immediately persisted: ${persisted.path}');
+      } catch (e) {
+        debugPrint('Warning: Could not immediately persist photo ($captureType): $e');
+        // Don't block — _processStandardPhotoCapture will retry
+      }
+
       return image;
     } catch (e) {
       await _clearPendingCameraCapture();
@@ -862,9 +1070,25 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   }
 
   Future<void> _recoverLostDeliveryCameraCapture() async {
-    final captureType = _readPendingCameraCapture();
-    if (captureType == null) return;
+    final pendingInfo = _readPendingCameraCapture();
+    if (pendingInfo == null) return;
 
+    final captureType = pendingInfo.captureType;
+
+    // Try to recover from the saved persistent file path first (fast path).
+    // This handles the case where the app was killed after the photo was
+    // already saved to delivery_uploads but before full processing completed.
+    if (pendingInfo.localFilePath != null) {
+      final persistedFile = File(pendingInfo.localFilePath!);
+      if (persistedFile.existsSync()) {
+        debugPrint('Recovering photo from persisted path: ${persistedFile.path}');
+        await _processRecoveredPhotoFromPath(captureType, persistedFile);
+        return;
+      }
+    }
+
+    // Fallback: use ImagePicker's retrieveLostData (handles process death
+    // during camera activity on Android).
     try {
       final lostData = await _picker.retrieveLostData();
       if (lostData.isEmpty) {
@@ -897,22 +1121,46 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         return;
       }
 
-      if (captureType == _serviceInvoiceCaptureType) {
-        await _processServiceInvoicePhoto(file, recovered: true);
-      } else if (captureType == _warehouseArrivalCaptureType) {
-        await _processRecoveredGpsArrivalPhoto(file, recovered: true);
-      } else if (captureType == _destinationArrivalCaptureType) {
-        await _processRecoveredGpsDestinationPhoto(file, recovered: true);
-      } else {
-        await _processStandardPhotoCapture(
-          captureType,
+      // Immediately persist the recovered file before processing
+      File persisted;
+      try {
+        final firestoreStage = captureType == _serviceInvoiceCaptureType
+            ? 'service_invoice'
+            : captureType == _warehouseArrivalCaptureType
+                ? 'warehouse_arrival'
+                : captureType == _destinationArrivalCaptureType
+                    ? 'destination_arrival'
+                    : _firestoreStageForPhotoType(captureType);
+        persisted = await _storageService.prepareDeliveryPhotoForQueue(
           file,
-          recovered: true,
+          bookingId: widget.request.id,
+          stageKey: firestoreStage,
         );
+      } catch (e) {
+        debugPrint('Could not persist recovered photo, using temp file: $e');
+        persisted = file;
       }
+
+      await _processRecoveredPhotoFromPath(captureType, persisted);
     } catch (e) {
       debugPrint('Error recovering lost delivery camera capture: $e');
       await _clearPendingCameraCapture();
+    }
+  }
+
+  Future<void> _processRecoveredPhotoFromPath(String captureType, File file) async {
+    if (captureType == _serviceInvoiceCaptureType) {
+      await _processServiceInvoicePhoto(file, recovered: true);
+    } else if (captureType == _warehouseArrivalCaptureType) {
+      await _processRecoveredGpsArrivalPhoto(file, recovered: true);
+    } else if (captureType == _destinationArrivalCaptureType) {
+      await _processRecoveredGpsDestinationPhoto(file, recovered: true);
+    } else {
+      await _processStandardPhotoCapture(
+        captureType,
+        file,
+        recovered: true,
+      );
     }
   }
 
@@ -1195,6 +1443,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       } else {
         _unloadingTimer?.cancel();
       }
+
+      // After state is fully restored, scan for any orphaned photos that
+      // were persisted to disk but not yet linked to in-memory state.
+      unawaited(_processOrphanedPendingPhotos());
     } catch (e) {
       debugPrint('Error restoring saved delivery state: $e');
     }
@@ -1925,8 +2177,21 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         return;
       }
 
+      // IMMEDIATE PERSISTENCE: Copy to delivery_uploads so photo survives app kill.
+      File photoFile = File(image.path);
+      try {
+        photoFile = await _storageService.prepareDeliveryPhotoForQueue(
+          photoFile,
+          bookingId: widget.request.id,
+          stageKey: 'warehouse_arrival',
+        );
+        await _savePendingCameraCapture(_warehouseArrivalCaptureType, localFilePath: photoFile.path);
+      } catch (e) {
+        debugPrint('Warning: Could not immediately persist warehouse arrival photo: $e');
+      }
+
       await _processRecoveredGpsArrivalPhoto(
-        File(image.path),
+        photoFile,
         locationData: locationData,
         onPhotoTaken: onPhotoTaken,
         setLoading: setLoading,
@@ -1958,9 +2223,19 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         resolvedLocationData,
       );
 
+      // Persist the watermarked file so queue entries survive restarts
+      File persistedWatermarked = watermarkedFile;
+      try {
+        persistedWatermarked = await _storageService.prepareDeliveryPhotoForQueue(
+          watermarkedFile,
+          bookingId: widget.request.id,
+          stageKey: 'warehouse_arrival_wm',
+        );
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
-          _warehouseArrivalPhoto = watermarkedFile;
+          _warehouseArrivalPhoto = persistedWatermarked;
         });
       }
 
@@ -1970,7 +2245,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         bookingId: widget.request.id,
         storageStage: _warehouseArrivalCaptureType,
         firestoreStage: 'warehouse_arrival',
-        localFilePath: watermarkedFile.path,
+        localFilePath: persistedWatermarked.path,
       );
 
       await _clearPendingCameraCapture();
@@ -2065,6 +2340,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _logActivity('picklist:add');
     final itemController = TextEditingController();
     final qtyController = TextEditingController();
+    final descController = TextEditingController();
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -2077,6 +2353,14 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               controller: itemController,
               decoration: const InputDecoration(
                 labelText: 'Type of Goods/Items',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(
+                labelText: 'Item Description (optional)',
+                hintText: 'e.g. case size, variant, brand',
               ),
             ),
             const SizedBox(height: 12),
@@ -2104,6 +2388,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               }
               Navigator.pop(context, {
                 'item': item,
+                'description': descController.text.trim(),
                 'quantity': qty,
               });
             },
@@ -2616,8 +2901,21 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         return;
       }
 
+      // IMMEDIATE PERSISTENCE: Copy to delivery_uploads so photo survives app kill.
+      File photoFile = File(image.path);
+      try {
+        photoFile = await _storageService.prepareDeliveryPhotoForQueue(
+          photoFile,
+          bookingId: widget.request.id,
+          stageKey: 'destination_arrival',
+        );
+        await _savePendingCameraCapture(_destinationArrivalCaptureType, localFilePath: photoFile.path);
+      } catch (e) {
+        debugPrint('Warning: Could not immediately persist destination arrival photo: $e');
+      }
+
       await _processRecoveredGpsDestinationPhoto(
-        File(image.path),
+        photoFile,
         locationData: locationData,
         onPhotoTaken: onPhotoTaken,
         setLoading: setLoading,
@@ -2649,9 +2947,19 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         resolvedLocationData,
       );
 
+      // Persist the watermarked file so queue entries survive restarts
+      File persistedWatermarked = watermarkedFile;
+      try {
+        persistedWatermarked = await _storageService.prepareDeliveryPhotoForQueue(
+          watermarkedFile,
+          bookingId: widget.request.id,
+          stageKey: 'destination_arrival_wm',
+        );
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
-          _destinationArrivalPhoto = watermarkedFile;
+          _destinationArrivalPhoto = persistedWatermarked;
         });
       }
 
@@ -2661,7 +2969,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         bookingId: widget.request.id,
         storageStage: _destinationArrivalCaptureType,
         firestoreStage: 'destination_arrival',
-        localFilePath: watermarkedFile.path,
+        localFilePath: persistedWatermarked.path,
       );
 
       await _clearPendingCameraCapture();
@@ -3041,8 +3349,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           if (raw is Map) {
             final item = (raw['item'] ?? '').toString();
             final qty = (raw['quantity'] ?? '').toString();
+            final desc = (raw['description'] ?? '').toString();
             if (item.isEmpty && qty.isEmpty) continue;
-            lines.add('$item - $qty');
+            if (desc.isNotEmpty) {
+              lines.add('$item ($desc) - $qty');
+            } else {
+              lines.add('$item - $qty');
+            }
           }
         }
         return lines.join('\n');
@@ -4039,7 +4352,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
         const SizedBox(height: 8),
         const Text(
-          'Report any damaged items from the delivery. Items must match the picklist.',
+          'Select a picklist item, then describe the damaged goods and quantity.',
           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 16),
@@ -4068,15 +4381,29 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                 ...List.generate(_picklistItems.length, (i) {
                   final item = (_picklistItems[i]['item'] ?? '').toString();
                   final qty = (_picklistItems[i]['quantity'] ?? '').toString();
+                  final desc = (_picklistItems[i]['description'] ?? '').toString();
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item, style: const TextStyle(fontSize: 13)),
-                        Text(qty,
-                            style: const TextStyle(
-                                fontSize: 13, fontFamily: 'Medium')),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: Text(item, style: const TextStyle(fontSize: 13))),
+                            Text(qty,
+                                style: const TextStyle(
+                                    fontSize: 13, fontFamily: 'Medium')),
+                          ],
+                        ),
+                        if (desc.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(desc,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ),
                       ],
                     ),
                   );
@@ -4229,89 +4556,123 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Entry Form
-                Row(
+                // Entry Form — Picklist Item selector, Description, Qty
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      flex: 2,
-                      child: Autocomplete<String>(
-                        optionsBuilder: (TextEditingValue textEditingValue) {
-                          if (textEditingValue.text.isEmpty) {
-                            return const Iterable<String>.empty();
-                          }
+                    // Picklist Item selector (autocomplete)
+                    Autocomplete<String>(
+                      optionsBuilder: (TextEditingValue textEditingValue) {
+                        if (textEditingValue.text.isEmpty) {
                           return _picklistItems
                               .map((e) => (e['item'] ?? '').toString())
-                              .where((item) => item.toLowerCase().contains(
-                                  textEditingValue.text.toLowerCase()));
-                        },
-                        onSelected: (String selection) {
-                          _damageItemController.text = selection;
-                        },
-                        fieldViewBuilder:
-                            (context, controller, focusNode, onFieldSubmitted) {
-                          // Sync the autocomplete controller with our controller
-                          controller.addListener(() {
-                            _damageItemController.text = controller.text;
-                          });
-                          return TextField(
-                            controller: controller,
-                            focusNode: focusNode,
+                              .where((item) => item.isNotEmpty);
+                        }
+                        return _picklistItems
+                            .map((e) => (e['item'] ?? '').toString())
+                            .where((item) => item.toLowerCase().contains(
+                                textEditingValue.text.toLowerCase()));
+                      },
+                      onSelected: (String selection) {
+                        _damagePicklistItemController.text = selection;
+                        final matched = _picklistItems.firstWhere(
+                          (e) => (e['item'] ?? '').toString() == selection,
+                          orElse: () => <String, dynamic>{},
+                        );
+                        final desc = (matched['description'] ?? '').toString();
+                        if (desc.isNotEmpty) {
+                          _damageDescriptionController.text = desc;
+                        }
+                      },
+                      fieldViewBuilder:
+                          (context, controller, focusNode, onFieldSubmitted) {
+                        controller.addListener(() {
+                          _damagePicklistItemController.text = controller.text;
+                        });
+                        return TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: InputDecoration(
+                            labelText: 'Picklist Item',
+                            hintText: 'Select or type item from picklist',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    // Description field
+                    TextField(
+                      controller: _damageDescriptionController,
+                      decoration: InputDecoration(
+                        labelText: 'Damage Description',
+                        hintText: 'e.g. 1 64 ML. _ 3 lieking',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Qty field + Add button
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _damageQtyController,
+                            keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: 'Item Name',
-                              hintText: 'Enter item from picklist',
+                              labelText: 'Qty/Cases',
                               border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8)),
                               contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 12),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _damageQtyController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: 'Qty/Cases',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () {
-                        final item = _damageItemController.text.trim();
-                        final qty = _damageQtyController.text.trim();
-                        if (item.isEmpty || qty.isEmpty) {
-                          UIHelpers.showErrorToast(
-                              'Please enter item and quantity');
-                          return;
-                        }
-                        // Validate item exists in picklist
-                        final exists = _picklistItems.any((e) =>
-                            (e['item'] ?? '').toString().toLowerCase() ==
-                            item.toLowerCase());
-                        if (!exists) {
-                          UIHelpers.showErrorToast('Item must match picklist');
-                          return;
-                        }
-                        setState(() {
-                          _damagedItems.add({'item': item, 'quantity': qty});
-                          _damageItemController.clear();
-                          _damageQtyController.clear();
-                        });
-                      },
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.primaryRed,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.add, color: Colors.white),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () {
+                            final picklistItem =
+                                _damagePicklistItemController.text.trim();
+                            final description =
+                                _damageDescriptionController.text.trim();
+                            final qty = _damageQtyController.text.trim();
+                            if (picklistItem.isEmpty || description.isEmpty || qty.isEmpty) {
+                              UIHelpers.showErrorToast(
+                                  'Please select picklist item, enter description, and quantity');
+                              return;
+                            }
+                            final exists = _picklistItems.any((e) =>
+                                (e['item'] ?? '').toString().toLowerCase() ==
+                                picklistItem.toLowerCase());
+                            if (!exists) {
+                              UIHelpers.showErrorToast(
+                                  'Selected item must exist in picklist');
+                              return;
+                            }
+                            setState(() {
+                              _damagedItems.add({
+                                'picklistItem': picklistItem,
+                                'description': description,
+                                'quantity': qty,
+                              });
+                              _damagePicklistItemController.clear();
+                              _damageDescriptionController.clear();
+                              _damageQtyController.clear();
+                            });
+                          },
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primaryRed,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          icon: const Icon(Icons.add, color: Colors.white),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -4321,8 +4682,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                   const Divider(),
                   const SizedBox(height: 8),
                   ...List.generate(_damagedItems.length, (i) {
-                    final item = _damagedItems[i]['item'] ?? '';
-                    final qty = _damagedItems[i]['quantity'] ?? '';
+                    final picklistItem = (_damagedItems[i]['picklistItem'] ?? _damagedItems[i]['item'] ?? '').toString();
+                    final desc = (_damagedItems[i]['description'] ?? '').toString();
+                    final qty = (_damagedItems[i]['quantity'] ?? '').toString();
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(8),
@@ -4333,8 +4695,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(item,
-                                style: const TextStyle(fontSize: 13)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(picklistItem,
+                                    style: const TextStyle(fontSize: 13, fontFamily: 'Medium')),
+                                if (desc.isNotEmpty)
+                                  Text(desc,
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary)),
+                              ],
+                            ),
                           ),
                           Text(qty,
                               style: const TextStyle(
@@ -5191,6 +5563,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               children: List.generate(_picklistItems.length, (i) {
                 final item = (_picklistItems[i]['item'] ?? '').toString();
                 final qty = (_picklistItems[i]['quantity'] ?? '').toString();
+                final desc = (_picklistItems[i]['description'] ?? '').toString();
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(12),
@@ -5201,10 +5574,25 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          item,
-                          style: const TextStyle(
-                              fontSize: 13, fontFamily: 'Medium'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item,
+                              style: const TextStyle(
+                                  fontSize: 13, fontFamily: 'Medium'),
+                            ),
+                            if (desc.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  desc,
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       Text(

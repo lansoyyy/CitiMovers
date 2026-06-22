@@ -7,6 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 import 'booking_service.dart';
 import 'storage_service.dart';
@@ -372,11 +373,25 @@ class DeliveryQueueService {
     final firestoreStage = p['firestoreStage'] as String;
     final localFilePath = p['localFilePath'] as String;
 
-    final file = File(localFilePath);
+    File file = File(localFilePath);
     if (!file.existsSync()) {
-      debugPrint(
-          '[DeliveryQueue] Local file missing ($localFilePath) — dropping entry.');
-      return true; // remove from queue; nothing to retry
+      // Try to find the file in the persistent delivery_uploads directory
+      // by matching bookingId and stage. This covers cases where the file
+      // was renamed or the original path points to a temp directory that
+      // was cleaned up between app sessions.
+      final found = await _findFileInPersistentDir(
+        bookingId: entry.bookingId,
+        firestoreStage: firestoreStage,
+      );
+      if (found != null) {
+        debugPrint(
+            '[DeliveryQueue] Found persistent copy for ${entry.bookingId}/$firestoreStage: ${found.path}');
+        file = found;
+      } else {
+        debugPrint(
+            '[DeliveryQueue] Local file missing ($localFilePath) — dropping entry.');
+        return true; // remove from queue; nothing to retry
+      }
     }
 
     final url = await _storageService.uploadDeliveryPhoto(
@@ -399,6 +414,29 @@ class DeliveryQueueService {
     _urlCallbacks[cbKey]?.call(url);
 
     return true;
+  }
+
+  Future<File?> _findFileInPersistentDir({
+    required String bookingId,
+    required String firestoreStage,
+  }) async {
+    try {
+      final dir = await getLocalDeliveryDir();
+      final prefix = '${bookingId}_';
+      final files = dir.listSync().whereType<File>().where((f) {
+        final name = path.basenameWithoutExtension(f.path);
+        if (!name.startsWith(prefix)) return false;
+        final remainder = name.substring(prefix.length);
+        final lastUnderscore = remainder.lastIndexOf('_');
+        if (lastUnderscore <= 0) return false;
+        final stage = remainder.substring(0, lastUnderscore);
+        return stage == firestoreStage;
+      }).toList()
+        ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      return files.isNotEmpty ? files.first : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> _executePhotoRecord(DeliveryQueueEntry entry) async {
