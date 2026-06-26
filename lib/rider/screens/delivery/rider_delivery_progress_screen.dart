@@ -175,6 +175,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   final List<Map<String, dynamic>> _damagedItems = [];
   final List<File> _damagePhotos = [];
   final List<String> _damagePhotoUrls = [];
+  Map<String, dynamic>? _selectedDamagePicklistEntry;
   final TextEditingController _damagePicklistItemController = TextEditingController();
   final TextEditingController _damageDescriptionController = TextEditingController();
   final TextEditingController _damageQtyController = TextEditingController();
@@ -2336,6 +2337,87 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
   }
 
+  Map<String, dynamic>? _findPicklistItemByName(String name) {
+    final normalized = name.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+    for (final entry in _picklistItems) {
+      if ((entry['item'] ?? '').toString().trim().toLowerCase() == normalized) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  String _picklistItemLabel(Map<String, dynamic> entry) {
+    final item = (entry['item'] ?? '').toString().trim();
+    final desc = (entry['description'] ?? '').toString().trim();
+    if (item.isEmpty) return desc;
+    if (desc.isEmpty) return item;
+    return '$item — $desc';
+  }
+
+  void _syncDamageDescriptionFromPicklist(Map<String, dynamic>? entry) {
+    final desc = (entry?['description'] ?? '').toString().trim();
+    _damageDescriptionController.text = desc;
+  }
+
+  void _clearDamageEntryForm() {
+    _selectedDamagePicklistEntry = null;
+    _damagePicklistItemController.clear();
+    _damageDescriptionController.clear();
+    _damageQtyController.clear();
+  }
+
+  bool _addDamagedItemFromForm() {
+    final picklistItem = _damagePicklistItemController.text.trim();
+    final description = _damageDescriptionController.text.trim();
+    final qty = _damageQtyController.text.trim();
+
+    if (picklistItem.isEmpty) {
+      UIHelpers.showErrorToast('Please select a picklist item');
+      return false;
+    }
+    if (qty.isEmpty) {
+      UIHelpers.showErrorToast('Please enter damaged quantity');
+      return false;
+    }
+
+    final matched = _findPicklistItemByName(picklistItem);
+    if (matched == null) {
+      UIHelpers.showErrorToast('Selected item must exist in picklist');
+      return false;
+    }
+
+    final picklistDescription =
+        (matched['description'] ?? '').toString().trim();
+    if (picklistDescription.isEmpty) {
+      UIHelpers.showErrorToast(
+        'Add item description in picklist first before reporting damage.',
+      );
+      return false;
+    }
+    if (description.isEmpty) {
+      UIHelpers.showErrorToast(
+        'Item description is copied from picklist. Please select a picklist item.',
+      );
+      return false;
+    }
+    if (description.toLowerCase() != picklistDescription.toLowerCase()) {
+      UIHelpers.showErrorToast(
+        'Damage description must match the picklist item description.',
+      );
+      return false;
+    }
+
+    _damagedItems.add({
+      'picklistItem': picklistItem,
+      'description': picklistDescription,
+      'quantity': qty,
+    });
+    _clearDamageEntryForm();
+    return true;
+  }
+
   Future<void> _addPicklistItem() async {
     _logActivity('picklist:add');
     final itemController = TextEditingController();
@@ -2344,51 +2426,82 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Add Picklist Item'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: itemController,
-              decoration: const InputDecoration(
-                labelText: 'Type of Goods/Items',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: itemController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Type of Goods/Items',
+                  hintText: 'e.g. P&G TOTAL ITEMS',
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descController,
-              decoration: const InputDecoration(
-                labelText: 'Item Description (optional)',
-                hintText: 'e.g. case size, variant, brand',
+              const SizedBox(height: 12),
+              TextField(
+                controller: descController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Item Description',
+                  hintText: 'e.g. P&G TOTAL ITEMS for bulk shipments',
+                  helperText:
+                      'Required for damage reporting. Use the same text in both fields for bulk P&G items.',
+                  helperMaxLines: 3,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: qtyController,
-              decoration: const InputDecoration(
-                labelText: 'Quantity/Cases',
+              const SizedBox(height: 12),
+              TextField(
+                controller: qtyController,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity/Cases',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: false),
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: false),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () {
-              final item = itemController.text.trim();
+              final typedItem = itemController.text.trim();
+              final typedDesc = descController.text.trim();
               final qty = qtyController.text.trim();
-              if (item.isEmpty || qty.isEmpty) {
+
+              // P&G bulk flow: allow description-only entry, mirror into item name.
+              final item =
+                  typedItem.isNotEmpty ? typedItem : typedDesc;
+              final description =
+                  typedDesc.isNotEmpty ? typedDesc : typedItem;
+
+              if (item.isEmpty) {
+                UIHelpers.showErrorToast(
+                  'Please enter type of goods/items or item description',
+                );
                 return;
               }
-              Navigator.pop(context, {
+              if (qty.isEmpty) {
+                UIHelpers.showErrorToast('Please enter quantity/cases');
+                return;
+              }
+              if (description.isEmpty) {
+                UIHelpers.showErrorToast(
+                  'Please enter item description for damage reporting',
+                );
+                return;
+              }
+
+              Navigator.pop(dialogContext, {
                 'item': item,
-                'description': descController.text.trim(),
+                'description': description,
                 'quantity': qty,
               });
             },
@@ -2401,6 +2514,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         ],
       ),
     );
+
+    itemController.dispose();
+    qtyController.dispose();
+    descController.dispose();
 
     if (result == null) return;
 
@@ -4352,7 +4469,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             style: TextStyle(fontSize: 18, fontFamily: 'Bold')),
         const SizedBox(height: 8),
         const Text(
-          'Select a picklist item, then describe the damaged goods and quantity.',
+          'Select a picklist item — the item description is copied automatically.',
           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 16),
@@ -4560,56 +4677,46 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Picklist Item selector (autocomplete)
-                    Autocomplete<String>(
-                      optionsBuilder: (TextEditingValue textEditingValue) {
-                        if (textEditingValue.text.isEmpty) {
-                          return _picklistItems
-                              .map((e) => (e['item'] ?? '').toString())
-                              .where((item) => item.isNotEmpty);
-                        }
-                        return _picklistItems
-                            .map((e) => (e['item'] ?? '').toString())
-                            .where((item) => item.toLowerCase().contains(
-                                textEditingValue.text.toLowerCase()));
-                      },
-                      onSelected: (String selection) {
-                        _damagePicklistItemController.text = selection;
-                        final matched = _picklistItems.firstWhere(
-                          (e) => (e['item'] ?? '').toString() == selection,
-                          orElse: () => <String, dynamic>{},
-                        );
-                        final desc = (matched['description'] ?? '').toString();
-                        if (desc.isNotEmpty) {
-                          _damageDescriptionController.text = desc;
-                        }
-                      },
-                      fieldViewBuilder:
-                          (context, controller, focusNode, onFieldSubmitted) {
-                        controller.addListener(() {
-                          _damagePicklistItemController.text = controller.text;
-                        });
-                        return TextField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          decoration: InputDecoration(
-                            labelText: 'Picklist Item',
-                            hintText: 'Select or type item from picklist',
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8)),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 12),
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      value: _selectedDamagePicklistEntry,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: 'Picklist Item',
+                        hintText: 'Select item from picklist',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                      items: _picklistItems.map((entry) {
+                        return DropdownMenuItem<Map<String, dynamic>>(
+                          value: entry,
+                          child: Text(
+                            _picklistItemLabel(entry),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         );
+                      }).toList(),
+                      onChanged: (entry) {
+                        if (entry == null) return;
+                        setState(() {
+                          _selectedDamagePicklistEntry = entry;
+                          _damagePicklistItemController.text =
+                              (entry['item'] ?? '').toString().trim();
+                          _syncDamageDescriptionFromPicklist(entry);
+                        });
                       },
                     ),
                     const SizedBox(height: 8),
-                    // Description field
+                    // Description copied from picklist (read-only)
                     TextField(
                       controller: _damageDescriptionController,
+                      readOnly: true,
                       decoration: InputDecoration(
-                        labelText: 'Damage Description',
-                        hintText: 'e.g. 1 64 ML. _ 3 lieking',
+                        labelText: 'Item Description (from picklist)',
+                        hintText: 'Select a picklist item to copy description',
+                        filled: true,
+                        fillColor: AppColors.scaffoldBackground,
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(
@@ -4636,33 +4743,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                         const SizedBox(width: 8),
                         IconButton(
                           onPressed: () {
-                            final picklistItem =
-                                _damagePicklistItemController.text.trim();
-                            final description =
-                                _damageDescriptionController.text.trim();
-                            final qty = _damageQtyController.text.trim();
-                            if (picklistItem.isEmpty || description.isEmpty || qty.isEmpty) {
-                              UIHelpers.showErrorToast(
-                                  'Please select picklist item, enter description, and quantity');
-                              return;
-                            }
-                            final exists = _picklistItems.any((e) =>
-                                (e['item'] ?? '').toString().toLowerCase() ==
-                                picklistItem.toLowerCase());
-                            if (!exists) {
-                              UIHelpers.showErrorToast(
-                                  'Selected item must exist in picklist');
-                              return;
-                            }
                             setState(() {
-                              _damagedItems.add({
-                                'picklistItem': picklistItem,
-                                'description': description,
-                                'quantity': qty,
-                              });
-                              _damagePicklistItemController.clear();
-                              _damageDescriptionController.clear();
-                              _damageQtyController.clear();
+                              _addDamagedItemFromForm();
                             });
                           },
                           style: IconButton.styleFrom(

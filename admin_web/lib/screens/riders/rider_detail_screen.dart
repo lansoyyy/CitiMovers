@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../config/rider_document_requirements.dart';
 import '../../config/theme.dart';
 import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
@@ -323,109 +325,132 @@ class _DocumentsTab extends StatelessWidget {
   final Map<String, dynamic> riderData;
   final Function(String key, String label) onReject;
 
-  static const _sections = [
-    (
-      'Driver Documents',
-      [
-        ('Driver License', 'driverLicense'),
-        ('NBI Clearance', 'nbiClearance'),
-        ('LTO OR', 'ltoOr'),
-        ('LTO CR', 'ltoCr'),
-        ('MVSF', 'mvsf'),
-        ('Sticker', 'sticker'),
-        ('Insurance', 'insurance'),
-      ],
-    ),
-    (
-      'Unit Documents',
-      [
-        ('Truck Front', 'truckPhotoFront'),
-        ('Truck Back', 'truckPhotoBack'),
-        ('Truck Left', 'truckPhotoLeft'),
-        ('Truck Right', 'truckPhotoRight'),
-      ],
-    ),
-    (
-      'Helper 1',
-      [('Helper 1 ID', 'helper1Id'), ('Helper 1 NBI', 'helper1Nbi')],
-    ),
-    (
-      'Helper 2',
-      [('Helper 2 ID', 'helper2Id'), ('Helper 2 NBI', 'helper2Nbi')],
-    ),
-  ];
-
   const _DocumentsTab({required this.riderData, required this.onReject});
 
   @override
   Widget build(BuildContext context) {
-    final docs = (riderData['documents'] as Map<String, dynamic>?) ?? {};
+    final rawDocs = (riderData['documents'] as Map<String, dynamic>?) ?? {};
+    final docs = rawDocs.map((k, v) => MapEntry(k.toString(), v));
+
+    final uploadedCards = <Widget>[];
+    for (final section in RiderDocumentRequirements.sections) {
+      final (sectionTitle, items) = section;
+      final sectionCards = <Widget>[];
+
+      for (final item in items) {
+        final (label, key) = item;
+        final docData = RiderDocumentRequirements.findDocumentData(docs, key);
+        final url = RiderDocumentRequirements.resolveUrl(docData);
+        if (url.isEmpty) continue;
+
+        final status = RiderDocumentRequirements.resolveStatus(
+          docData,
+          url: url,
+        );
+        String? reason;
+        if (docData is Map) {
+          reason = docData['rejectionReason']?.toString();
+        }
+
+        sectionCards.add(
+          _DocCard(
+            label: label,
+            url: url,
+            docKey: key,
+            status: status,
+            rejectionReason: reason,
+            onReject: () => onReject(key, label),
+          ),
+        );
+      }
+
+      if (sectionCards.isEmpty) continue;
+
+      uploadedCards.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                sectionTitle,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AdminTheme.textPrimary,
+                ),
+              ),
+            ),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: sectionCards,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    }
+
+    // Also show any uploaded docs not in the canonical list (legacy/extra).
+    final knownKeys = RiderDocumentRequirements.sections
+        .expand((section) => section.$2.map((item) => item.$2))
+        .toSet();
+    final extraCards = <Widget>[];
+    for (final entry in docs.entries) {
+      final canonical = RiderDocumentRequirements.legacyKeyAliases[entry.key] ??
+          entry.key;
+      if (knownKeys.contains(canonical)) continue;
+
+      final url = RiderDocumentRequirements.resolveUrl(entry.value);
+      if (url.isEmpty) continue;
+
+      extraCards.add(
+        _DocCard(
+          label: entry.key,
+          url: url,
+          docKey: entry.key,
+          status: RiderDocumentRequirements.resolveStatus(
+            entry.value,
+            url: url,
+          ),
+          onReject: () => onReject(entry.key, entry.key),
+        ),
+      );
+    }
+
+    if (uploadedCards.isEmpty && extraCards.isEmpty) {
+      return const EmptyState(
+        message: 'No uploaded documents yet',
+        icon: Icons.folder_open_outlined,
+      );
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: _sections.map((section) {
-          final (sectionTitle, items) = section;
-          final hasAny = items.any((item) {
-            final (_, key) = item;
-            final docData = docs[key];
-            if (docData == null) return false;
-            return (docData is String && docData.isNotEmpty) ||
-                (docData is Map &&
-                    (docData['url'] ?? '').toString().isNotEmpty);
-          });
-          if (!hasAny) return const SizedBox.shrink();
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  sectionTitle,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AdminTheme.textPrimary,
-                  ),
+        children: [
+          ...uploadedCards,
+          if (extraCards.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Other Documents',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AdminTheme.textPrimary,
                 ),
               ),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: items.map((item) {
-                  final (label, key) = item;
-                  final docData = docs[key];
-                  if (docData == null) return const SizedBox.shrink();
-
-                  String url = '';
-                  String status = 'uploaded';
-                  String? reason;
-                  if (docData is String) {
-                    url = docData;
-                  } else if (docData is Map) {
-                    url = (docData['url'] ?? '').toString();
-                    status = (docData['status'] ?? 'uploaded').toString();
-                    reason = docData['rejectionReason']?.toString();
-                  }
-
-                  if (url.isEmpty) return const SizedBox.shrink();
-
-                  return _DocCard(
-                    label: label,
-                    url: url,
-                    docKey: key,
-                    status: status,
-                    rejectionReason: reason,
-                    onReject: () => onReject(key, label),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 8),
-            ],
-          );
-        }).toList(),
+            ),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: extraCards,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -559,11 +584,23 @@ class _DocCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                    ),
                   ),
-                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new),
+                    tooltip: 'Open in browser',
+                    onPressed: () async {
+                      final uri = Uri.tryParse(url);
+                      if (uri != null) {
+                        await launchUrl(uri,
+                            mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
@@ -579,8 +616,27 @@ class _DocCard extends StatelessWidget {
                   height: 200,
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                errorWidget: (_, __, ___) =>
-                    const Icon(Icons.broken_image_outlined),
+                errorWidget: (_, __, ___) => Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.broken_image_outlined),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final uri = Uri.tryParse(url);
+                          if (uri != null) {
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Open in Browser'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],

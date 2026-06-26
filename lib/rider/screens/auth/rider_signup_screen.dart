@@ -354,7 +354,7 @@ class _RiderSignupScreenState extends State<RiderSignupScreen> {
       phoneNumber: phoneNumber,
       password: password,
       vehicleType: _selectedVehicleType,
-      vehiclePlateNumber: _plateNumberController.text,
+      vehiclePlateNumber: RiderAuthService.normalizePlateNumber(_plateNumberController.text),
       vehicleModel: _vehicleModelController.text.isEmpty
           ? null
           : _vehicleModelController.text,

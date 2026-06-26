@@ -15,7 +15,7 @@ class RiderLoginScreen extends StatefulWidget {
 
 class _RiderLoginScreenState extends State<RiderLoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
+  final _plateController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = RiderAuthService();
   bool _isLoading = false;
@@ -23,22 +23,9 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _plateController.dispose();
     _passwordController.dispose();
     super.dispose();
-  }
-
-  String _formatPhoneNumber(String value) {
-    String digits = value.replaceAll(RegExp(r'\D'), '');
-
-    if (digits.startsWith('0')) {
-      digits = '63${digits.substring(1)}';
-    }
-    if (!digits.startsWith('63')) {
-      digits = '63$digits';
-    }
-
-    return '+$digits';
   }
 
   Future<void> _handleLogin() async {
@@ -46,21 +33,21 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
 
     setState(() => _isLoading = true);
 
-    final phoneNumber = _formatPhoneNumber(_phoneController.text);
+    final plateNumber = RiderAuthService.normalizePlateNumber(_plateController.text);
     final password = _passwordController.text;
 
-    final isRegistered = await _authService.isPhoneRegistered(phoneNumber);
+    final isRegistered = await _authService.isPlateNumberRegistered(plateNumber);
 
     if (!mounted) return;
 
     if (!isRegistered) {
       setState(() => _isLoading = false);
       UIHelpers.showErrorToast(
-          'Phone number not registered. Please sign up first.');
+          'Plate number not registered. Please sign up first.');
       return;
     }
 
-    final rider = await _authService.loginRider(phoneNumber, password);
+    final rider = await _authService.loginRider(plateNumber, password);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -75,7 +62,7 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
     } else {
       UIHelpers.showErrorToast(
         _authService.lastLoginBlockMessage ??
-            'Invalid mobile number or password.',
+            'Invalid plate number or password.',
       );
     }
   }
@@ -160,7 +147,7 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
                 const SizedBox(height: 48),
 
                 const Text(
-                  'Mobile Number',
+                  'Vehicle Plate Number',
                   style: TextStyle(
                     fontSize: 14,
                     fontFamily: 'Medium',
@@ -171,52 +158,26 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
                 const SizedBox(height: 8),
 
                 TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
+                  controller: _plateController,
+                  textCapitalization: TextCapitalization.characters,
                   inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(11),
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\s]')),
                   ],
                   decoration: InputDecoration(
-                    hintText: '9XX XXX XXXX',
-                    prefixIcon: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Image.network(
-                            'https://flagcdn.com/w40/ph.png',
-                            width: 24,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Icon(Icons.flag, size: 24),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            '+63',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Medium',
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            height: 24,
-                            width: 1,
-                            color: AppColors.lightGrey,
-                          ),
-                        ],
-                      ),
+                    hintText: 'e.g., ABC 1234',
+                    prefixIcon: const Icon(
+                      Icons.confirmation_number_outlined,
+                      color: AppColors.textSecondary,
                     ),
                     filled: true,
                     fillColor: AppColors.white,
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Please enter your mobile number';
+                      return 'Please enter your vehicle plate number';
                     }
-                    if (value.length < 10) {
-                      return 'Please enter a valid mobile number';
+                    if (value.replaceAll(RegExp(r'\s'), '').length < 5) {
+                      return 'Please enter a valid plate number';
                     }
                     return null;
                   },

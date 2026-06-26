@@ -55,6 +55,12 @@ class SupportTicketModel {
 
   bool get isResolved => status == 'resolved';
   bool get isOpen => status == 'open' || status == 'pending';
+  bool get isEscalatedStatus =>
+      isEscalated ||
+      status == 'escalated' ||
+      status == 'escalated_manager' ||
+      status == 'escalated_presidential';
+  bool get canReply => !isResolved;
 
   factory SupportTicketModel.fromMap(String id, Map<String, dynamic> data) {
     return SupportTicketModel(

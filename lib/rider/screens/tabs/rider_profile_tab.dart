@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/app_constants.dart';
+import '../../../utils/rider_document_requirements.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 import '../../services/rider_foreground_location_service.dart';
@@ -27,32 +29,31 @@ class RiderProfileTab extends StatefulWidget {
 class _RiderProfileTabState extends State<RiderProfileTab> {
   final _authService = RiderAuthService();
 
-  static const Map<String, String> _documentKeyToLabel = {
-    'drivers_license': "Driver's License",
-    'vehicle_registration': 'Vehicle Registration (OR/CR)',
-    'nbi_clearance': 'National Police Clearance',
-    'vehicle_registration_or': 'Vehicle Registration (OR)',
-    'vehicle_registration_cr': 'Vehicle Registration (CR)',
-    'drug_test': 'Drug Test',
-    'national_police_clearance': 'National Police Clearance',
-    'fit_to_work': 'Fit to Work',
-    'resume': 'Resume',
-    'valid_id': 'Valid ID',
-    'unit_photo_front_plate_visible': 'Unit Photo (Front - Plate Visible)',
-    'insurance': 'Insurance',
-    'helper_1_drug_test': 'Helper 1 - Drug Test',
-    'helper_1_national_police_clearance':
-        'Helper 1 - National Police Clearance',
-    'helper_1_fit_to_work': 'Helper 1 - Fit to Work',
-    'helper_1_resume': 'Helper 1 - Resume',
-    'helper_1_valid_id': 'Helper 1 - Valid ID',
-    'helper_2_drug_test': 'Helper 2 - Drug Test',
-    'helper_2_national_police_clearance':
-        'Helper 2 - National Police Clearance',
-    'helper_2_fit_to_work': 'Helper 2 - Fit to Work',
-    'helper_2_resume': 'Helper 2 - Resume',
-    'helper_2_valid_id': 'Helper 2 - Valid ID',
-  };
+  static Map<String, String> get _documentKeyToLabel =>
+      RiderDocumentRequirements.keyToLabel;
+
+  Future<void> _openDocumentExternally(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      UIHelpers.showErrorToast('Invalid document link');
+      return;
+    }
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) {
+      UIHelpers.showErrorToast('Could not open document');
+    }
+  }
+
+  String _resolveDocumentUrl(Map<String, dynamic> documents, String key) {
+    final docData = RiderDocumentRequirements.findDocumentData(documents, key);
+    return RiderDocumentRequirements.resolveUrl(docData);
+  }
+
+  String _resolveDocumentStatus(Map<String, dynamic> documents, String key) {
+    final url = _resolveDocumentUrl(documents, key);
+    final docData = RiderDocumentRequirements.findDocumentData(documents, key);
+    return RiderDocumentRequirements.resolveStatus(docData, url: url);
+  }
 
   String _formatDateTime(DateTime? value) {
     if (value == null) return '';
@@ -136,6 +137,14 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      IconButton(
+                        onPressed: () => _openDocumentExternally(url),
+                        icon: const Icon(
+                          Icons.open_in_new,
+                          color: AppColors.textSecondary,
+                        ),
+                        tooltip: 'Open in browser',
+                      ),
                     ],
                   ),
                 ),
@@ -169,13 +178,19 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                                   ),
                                   const SizedBox(height: 12),
                                   const Text(
-                                    'Unable to preview this file.',
+                                    'Unable to preview this file in-app.',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontFamily: 'Medium',
                                       color: AppColors.textPrimary,
                                     ),
                                     textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  OutlinedButton.icon(
+                                    onPressed: () => _openDocumentExternally(url),
+                                    icon: const Icon(Icons.open_in_new),
+                                    label: const Text('Open in Browser'),
                                   ),
                                 ],
                               ),
@@ -612,18 +627,9 @@ class _RiderProfileTabState extends State<RiderProfileTab> {
                               children: _documentKeyToLabel.entries.map((e) {
                                 final key = e.key;
                                 final label = e.value;
-                                final doc = documents[key];
-                                final docMap = doc is Map
-                                    ? doc.map(
-                                        (k, v) => MapEntry(k.toString(), v),
-                                      )
-                                    : null;
-                                final url = (docMap?['url'] ?? '').toString();
-                                final status = (docMap?['status'] ??
-                                        (url.isNotEmpty
-                                            ? 'pending'
-                                            : 'not_uploaded'))
-                                    .toString();
+                                final url = _resolveDocumentUrl(documents, key);
+                                final status =
+                                    _resolveDocumentStatus(documents, key);
                                 final color = _documentStatusColor(status);
                                 final statusText = _documentStatusText(status);
 

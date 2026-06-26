@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models/support_ticket_model.dart';
 import '../../../services/support_ticket_service.dart';
+import '../../../widgets/support_ticket_status_banner.dart';
 import '../../../utils/app_colors.dart';
 
 class RiderTicketDetailScreen extends StatefulWidget {
@@ -50,7 +51,7 @@ class _RiderTicketDetailScreenState extends State<RiderTicketDetailScreen> {
     final text = _replyCtrl.text.trim();
     if (text.isEmpty) return;
     setState(() => _sending = true);
-    await _service.addMessage(
+    final ok = await _service.addMessage(
       ticketId: widget.ticket.ticketId,
       senderId: widget.riderId,
       senderType: 'rider',
@@ -59,220 +60,174 @@ class _RiderTicketDetailScreenState extends State<RiderTicketDetailScreen> {
     );
     if (mounted) {
       setState(() => _sending = false);
-      _replyCtrl.clear();
-      _scrollToBottom();
+      if (ok) {
+        _replyCtrl.clear();
+        _scrollToBottom();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to send message. Please try again.'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ticket = widget.ticket;
+    return StreamBuilder<SupportTicketModel?>(
+      stream: _service.streamTicket(widget.ticket.ticketId),
+      initialData: widget.ticket,
+      builder: (context, ticketSnap) {
+        final ticket = ticketSnap.data ?? widget.ticket;
 
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldBackground,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios,
-              color: AppColors.textPrimary, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          children: [
-            Text(
-              ticket.ticketNumber,
-              style: const TextStyle(
-                fontSize: 16,
-                fontFamily: 'Bold',
-                color: AppColors.primaryRed,
-              ),
+        return Scaffold(
+          backgroundColor: AppColors.scaffoldBackground,
+          appBar: AppBar(
+            backgroundColor: AppColors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios,
+                  color: AppColors.textPrimary, size: 20),
+              onPressed: () => Navigator.pop(context),
             ),
-            Text(
-              ticket.subject,
-              style: const TextStyle(
-                fontSize: 11,
-                fontFamily: 'Regular',
-                color: AppColors.textSecondary,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            title: Column(
+              children: [
+                Text(
+                  ticket.ticketNumber,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.primaryRed,
+                  ),
+                ),
+                Text(
+                  ticket.subject,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'Regular',
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
-        ),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          _statusBanner(ticket),
-          Expanded(
-            child: StreamBuilder<List<SupportTicketMessageModel>>(
-              stream: _service.streamTicketMessages(ticket.ticketId),
-              builder: (context, snap) {
-                final msgs = snap.data ?? [];
-                _scrollToBottom();
+            centerTitle: true,
+          ),
+          body: Column(
+            children: [
+              SupportTicketStatusBanner(ticket: ticket),
+              Expanded(
+                child: StreamBuilder<List<SupportTicketMessageModel>>(
+                  stream: _service.streamTicketMessages(ticket.ticketId),
+                  builder: (context, snap) {
+                    final msgs = snap.data ?? [];
+                    _scrollToBottom();
 
-                if (msgs.isEmpty &&
-                    snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child:
-                        CircularProgressIndicator(color: AppColors.primaryRed),
-                  );
-                }
+                    if (msgs.isEmpty &&
+                        snap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.primaryRed),
+                      );
+                    }
 
-                return ListView.builder(
-                  controller: _scrollCtrl,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  itemCount: msgs.length,
-                  itemBuilder: (_, i) {
-                    final msg = msgs[i];
-                    final isMine = msg.senderId == widget.riderId;
-                    return _MessageBubble(msg: msg, isMine: isMine);
+                    return ListView.builder(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      itemCount: msgs.length,
+                      itemBuilder: (_, i) {
+                        final msg = msgs[i];
+                        final isMine = msg.senderId == widget.riderId;
+                        return _MessageBubble(msg: msg, isMine: isMine);
+                      },
+                    );
                   },
-                );
-              },
-            ),
-          ),
-          if (ticket.status != 'resolved') ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _replyCtrl,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: 'Type a message...',
-                        hintStyle: const TextStyle(
-                            fontSize: 13,
-                            fontFamily: 'Regular',
-                            color: AppColors.textHint),
-                        filled: true,
-                        fillColor: AppColors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide:
-                              const BorderSide(color: AppColors.lightGrey),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide:
-                              const BorderSide(color: AppColors.lightGrey),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                              color: AppColors.primaryRed, width: 1.5),
-                        ),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _sending ? null : _sendReply,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: _sending
-                          ? const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: CircularProgressIndicator(
-                                  color: AppColors.white, strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send,
-                              color: AppColors.white, size: 20),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ] else
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              color: AppColors.scaffoldBackground,
-              child: const Text(
-                'This ticket has been resolved. Thank you!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'Medium',
-                    color: AppColors.textSecondary),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _statusBanner(SupportTicketModel ticket) {
-    if (ticket.status == 'resolved') {
-      return _Banner(
-        color: const Color(0xFF10B981),
-        icon: Icons.check_circle_outline,
-        text: ticket.resolutionNotes?.isNotEmpty == true
-            ? 'Resolved: ${ticket.resolutionNotes}'
-            : 'This ticket has been resolved.',
-      );
-    }
-    if (ticket.isEscalated) {
-      return _Banner(
-        color: const Color(0xFFF97316),
-        icon: Icons.warning_amber_outlined,
-        text: ticket.escalationRemarks?.isNotEmpty == true
-            ? 'Escalated: ${ticket.escalationRemarks}'
-            : 'This ticket has been escalated for further review.',
-      );
-    }
-    if (ticket.status == 'pending') {
-      return _Banner(
-        color: const Color(0xFFF59E0B),
-        icon: Icons.hourglass_top_outlined,
-        text: 'Awaiting response from our support team.',
-      );
-    }
-    return const SizedBox.shrink();
-  }
-}
-
-class _Banner extends StatelessWidget {
-  final Color color;
-  final IconData icon;
-  final String text;
-
-  const _Banner({required this.color, required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: color.withValues(alpha: 0.08),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style:
-                  TextStyle(fontSize: 12, fontFamily: 'Medium', color: color),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
+              if (ticket.canReply) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _replyCtrl,
+                          minLines: 1,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            hintText: 'Type a message...',
+                            hintStyle: const TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Regular',
+                                color: AppColors.textHint),
+                            filled: true,
+                            fillColor: AppColors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                                  const BorderSide(color: AppColors.lightGrey),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                                  const BorderSide(color: AppColors.lightGrey),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                  color: AppColors.primaryRed, width: 1.5),
+                            ),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _sending ? null : _sendReply,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: _sending
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: CircularProgressIndicator(
+                                      color: AppColors.white, strokeWidth: 2),
+                                )
+                              : const Icon(Icons.send,
+                                  color: AppColors.white, size: 20),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  color: AppColors.scaffoldBackground,
+                  child: const Text(
+                    'This ticket has been resolved. Thank you!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Medium',
+                        color: AppColors.textSecondary),
+                  ),
+                ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

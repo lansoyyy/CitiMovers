@@ -4,6 +4,7 @@ import '../../../models/support_ticket_model.dart';
 import '../../services/rider_auth_service.dart';
 import '../../../services/support_ticket_service.dart';
 import '../../../utils/app_colors.dart';
+import '../../../widgets/support_ticket_status_banner.dart';
 import 'rider_new_ticket_screen.dart';
 import 'rider_ticket_detail_screen.dart';
 
@@ -258,33 +259,7 @@ class _TicketCard extends StatelessWidget {
     );
   }
 
-  static Color _statusColor(String s) {
-    switch (s) {
-      case 'open':
-        return const Color(0xFF10B981);
-      case 'pending':
-        return const Color(0xFFF59E0B);
-      case 'escalated':
-        return const Color(0xFFF97316);
-      case 'resolved':
-        return const Color(0xFF3B82F6);
-      default:
-        return AppColors.textSecondary;
-    }
-  }
+  static Color _statusColor(String s) => SupportTicketStatusUi.color(s);
 
-  static String _statusLabel(String s) {
-    switch (s) {
-      case 'open':
-        return 'Open';
-      case 'pending':
-        return 'Pending';
-      case 'escalated':
-        return 'Escalated';
-      case 'resolved':
-        return 'Resolved';
-      default:
-        return s;
-    }
-  }
+  static String _statusLabel(String s) => SupportTicketStatusUi.label(s);
 }

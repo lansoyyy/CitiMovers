@@ -2726,9 +2726,16 @@ class AdminRepository {
         'createdAt': now,
       });
 
-      await _db.collection('support_tickets').doc(ticketId).update({
+      final docRef = _db.collection('support_tickets').doc(ticketId);
+      final snap = await docRef.get();
+      final currentStatus = (snap.data()?['status'] ?? 'open').toString();
+      final preserveStatus = currentStatus == 'resolved' ||
+          currentStatus.startsWith('escalated');
+
+      await docRef.update({
         'lastMessageAt': now,
         'updatedAt': now,
+        if (!preserveStatus) 'status': 'open',
       });
       return true;
     } catch (_) {

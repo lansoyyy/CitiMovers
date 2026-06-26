@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/support_ticket_model.dart';
 
 /// Handles support ticket creation and retrieval for customer and rider mobile apps.
@@ -58,8 +59,12 @@ class SupportTicketService {
         submittedByName: submitterName,
         createdAt: now,
         updatedAt: now,
+        lastMessageAt: now,
         isEscalated: false,
-        tripNumber: tripNumber,
+        tripNumber: tripNumber?.trim().isEmpty == true ? null : tripNumber?.trim(),
+        csrAttempts: 0,
+        managerAttempts: 0,
+        escalationLevel: 'csr',
       );
 
       await docRef.set(ticket.toMap());
@@ -73,8 +78,10 @@ class SupportTicketService {
         body: description,
       );
 
-      return ticket.copyWith(ticketId: docRef.id);
-    } catch (_) {
+      return ticket;
+    } catch (e, stackTrace) {
+      debugPrint('SupportTicketService.createTicket failed: $e');
+      debugPrint('$stackTrace');
       return null;
     }
   }
@@ -90,6 +97,18 @@ class SupportTicketService {
         .map((snap) => snap.docs
             .map((d) => SupportTicketModel.fromMap(d.id, d.data()))
             .toList());
+  }
+
+  /// Live stream for a single ticket document (status, resolution, etc.).
+  Stream<SupportTicketModel?> streamTicket(String ticketId) {
+    return _db
+        .collection('support_tickets')
+        .doc(ticketId)
+        .snapshots()
+        .map((snap) {
+      if (!snap.exists || snap.data() == null) return null;
+      return SupportTicketModel.fromMap(snap.id, snap.data()!);
+    });
   }
 
   // ─── Stream messages ────────────────────────────────────────────────────────
@@ -125,14 +144,16 @@ class SupportTicketService {
         senderName: senderName,
         body: body,
       );
-      // Update parent doc's lastMessageAt + status→pending (awaiting admin reply)
+      // User reply → pending (awaiting admin response)
       await _db.collection('support_tickets').doc(ticketId).update({
         'lastMessageAt': DateTime.now().toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
         'status': 'pending',
       });
       return true;
-    } catch (_) {
+    } catch (e, stackTrace) {
+      debugPrint('SupportTicketService.addMessage failed: $e');
+      debugPrint('$stackTrace');
       return false;
     }
   }
@@ -162,32 +183,5 @@ class SupportTicketService {
     );
 
     await msgRef.set(msg.toMap());
-  }
-}
-
-// Extension so createTicket can return a copy with a resolved ticketId.
-extension _CopyWith on SupportTicketModel {
-  SupportTicketModel copyWith({String? ticketId}) {
-    return SupportTicketModel(
-      ticketId: ticketId ?? this.ticketId,
-      ticketNumber: ticketNumber,
-      subject: subject,
-      description: description,
-      category: category,
-      status: status,
-      submittedBy: submittedBy,
-      submittedByType: submittedByType,
-      submittedByName: submittedByName,
-      createdAt: createdAt,
-      updatedAt: updatedAt,
-      lastMessageAt: lastMessageAt,
-      resolvedAt: resolvedAt,
-      resolvedBy: resolvedBy,
-      resolutionNotes: resolutionNotes,
-      isEscalated: isEscalated,
-      escalationRemarks: escalationRemarks,
-      escalatedAt: escalatedAt,
-      closedBy: closedBy,
-    );
   }
 }

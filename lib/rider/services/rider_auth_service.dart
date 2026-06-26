@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../services/booking_service.dart';
 import '../../services/storage_service.dart';
+import '../../utils/rider_document_requirements.dart';
 import 'rider_location_service.dart';
 import '../models/rider_model.dart';
 
@@ -129,12 +130,34 @@ class RiderAuthService {
     return _firestore.collection('riders').doc(normalizedPhoneNumber);
   }
 
-  static const String _demoLoginPhone = '+639090104355';
-  static const String _demoRealPhone = '+639560288513';
+  static String normalizePlateNumber(String plateNumber) {
+    return plateNumber.replaceAll(RegExp(r'\s'), '').toUpperCase();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _findRiderByPlateNumber(
+    String plateNumber,
+  ) {
+    final normalized = normalizePlateNumber(plateNumber);
+    final variants = <String>[normalized];
+
+    final match = RegExp(r'^([A-Z]+)(\d+)$').firstMatch(normalized);
+    if (match != null) {
+      variants.add('${match.group(1)} ${match.group(2)}');
+    }
+
+    final query = variants.length == 1
+        ? _firestore
+            .collection('riders')
+            .where('vehiclePlateNumber', isEqualTo: variants.first)
+        : _firestore
+            .collection('riders')
+            .where('vehiclePlateNumber', whereIn: variants);
+
+    return query.limit(1).get();
+  }
 
   String _resolveLoginPhoneNumber(String phoneNumber) {
-    final normalizedInput = _normalizePhoneNumber(phoneNumber);
-    return normalizedInput == _demoLoginPhone ? _demoRealPhone : normalizedInput;
+    return _normalizePhoneNumber(phoneNumber);
   }
 
   static String _hashPassword(String password, String salt) {
@@ -318,32 +341,8 @@ class RiderAuthService {
     await _storage.remove('activeDeliveryState');
   }
 
-  static const Map<String, String> _documentNameToKey = {
-    "Driver's License": 'drivers_license',
-    'Vehicle Registration (OR/CR)': 'vehicle_registration',
-    'Vehicle Registration (OR)': 'vehicle_registration_or',
-    'Vehicle Registration (CR)': 'vehicle_registration_cr',
-    'NBI Clearance': 'nbi_clearance',
-    'Drug Test': 'drug_test',
-    'National Police Clearance': 'national_police_clearance',
-    'Fit to Work': 'fit_to_work',
-    'Resume': 'resume',
-    'Valid ID': 'valid_id',
-    'Unit Photo (Front - Plate Visible)': 'unit_photo_front_plate_visible',
-    'Helper 1 - Drug Test': 'helper_1_drug_test',
-    'Helper 1 - National Police Clearance':
-        'helper_1_national_police_clearance',
-    'Helper 1 - Fit to Work': 'helper_1_fit_to_work',
-    'Helper 1 - Resume': 'helper_1_resume',
-    'Helper 1 - Valid ID': 'helper_1_valid_id',
-    'Helper 2 - Drug Test': 'helper_2_drug_test',
-    'Helper 2 - National Police Clearance':
-        'helper_2_national_police_clearance',
-    'Helper 2 - Fit to Work': 'helper_2_fit_to_work',
-    'Helper 2 - Resume': 'helper_2_resume',
-    'Helper 2 - Valid ID': 'helper_2_valid_id',
-    'Insurance': 'insurance',
-  };
+  static Map<String, String> get documentNameToKey =>
+      RiderDocumentRequirements.nameToKey;
 
   static const Set<String> _requiredDocumentKeys = {
     'drivers_license',
@@ -380,7 +379,7 @@ class RiderAuthService {
       final path = entry.value;
       if (path == null || path.isEmpty) continue;
 
-      final documentKey = _documentNameToKey[documentName] ??
+      final documentKey = RiderDocumentRequirements.keyForName(documentName) ??
           documentName
               .toLowerCase()
               .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
@@ -604,35 +603,31 @@ class RiderAuthService {
     }
   }
 
-  /// Login existing rider
-  Future<RiderModel?> loginRider(String phoneNumber, String password) async {
+  /// Login existing rider by vehicle plate number
+  Future<RiderModel?> loginRider(String plateNumber, String password) async {
     try {
       _lastLoginBlockMessage = null;
 
-      final normalizedPhoneNumber = _resolveLoginPhoneNumber(phoneNumber);
+      final snapshot = await _findRiderByPlateNumber(plateNumber);
+      if (snapshot.docs.isEmpty) return null;
 
-      final riderDocRef = _riderDocByPhone(normalizedPhoneNumber);
-      final docSnap = await _getRiderDocPreferServer(riderDocRef);
-
-      Map<String, dynamic>? data;
-      if (docSnap.exists) {
-        data = docSnap.data();
-      } else {
-        final snapshot = await _findRiderByPhone(normalizedPhoneNumber);
-        if (snapshot.docs.isEmpty) return null;
-        data = Map<String, dynamic>.from(snapshot.docs.first.data());
-      }
-
-      if (data == null) return null;
+      final data = Map<String, dynamic>.from(snapshot.docs.first.data());
+      final riderDocRef = snapshot.docs.first.reference;
 
       final storedHash = data['password'] as String?;
       if (storedHash == null || storedHash.isEmpty) return null;
 
-      final inputHash = _hashPassword(password, normalizedPhoneNumber);
+      final riderPhone = _normalizePhoneNumber(
+        (data['phoneNumber'] ?? data['phone'] ?? data['contactNumber'] ?? '')
+            .toString(),
+      );
+      if (riderPhone.isEmpty) return null;
+
+      final inputHash = _hashPassword(password, riderPhone);
       if (storedHash != inputHash) return null;
 
-      data['riderId'] = normalizedPhoneNumber;
-      data['phoneNumber'] = normalizedPhoneNumber;
+      data['riderId'] = riderPhone;
+      data['phoneNumber'] = riderPhone;
 
       final accessState = _resolveAccessState(data);
       if (accessState != RiderAccessState.approved) {
@@ -640,15 +635,15 @@ class RiderAuthService {
         await _clearRiderFromStorage();
         _lastLoginBlockMessage = _buildAccessBlockedMessage(accessState);
         debugPrint(
-            'Rider login blocked for $normalizedPhoneNumber: ${accessState.name}');
+            'Rider login blocked for $riderPhone: ${accessState.name}');
         return null;
       }
 
       await riderDocRef.set(
         {
           ...data,
-          'riderId': normalizedPhoneNumber,
-          'phoneNumber': normalizedPhoneNumber,
+          'riderId': riderPhone,
+          'phoneNumber': riderPhone,
           'status': 'active',
           'accountStatus': 'active',
           'isApproved': true,
@@ -669,6 +664,17 @@ class RiderAuthService {
     } catch (e) {
       debugPrint('Error logging in rider: $e');
       return null;
+    }
+  }
+
+  /// Check if a plate number is already registered
+  Future<bool> isPlateNumberRegistered(String plateNumber) async {
+    try {
+      final snapshot = await _findRiderByPlateNumber(plateNumber);
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error checking plate number: $e');
+      return false;
     }
   }
 

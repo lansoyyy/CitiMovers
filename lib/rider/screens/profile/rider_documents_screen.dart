@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/app_colors.dart';
+import '../../../utils/rider_document_requirements.dart';
 import '../../../utils/ui_helpers.dart';
 import '../../services/rider_auth_service.dart';
 
@@ -16,43 +18,70 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
   final _authService = RiderAuthService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isUploading = false;
-  Map<String, DocumentStatus> _documents = {};
+  String? _uploadingKey;
+  final Map<String, _DocumentEntry> _documents = {};
 
   @override
   void initState() {
     super.initState();
+    _seedRequiredDocuments();
     _loadDocuments();
+  }
+
+  void _seedRequiredDocuments() {
+    for (final entry in RiderDocumentRequirements.allDocuments) {
+      final (label, key) = entry;
+      _documents.putIfAbsent(
+        key,
+        () => _DocumentEntry(label: label, status: 'not_uploaded'),
+      );
+    }
   }
 
   Future<void> _loadDocuments() async {
     final rider = _authService.currentRider;
-    if (rider != null) {
-      try {
-        final docSnapshot =
-            await _firestore.collection('riders').doc(rider.riderId).get();
+    if (rider == null) return;
 
-        if (docSnapshot.exists) {
-          final documentsData = docSnapshot.data()?['documents'] as Map?;
-          if (documentsData != null) {
-            setState(() {
-              _documents = documentsData.map((key, doc) => MapEntry(
-                    doc['name'] ?? key,
-                    DocumentStatus(
-                      status: doc['status'] ?? 'not_uploaded',
-                      imagePath:
-                          doc['url']?.isNotEmpty == true ? doc['url'] : null,
-                    ),
-                  ));
-            });
-          }
+    try {
+      final docSnapshot =
+          await _firestore.collection('riders').doc(rider.riderId).get();
+
+      if (!docSnapshot.exists) return;
+
+      final rawDocuments = docSnapshot.data()?['documents'];
+      if (rawDocuments is! Map) return;
+
+      final documents = rawDocuments.map(
+        (k, v) => MapEntry(k.toString(), v),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        for (final entry in RiderDocumentRequirements.allDocuments) {
+          final (label, key) = entry;
+          final docData = RiderDocumentRequirements.findDocumentData(
+            Map<String, dynamic>.from(documents),
+            key,
+          );
+          final url = RiderDocumentRequirements.resolveUrl(docData);
+          final status = RiderDocumentRequirements.resolveStatus(
+            docData,
+            url: url,
+          );
+          _documents[key] = _DocumentEntry(
+            label: label,
+            status: status,
+            url: url.isNotEmpty ? url : null,
+          );
         }
-      } catch (e) {
-        debugPrint('Error loading documents: $e');
-      }
+      });
+    } catch (e) {
+      debugPrint('Error loading documents: $e');
     }
   }
 
-  Future<void> _pickDocument(String documentName) async {
+  Future<void> _pickDocument(String documentKey, String documentLabel) async {
     if (_isUploading) return;
 
     final rider = _authService.currentRider;
@@ -67,67 +96,162 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
       imageQuality: 85,
     );
 
-    if (image != null) {
-      setState(() {
-        _documents[documentName] =
-            DocumentStatus(status: 'pending', imagePath: image.path);
-        _isUploading = true;
-      });
+    if (image == null) return;
 
-      // Find the correct document key from Firestore
-      String? documentKey;
-      try {
-        final docSnapshot =
-            await _firestore.collection('riders').doc(rider.riderId).get();
+    setState(() {
+      _isUploading = true;
+      _uploadingKey = documentKey;
+      _documents[documentKey] = _DocumentEntry(
+        label: documentLabel,
+        status: 'pending',
+        localPath: image.path,
+      );
+    });
 
-        if (docSnapshot.exists) {
-          final documentsData = docSnapshot.data()?['documents'] as Map?;
-          if (documentsData != null) {
-            documentsData.forEach((key, doc) {
-              if (doc['name'] == documentName) {
-                documentKey = key;
-              }
-            });
-          }
-        }
-      } catch (e) {
-        debugPrint('Error finding document key: $e');
+    final success = await _authService.uploadRiderDocuments({
+      documentLabel: image.path,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _isUploading = false;
+      _uploadingKey = null;
+      if (!success) {
+        _documents[documentKey] = _DocumentEntry(
+          label: documentLabel,
+          status: 'not_uploaded',
+        );
       }
+    });
 
-      if (documentKey != null) {
-        final success = await _authService.uploadRiderDocuments({
-          documentKey!: image.path,
-        });
-
-        if (!mounted) return;
-
-        setState(() {
-          _isUploading = false;
-          if (!success) {
-            _documents[documentName] = DocumentStatus(
-              status: 'not_uploaded',
-              imagePath: null,
-            );
-          }
-        });
-
-        if (success) {
-          UIHelpers.showSuccessToast('$documentName uploaded');
-          _loadDocuments(); // Refresh data
-        } else {
-          UIHelpers.showErrorToast('Failed to upload $documentName');
-        }
-      } else {
-        setState(() {
-          _isUploading = false;
-          _documents[documentName] = DocumentStatus(
-            status: 'not_uploaded',
-            imagePath: null,
-          );
-        });
-        UIHelpers.showErrorToast('Document type not found');
-      }
+    if (success) {
+      UIHelpers.showSuccessToast('$documentLabel uploaded');
+      await _loadDocuments();
+    } else {
+      UIHelpers.showErrorToast('Failed to upload $documentLabel');
     }
+  }
+
+  Future<void> _openDocumentExternally(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      UIHelpers.showErrorToast('Invalid document link');
+      return;
+    }
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) {
+      UIHelpers.showErrorToast('Could not open document');
+    }
+  }
+
+  void _showDocumentViewer({
+    required String title,
+    required String url,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          backgroundColor: AppColors.white,
+          child: SizedBox(
+            width: double.infinity,
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 56,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: AppColors.lightGrey.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontFamily: 'Bold',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => _openDocumentExternally(url),
+                        icon: const Icon(Icons.open_in_new),
+                        tooltip: 'Open in browser',
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    color: AppColors.scaffoldBackground,
+                    child: InteractiveViewer(
+                      child: Center(
+                        child: Image.network(
+                          url,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, progress) {
+                            if (progress == null) return child;
+                            return UIHelpers.loadingThreeBounce(
+                              color: AppColors.primaryRed,
+                              size: 20,
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.broken_image,
+                                    size: 42,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Unable to preview this file in-app.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontFamily: 'Medium',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  OutlinedButton.icon(
+                                    onPressed: () => _openDocumentExternally(url),
+                                    icon: const Icon(Icons.open_in_new),
+                                    label: const Text('Open in Browser'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Color _getStatusColor(String status) {
@@ -135,6 +259,7 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
       case 'approved':
         return AppColors.success;
       case 'pending':
+      case 'uploaded':
         return AppColors.warning;
       case 'rejected':
         return AppColors.error;
@@ -148,6 +273,7 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
       case 'approved':
         return 'Approved';
       case 'pending':
+      case 'uploaded':
         return 'Pending Review';
       case 'rejected':
         return 'Rejected';
@@ -161,6 +287,7 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
       case 'approved':
         return Icons.check_circle;
       case 'pending':
+      case 'uploaded':
         return Icons.access_time;
       case 'rejected':
         return Icons.cancel;
@@ -171,6 +298,15 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final entries = RiderDocumentRequirements.allDocuments
+        .map((entry) {
+          final (label, key) = entry;
+          final doc = _documents[key] ??
+              _DocumentEntry(label: label, status: 'not_uploaded');
+          return MapEntry(key, doc);
+        })
+        .toList();
+
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: AppBar(
@@ -191,7 +327,6 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Info Card
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -201,15 +336,11 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
                     color: AppColors.primaryBlue.withValues(alpha: 0.3),
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: AppColors.primaryBlue,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
+                    Icon(Icons.info_outline, color: AppColors.primaryBlue),
+                    SizedBox(width: 12),
+                    Expanded(
                       child: Text(
                         'Upload clear photos of your documents. All documents will be reviewed within 24-48 hours.',
                         style: TextStyle(
@@ -222,25 +353,26 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Document List
-              ..._documents.entries.map((entry) {
+              ...entries.map((entry) {
+                final key = entry.key;
+                final doc = entry.value;
+                final isUploadingThis = _isUploading && _uploadingKey == key;
                 return _DocumentCard(
-                  documentName: entry.key,
-                  status: entry.value.status,
-                  imagePath: entry.value.imagePath,
-                  statusColor: _getStatusColor(entry.value.status),
-                  statusText: _getStatusText(entry.value.status),
-                  statusIcon: _getStatusIcon(entry.value.status),
-                  onUpload: () => _pickDocument(entry.key),
+                  documentName: doc.label,
+                  status: doc.status,
+                  statusColor: _getStatusColor(doc.status),
+                  statusText: _getStatusText(doc.status),
+                  statusIcon: _getStatusIcon(doc.status),
+                  isUploading: isUploadingThis,
+                  canView: (doc.url ?? '').isNotEmpty,
+                  onUpload: () => _pickDocument(key, doc.label),
+                  onView: (doc.url ?? '').isNotEmpty
+                      ? () => _showDocumentViewer(title: doc.label, url: doc.url!)
+                      : null,
                 );
               }),
-
               const SizedBox(height: 24),
-
-              // Requirements Section
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -254,18 +386,14 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
                     ),
                   ],
                 ),
-                child: Column(
+                child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.checklist,
-                          color: AppColors.primaryRed,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
+                        Icon(Icons.checklist, color: AppColors.primaryRed),
+                        SizedBox(width: 12),
+                        Text(
                           'Document Requirements',
                           style: TextStyle(
                             fontSize: 18,
@@ -275,7 +403,7 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     _RequirementItem(
                       text: 'Photos must be clear and readable',
                     ),
@@ -291,7 +419,6 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 32),
             ],
           ),
@@ -301,30 +428,41 @@ class _RiderDocumentsScreenState extends State<RiderDocumentsScreen> {
   }
 }
 
-class DocumentStatus {
+class _DocumentEntry {
+  final String label;
   final String status;
-  final String? imagePath;
+  final String? url;
+  final String? localPath;
 
-  DocumentStatus({required this.status, this.imagePath});
+  _DocumentEntry({
+    required this.label,
+    required this.status,
+    this.url,
+    this.localPath,
+  });
 }
 
 class _DocumentCard extends StatelessWidget {
   final String documentName;
   final String status;
-  final String? imagePath;
   final Color statusColor;
   final String statusText;
   final IconData statusIcon;
+  final bool isUploading;
+  final bool canView;
   final VoidCallback onUpload;
+  final VoidCallback? onView;
 
   const _DocumentCard({
     required this.documentName,
     required this.status,
-    required this.imagePath,
     required this.statusColor,
     required this.statusText,
     required this.statusIcon,
+    required this.isUploading,
+    required this.canView,
     required this.onUpload,
+    this.onView,
   });
 
   @override
@@ -354,11 +492,7 @@ class _DocumentCard extends StatelessWidget {
                   color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  Icons.description,
-                  color: statusColor,
-                  size: 24,
-                ),
+                child: Icon(Icons.description, color: statusColor, size: 24),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -376,11 +510,7 @@ class _DocumentCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(
-                          statusIcon,
-                          size: 14,
-                          color: statusColor,
-                        ),
+                        Icon(statusIcon, size: 14, color: statusColor),
                         const SizedBox(width: 4),
                         Text(
                           statusText,
@@ -398,30 +528,52 @@ class _DocumentCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onUpload,
-              icon: Icon(
-                imagePath != null ? Icons.refresh : Icons.upload_file,
-                size: 18,
-              ),
-              label: Text(
-                imagePath != null ? 'Re-upload' : 'Upload Document',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontFamily: 'Bold',
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: isUploading ? null : onUpload,
+                  icon: isUploading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(canView ? Icons.refresh : Icons.upload_file,
+                          size: 18),
+                  label: Text(canView ? 'Re-upload' : 'Upload Document'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primaryRed,
+                    side: const BorderSide(color: AppColors.primaryRed),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
                 ),
               ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primaryRed,
-                side: const BorderSide(color: AppColors.primaryRed),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              if (canView) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: onView,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primaryBlue,
+                    side: const BorderSide(color: AppColors.primaryBlue),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                  child: const Text(
+                    'View',
+                    style: TextStyle(fontSize: 14, fontFamily: 'Bold'),
+                  ),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
+              ],
+            ],
           ),
         ],
       ),
@@ -441,11 +593,7 @@ class _RequirementItem extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.check_circle,
-            color: AppColors.success,
-            size: 20,
-          ),
+          const Icon(Icons.check_circle, color: AppColors.success, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
