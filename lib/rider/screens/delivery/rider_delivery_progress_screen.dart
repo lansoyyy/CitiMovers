@@ -447,6 +447,78 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
   }
 
+  bool _isPersistedDeliveryPhoto(File file) =>
+      file.path.contains('delivery_uploads');
+
+  String? _parseFirestoreStageFromLocalPath(String filePath) {
+    final name = p.basenameWithoutExtension(filePath);
+    final prefix = '${widget.request.id}_';
+    if (!name.startsWith(prefix)) return null;
+
+    final remainder = name.substring(prefix.length);
+    final lastUnderscore = remainder.lastIndexOf('_');
+    if (lastUnderscore <= 0) return null;
+    return remainder.substring(0, lastUnderscore);
+  }
+
+  String? _photoTypeFromLocalPath(String filePath) {
+    final stage = _parseFirestoreStageFromLocalPath(filePath);
+    if (stage == null) return null;
+
+    if (stage == 'empty_truck' || stage.startsWith('empty_truck_')) {
+      return 'Empty Truck';
+    }
+    if (stage == 'damaged_boxes' || stage.startsWith('damaged_boxes_')) {
+      return 'Damaged Boxes';
+    }
+
+    switch (stage) {
+      case 'start_loading':
+        return 'Start Loading';
+      case 'finish_loading':
+        return 'Finished Loading';
+      case 'start_unloading':
+        return 'Start Unloading';
+      case 'finish_unloading':
+        return 'Finished Unloading';
+      case 'receiver_id':
+        return 'Receiver ID';
+      default:
+        return null;
+    }
+  }
+
+  bool _isDamageStageKey(String stage) =>
+      stage == 'empty_truck' ||
+      stage.startsWith('empty_truck_') ||
+      stage == 'damaged_boxes' ||
+      stage.startsWith('damaged_boxes_');
+
+  List<String> _extractDamagePhotoUrls(Map<String, dynamic>? bookingData) {
+    final deliveryPhotos = _normalizeDeliveryPhotos(bookingData?['deliveryPhotos']);
+    final urls = <String>[];
+
+    final damagePhotosArray = deliveryPhotos['damage_photos'];
+    if (damagePhotosArray is List) {
+      for (final item in damagePhotosArray) {
+        final url = _extractDeliveryPhotoUrl(item);
+        if (url != null && !urls.contains(url)) {
+          urls.add(url);
+        }
+      }
+    }
+
+    for (final entry in deliveryPhotos.entries) {
+      if (!_isDamageStageKey(entry.key)) continue;
+      final url = _extractDeliveryPhotoUrl(entry.value);
+      if (url != null && !urls.contains(url)) {
+        urls.add(url);
+      }
+    }
+
+    return urls;
+  }
+
   T? _parseStoredEnum<T extends Enum>(List<T> values, dynamic rawValue) {
     if (rawValue == null) return null;
     final raw = rawValue.toString().trim();
@@ -621,16 +693,16 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             case 'receiver_id':
               _idPhoto ??= file;
               break;
-            case 'damaged_boxes':
-            case 'empty_truck':
-              if (!_damagePhotos.any((existing) => existing.path == file.path)) {
+            default:
+              if (_isDamageStageKey(stage) &&
+                  !_damagePhotos.any((existing) => existing.path == file.path)) {
                 _damagePhotos.add(file);
-              }
-              break;
-            case 'service_invoice':
-              if (!_serviceInvoicePhotos
-                  .any((existing) => existing.path == file.path)) {
-                _serviceInvoicePhotos.add(file);
+              } else if (stage == 'service_invoice' ||
+                  stage.startsWith('service_invoice_')) {
+                if (!_serviceInvoicePhotos
+                    .any((existing) => existing.path == file.path)) {
+                  _serviceInvoicePhotos.add(file);
+                }
               }
               break;
           }
@@ -726,9 +798,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               needsStateUpdate = true;
             }
             break;
-          case 'damaged_boxes':
-          case 'empty_truck':
-            if (!_damagePhotos.any((existing) => existing.path == file.path)) {
+          default:
+            if (_isDamageStageKey(stage) &&
+                !_damagePhotos.any((existing) => existing.path == file.path)) {
               _damagePhotos.add(file);
               needsStateUpdate = true;
             }
@@ -756,6 +828,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   Future<void> _queueOrphanedPhotoUploads() async {
     Future<void> maybeQueue(File? file, String photoType) async {
       if (file == null || !file.existsSync()) return;
+      if (await _deliveryQueue.isLocalFilePending(file.path)) return;
       await _queueStandardPhotoUpload(photoType, file, flushImmediately: false);
     }
 
@@ -787,15 +860,22 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       );
     }
     if (_damagePhotos.isNotEmpty) {
-      for (final p in _damagePhotos) {
-        await _deliveryQueue.enqueuePhotoUpload(
-          bookingId: widget.request.id,
-          storageStage: 'Damaged Boxes',
-          firestoreStage: 'damaged_boxes',
-          localFilePath: p.path,
+      for (final file in _damagePhotos) {
+        if (await _deliveryQueue.isLocalFilePending(file.path)) continue;
+        final photoType = _photoTypeFromLocalPath(file.path) ??
+            (_hasDamage ? 'Damaged Boxes' : 'Empty Truck');
+        await _queueStandardPhotoUpload(
+          photoType,
+          file,
           flushImmediately: false,
         );
       }
+    }
+
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _deliveryQueue.requestFlush();
+      });
     }
   }
 
@@ -854,7 +934,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
   }
 
-  Future<XFile?> _pickDeliveryCameraImage(String captureType) async {
+  Future<File?> _pickDeliveryCameraImage(String captureType) async {
     // Persist step before native camera — survives process death on low memory.
     await _saveDeliveryState();
     await _savePendingCameraCapture(captureType);
@@ -881,14 +961,17 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           bookingId: widget.request.id,
           stageKey: firestoreStage,
         );
-        await _savePendingCameraCapture(captureType, localFilePath: persisted.path);
+        await _savePendingCameraCapture(
+          captureType,
+          localFilePath: persisted.path,
+        );
         debugPrint('Photo immediately persisted: ${persisted.path}');
+        return persisted;
       } catch (e) {
         debugPrint('Warning: Could not immediately persist photo ($captureType): $e');
-        // Don't block — _processStandardPhotoCapture will retry
+        // Fall back to temp file — processing step will retry persistence.
+        return File(image.path);
       }
-
-      return image;
     } catch (e) {
       await _clearPendingCameraCapture();
       rethrow;
@@ -942,10 +1025,25 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     File file, {
     bool flushImmediately = false,
   }) async {
-    final firestoreStage = _firestoreStageForPhotoType(photoType);
+    if (await _deliveryQueue.isLocalFilePending(file.path)) {
+      return;
+    }
+
+    var firestoreStage = _firestoreStageForPhotoType(photoType);
+    var storageStage = photoType;
+
+    if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
+      final photoIndex = _damagePhotos.indexWhere((existing) => existing.path == file.path);
+      final indexedStage = photoIndex >= 0
+          ? '${firestoreStage}_${photoIndex + 1}'
+          : '${firestoreStage}_${_damagePhotos.length}';
+      firestoreStage = indexedStage;
+      storageStage = indexedStage;
+    }
+
     await _deliveryQueue.enqueuePhotoUpload(
       bookingId: widget.request.id,
-      storageStage: photoType,
+      storageStage: storageStage,
       firestoreStage: firestoreStage,
       localFilePath: file.path,
       flushImmediately: flushImmediately,
@@ -965,22 +1063,35 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     File file, {
     Function(File)? onPicked,
     bool recovered = false,
+    bool alreadyPrepared = false,
   }) async {
-    File prepared = file;
-    try {
-      prepared = await _storageService.prepareDeliveryPhotoForQueue(
-        file,
-        bookingId: widget.request.id,
-        stageKey: _firestoreStageForPhotoType(photoType),
-      );
-    } catch (e) {
-      debugPrint('Error preparing delivery photo ($photoType): $e');
-      if (mounted) {
-        UIHelpers.showErrorToast(
-            'Could not save photo. Please try again.');
+    if (photoType == 'Damaged Boxes' || photoType == 'Empty Truck') {
+      if (_damagePhotos.any((existing) => existing.path == file.path)) {
+        await _clearPendingCameraCapture();
+        if (!await _deliveryQueue.isLocalFilePending(file.path)) {
+          await _queueStandardPhotoUpload(photoType, file);
+        }
+        return;
       }
-      await _clearPendingCameraCapture();
-      return;
+    }
+
+    File prepared = file;
+    if (!alreadyPrepared && !_isPersistedDeliveryPhoto(file)) {
+      try {
+        prepared = await _storageService.prepareDeliveryPhotoForQueue(
+          file,
+          bookingId: widget.request.id,
+          stageKey: _firestoreStageForPhotoType(photoType),
+        );
+      } catch (e) {
+        debugPrint('Error preparing delivery photo ($photoType): $e');
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Could not save photo. Please try again.');
+        }
+        await _clearPendingCameraCapture();
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -1011,24 +1122,27 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   Future<void> _processServiceInvoicePhoto(
     File file, {
     bool recovered = false,
+    bool alreadyPrepared = false,
   }) async {
     if (!mounted) return;
 
     File prepared = file;
-    try {
-      prepared = await _storageService.prepareDeliveryPhotoForQueue(
-        file,
-        bookingId: widget.request.id,
-        stageKey: 'service_invoice',
-      );
-    } catch (e) {
-      debugPrint('Error preparing service invoice photo: $e');
-      if (mounted) {
-        UIHelpers.showErrorToast(
-            'Could not save photo. Please try again.');
+    if (!alreadyPrepared && !_isPersistedDeliveryPhoto(file)) {
+      try {
+        prepared = await _storageService.prepareDeliveryPhotoForQueue(
+          file,
+          bookingId: widget.request.id,
+          stageKey: 'service_invoice',
+        );
+      } catch (e) {
+        debugPrint('Error preparing service invoice photo: $e');
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Could not save photo. Please try again.');
+        }
+        await _clearPendingCameraCapture();
+        return;
       }
-      await _clearPendingCameraCapture();
-      return;
     }
 
     if (!mounted) return;
@@ -1150,8 +1264,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   }
 
   Future<void> _processRecoveredPhotoFromPath(String captureType, File file) async {
+    final alreadyPrepared = _isPersistedDeliveryPhoto(file);
     if (captureType == _serviceInvoiceCaptureType) {
-      await _processServiceInvoicePhoto(file, recovered: true);
+      await _processServiceInvoicePhoto(
+        file,
+        recovered: true,
+        alreadyPrepared: alreadyPrepared,
+      );
     } else if (captureType == _warehouseArrivalCaptureType) {
       await _processRecoveredGpsArrivalPhoto(file, recovered: true);
     } else if (captureType == _destinationArrivalCaptureType) {
@@ -1161,6 +1280,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         captureType,
         file,
         recovered: true,
+        alreadyPrepared: alreadyPrepared,
       );
     }
   }
@@ -1427,6 +1547,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _serviceInvoicePhotoUrls
           ..clear()
           ..addAll(restoredServiceInvoiceUrls);
+        _damagePhotoUrls
+          ..clear()
+          ..addAll(_extractDamagePhotoUrls(bookingData));
         // Store wall-clock start times so timer uses DateTime.now().difference
         // instead of accumulating ticks — survives app backgrounding
         if (loadingActive) _loadingStartTime = loadingStartedAt;
@@ -2302,10 +2425,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       {Function(File)? onRemove}) async {
     _logActivity('take_photo:$photoType');
     try {
-      final XFile? image = await _pickDeliveryCameraImage(photoType);
-      if (image == null || !mounted) return;
+      final file = await _pickDeliveryCameraImage(photoType);
+      if (file == null || !mounted) return;
 
-      final file = File(image.path);
       if (!file.existsSync()) {
         if (mounted) {
           UIHelpers.showErrorToast(
@@ -2315,7 +2437,12 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         return;
       }
 
-      await _processStandardPhotoCapture(photoType, file, onPicked: onPicked);
+      await _processStandardPhotoCapture(
+        photoType,
+        file,
+        onPicked: onPicked,
+        alreadyPrepared: _isPersistedDeliveryPhoto(file),
+      );
     } catch (e) {
       debugPrint('Error taking delivery photo ($photoType): $e');
       await _clearPendingCameraCapture();
@@ -2529,11 +2656,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   Future<void> _takeServiceInvoicePhoto() async {
     _logActivity('service_invoice:take_photo');
-    final XFile? image = await _pickDeliveryCameraImage(_serviceInvoiceCaptureType);
-    if (image == null) return;
+    final file = await _pickDeliveryCameraImage(_serviceInvoiceCaptureType);
+    if (file == null) return;
 
-    final file = File(image.path);
-    await _processServiceInvoicePhoto(file);
+    await _processServiceInvoicePhoto(
+      file,
+      alreadyPrepared: _isPersistedDeliveryPhoto(file),
+    );
   }
 
   void _finishLoading() async {

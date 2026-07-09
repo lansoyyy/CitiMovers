@@ -111,6 +111,7 @@ class DeliveryQueueService {
   Timer? _syncTimer;
   StreamSubscription? _connectivitySub;
   bool _isSyncing = false;
+  bool _flushPending = false;
 
   final ValueNotifier<int> pendingCountNotifier = ValueNotifier(0);
   final ValueNotifier<DeliverySyncStatus> statusNotifier =
@@ -212,6 +213,16 @@ class DeliveryQueueService {
     unawaited(_flush());
   }
 
+  /// Returns true when [localFilePath] is already waiting in the upload queue.
+  Future<bool> isLocalFilePending(String localFilePath) async {
+    final queue = await _loadQueue();
+    return queue.any(
+      (e) =>
+          e.type == DeliveryQueueOpType.photoUpload &&
+          e.payload['localFilePath'] == localFilePath,
+    );
+  }
+
   /// Queue a Firestore delivery-photo record when the URL is already known.
   Future<void> enqueuePhotoRecord({
     required String bookingId,
@@ -296,6 +307,21 @@ class DeliveryQueueService {
 
   Future<void> _enqueue(DeliveryQueueEntry entry) async {
     final queue = await _loadQueue();
+
+    if (entry.type == DeliveryQueueOpType.photoUpload) {
+      final localPath = entry.payload['localFilePath'] as String?;
+      if (localPath != null &&
+          queue.any(
+            (e) =>
+                e.type == DeliveryQueueOpType.photoUpload &&
+                e.payload['localFilePath'] == localPath,
+          )) {
+        debugPrint(
+            '[DeliveryQueue] Skipping duplicate photo enqueue: $localPath');
+        return;
+      }
+    }
+
     queue.add(entry);
     await _saveQueue(queue);
     _updatePendingCount();
@@ -305,7 +331,10 @@ class DeliveryQueueService {
   }
 
   Future<void> _flush({String? specificBookingId}) async {
-    if (_isSyncing) return;
+    if (_isSyncing) {
+      _flushPending = true;
+      return;
+    }
     _isSyncing = true;
     statusNotifier.value = DeliverySyncStatus.syncing;
 
@@ -353,6 +382,10 @@ class DeliveryQueueService {
           : DeliverySyncStatus.hasPending;
     } finally {
       _isSyncing = false;
+      if (_flushPending) {
+        _flushPending = false;
+        unawaited(_flush(specificBookingId: specificBookingId));
+      }
     }
   }
 
