@@ -734,6 +734,7 @@ class AdminRepository {
       'vatRate': accountingFields['vatRate'],
       'vatAmount': accountingFields['vatAmount'],
       'adminNetAmount': accountingFields['adminNetAmount'],
+      'notes': _asString(raw['notes']),
       'paymentStatus': paymentStatus,
       'reconciliationStatus': _coalesceString([
         raw['reconciliationStatus'],

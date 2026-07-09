@@ -1059,6 +1059,8 @@ class _BookingInfoCard extends StatelessWidget {
             _buildRow('Receiver Phone', d['receiverPhone'] ?? '—'),
             _buildRow('Distance', '${d['distance'] ?? '—'} km'),
             _buildRow('Payment Method', d['paymentMethod'] ?? '—'),
+            if ((d['notes'] ?? '').toString().isNotEmpty)
+              _buildRow('Delivery Notes', d['notes'].toString()),
             if ((d['cancellationReason'] ?? '').toString().isNotEmpty) ...[
               const Divider(color: AdminTheme.divider),
               _buildRow('Cancellation Reason', d['cancellationReason'] ?? '—'),
