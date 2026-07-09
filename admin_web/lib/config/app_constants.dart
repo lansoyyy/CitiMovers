@@ -78,4 +78,5 @@ class AdminConstants {
   static const String auditDeleteBanner = 'delete_promo_banner';
   static const String auditSendNotification = 'send_notification';
   static const String auditRunBackfill = 'run_backfill';
+  static const String auditUpdateRiderProfile = 'update_rider_profile';
 }

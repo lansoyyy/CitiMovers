@@ -1114,34 +1114,80 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              rider['name']?.toString() ??
-                                                  'Unknown rider',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                                color: AdminTheme.textPrimary,
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Flexible(
+                                                    child: Text(
+                                                      rider['name']
+                                                              ?.toString() ??
+                                                          'Unknown rider',
+                                                      style: GoogleFonts.inter(
+                                                        fontSize: 13,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: AdminTheme
+                                                            .textPrimary,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if ((rider['plateNumber'] ?? '')
+                                                      .toString()
+                                                      .trim()
+                                                      .isNotEmpty) ...[
+                                                    const SizedBox(width: 6),
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: AdminTheme
+                                                            .primary
+                                                            .withValues(
+                                                              alpha: 0.1,
+                                                            ),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        rider['plateNumber']
+                                                            .toString()
+                                                            .trim()
+                                                            .toUpperCase(),
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          color: AdminTheme
+                                                              .primary,
+                                                          letterSpacing: 0.4,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
                                               ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${rider['unitName'] ?? 'Independent Units'} • ${_riderSubtitle(rider)}',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                color: AdminTheme.textSecondary,
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${rider['unitName'] ?? 'Independent Units'} • ${_riderSubtitle(rider)}',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 12,
+                                                  color: AdminTheme.textSecondary,
+                                                ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                      _InfoChip(
+                                        _InfoChip(
                                         label: activityLabel,
                                         color: activityColor,
                                       ),
@@ -1271,14 +1317,75 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                       Row(
                                         children: [
                                           Expanded(
-                                            child: Text(
-                                              rider['name']?.toString() ??
-                                                  'Unknown rider',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                                color: AdminTheme.textPrimary,
-                                              ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        rider['name']
+                                                                ?.toString() ??
+                                                            'Unknown rider',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 13,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: AdminTheme
+                                                              .textPrimary,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if ((rider['plateNumber'] ?? '')
+                                                        .toString()
+                                                        .trim()
+                                                        .isNotEmpty) ...[
+                                                      const SizedBox(width: 6),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: AdminTheme
+                                                              .primary
+                                                              .withValues(
+                                                                alpha: 0.1,
+                                                              ),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(4),
+                                                        ),
+                                                        child: Text(
+                                                          rider['plateNumber']
+                                                              .toString()
+                                                              .trim()
+                                                              .toUpperCase(),
+                                                          style: GoogleFonts.inter(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w800,
+                                                            color: AdminTheme
+                                                                .primary,
+                                                            letterSpacing: 0.4,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  _riderSubtitle(rider),
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 12,
+                                                    color: AdminTheme
+                                                        .textSecondary,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                           _InfoChip(
@@ -1286,14 +1393,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                             color: activityColor,
                                           ),
                                         ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        _riderSubtitle(rider),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          color: AdminTheme.textSecondary,
-                                        ),
                                       ),
                                       const SizedBox(height: 10),
                                       Text(

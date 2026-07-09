@@ -559,38 +559,79 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                                           },
                                                   ),
                                                   const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        Text(
-                                                          (rider['name'] ??
-                                                                  'Unnamed Rider')
-                                                              .toString(),
-                                                          style: GoogleFonts.inter(
-                                                            fontSize: 13,
-                                                            fontWeight:
-                                                                FontWeight.w700,
-                                                            color: AdminTheme
-                                                                .textPrimary,
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Row(
+                                                            children: [
+                                                              Expanded(
+                                                                child: Text(
+                                                                  (rider['name'] ??
+                                                                          'Unnamed Rider')
+                                                                      .toString(),
+                                                                  style: GoogleFonts.inter(
+                                                                    fontSize: 13,
+                                                                    fontWeight:
+                                                                        FontWeight.w700,
+                                                                    color: AdminTheme
+                                                                        .textPrimary,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              if ((rider['plateNumber'] ?? '')
+                                                                  .toString()
+                                                                  .trim()
+                                                                  .isNotEmpty)
+                                                                Container(
+                                                                  padding:
+                                                                      const EdgeInsets.symmetric(
+                                                                    horizontal: 8,
+                                                                    vertical: 3,
+                                                                  ),
+                                                                  decoration: BoxDecoration(
+                                                                    color: AdminTheme
+                                                                        .primary
+                                                                        .withValues(
+                                                                          alpha: 0.1,
+                                                                        ),
+                                                                    borderRadius:
+                                                                        BorderRadius
+                                                                            .circular(6),
+                                                                  ),
+                                                                  child: Text(
+                                                                    rider['plateNumber']
+                                                                        .toString()
+                                                                        .trim()
+                                                                        .toUpperCase(),
+                                                                    style: GoogleFonts.inter(
+                                                                      fontSize: 12,
+                                                                      fontWeight:
+                                                                          FontWeight.w800,
+                                                                      color: AdminTheme
+                                                                          .primary,
+                                                                      letterSpacing: 0.5,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                            ],
                                                           ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 4,
-                                                        ),
-                                                        Text(
-                                                          riderSubtitle(rider),
-                                                          style: GoogleFonts.inter(
-                                                            fontSize: 11,
-                                                            color: AdminTheme
-                                                                .textSecondary,
+                                                          const SizedBox(
+                                                            height: 4,
                                                           ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 8,
-                                                        ),
+                                                          Text(
+                                                            riderSubtitle(rider),
+                                                            style: GoogleFonts.inter(
+                                                              fontSize: 11,
+                                                              color: AdminTheme
+                                                                  .textSecondary,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 8,
+                                                          ),
                                                         Container(
                                                           padding:
                                                               const EdgeInsets.symmetric(

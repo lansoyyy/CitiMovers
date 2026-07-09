@@ -87,6 +87,116 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
     _loadRider();
   }
 
+  Future<void> _editProfile() async {
+    final d = _riderData!;
+    final nameCtrl = TextEditingController(text: d['name'] ?? '');
+    final plateCtrl = TextEditingController(text: d['plateNumber'] ?? '');
+    final phoneCtrl = TextEditingController(text: d['phoneNumber'] ?? '');
+    final vehicleTypeCtrl = TextEditingController(
+      text: d['vehicleType'] ?? '',
+    );
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        String? formError;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Edit Rider Profile'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Full Name',
+                      errorText: formError,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: plateCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Plate Number',
+                      hintText: 'e.g. ABC 1234',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Phone Number',
+                    ),
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: vehicleTypeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Vehicle Type',
+                      hintText: 'e.g. 6-Wheeler Wing Van',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (nameCtrl.text.trim().isEmpty) {
+                    setDialogState(
+                      () => formError = 'Name is required.',
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext, true);
+                },
+                child: const Text('Save Changes'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    nameCtrl.dispose();
+    plateCtrl.dispose();
+    phoneCtrl.dispose();
+    vehicleTypeCtrl.dispose();
+
+    if (saved != true) return;
+
+    try {
+      await AdminRepository.updateRiderProfile(
+        riderId: widget.riderId,
+        name: nameCtrl.text.trim(),
+        vehiclePlateNumber: plateCtrl.text.trim(),
+        phoneNumber: phoneCtrl.text.trim(),
+        vehicleType: vehicleTypeCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rider profile updated.')),
+      );
+      _loadRider();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _rejectDocument(String docKey, String docLabel) async {
     final reasonCtrl = TextEditingController();
     final confirmed =
@@ -246,6 +356,14 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
                           ],
                         ),
                       ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _editProfile,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    tooltip: 'Edit Profile',
+                    style: IconButton.styleFrom(
+                      foregroundColor: AdminTheme.textSecondary,
                     ),
                   ),
                 ],

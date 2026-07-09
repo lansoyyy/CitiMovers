@@ -1169,6 +1169,107 @@ class AdminRepository {
     });
   }
 
+  static Future<void> updateRiderProfile({
+    required String riderId,
+    String? name,
+    String? phoneNumber,
+    String? vehiclePlateNumber,
+    String? vehicleType,
+    String? vehicleModel,
+    String? vehicleColor,
+  }) async {
+    final trimmedRiderId = riderId.trim();
+    if (trimmedRiderId.isEmpty) {
+      throw StateError('Rider ID is required.');
+    }
+
+    final riderRef = _db.collection(AdminConstants.colRiders).doc(trimmedRiderId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+    final updates = <String, dynamic>{};
+    final beforeSummary = <String, dynamic>{};
+    final afterSummary = <String, dynamic>{};
+
+    if (name != null) {
+      final trimmed = name.trim();
+      if (trimmed.isNotEmpty) {
+        updates['name'] = trimmed;
+        afterSummary['name'] = trimmed;
+      }
+    }
+
+    if (phoneNumber != null) {
+      final trimmed = phoneNumber.trim();
+      if (trimmed.isNotEmpty) {
+        updates['phoneNumber'] = trimmed;
+        afterSummary['phoneNumber'] = trimmed;
+      }
+    }
+
+    if (vehiclePlateNumber != null) {
+      final trimmed = vehiclePlateNumber.trim();
+      if (trimmed.isNotEmpty) {
+        updates['vehiclePlateNumber'] = trimmed;
+        afterSummary['vehiclePlateNumber'] = trimmed;
+      }
+    }
+
+    if (vehicleType != null) {
+      final trimmed = vehicleType.trim();
+      if (trimmed.isNotEmpty) {
+        updates['vehicleType'] = trimmed;
+        afterSummary['vehicleType'] = trimmed;
+      }
+    }
+
+    if (vehicleModel != null) {
+      final trimmed = vehicleModel.trim();
+      if (trimmed.isNotEmpty) {
+        updates['vehicleModel'] = trimmed;
+        afterSummary['vehicleModel'] = trimmed;
+      }
+    }
+
+    if (vehicleColor != null) {
+      final trimmed = vehicleColor.trim();
+      if (trimmed.isNotEmpty) {
+        updates['vehicleColor'] = trimmed;
+        afterSummary['vehicleColor'] = trimmed;
+      }
+    }
+
+    if (updates.isEmpty) return;
+
+    await _db.runTransaction((transaction) async {
+      final riderSnap = await transaction.get(riderRef);
+      if (!riderSnap.exists) {
+        throw StateError('Rider not found.');
+      }
+
+      final beforeData = normalizeRiderData(
+        trimmedRiderId,
+        _asMap(riderSnap.data()),
+      );
+
+      for (final key in afterSummary.keys) {
+        beforeSummary[key] = beforeData[key];
+      }
+
+      updates['updatedAt'] = FieldValue.serverTimestamp();
+
+      transaction.set(riderRef, updates, SetOptions(merge: true));
+      transaction.set(
+        auditRef,
+        _buildAuditEntry(
+          action: AdminConstants.auditUpdateRiderProfile,
+          entityType: 'rider',
+          entityId: trimmedRiderId,
+          before: beforeSummary,
+          after: afterSummary,
+        ),
+      );
+    });
+  }
+
   // ─── Bookings ─────────────────────────────────────────────────────────────
   static Stream<QuerySnapshot> streamBookings({
     String? statusFilter,
