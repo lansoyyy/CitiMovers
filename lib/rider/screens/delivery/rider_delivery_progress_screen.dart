@@ -214,6 +214,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       _deliveryQueue.requestFlush();
       unawaited(_processOrphanedPendingPhotos());
     }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      unawaited(_persistPicklistItems());
+    }
   }
 
   /// Register callbacks that fire whenever the queue successfully uploads a
@@ -332,7 +336,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _damageQtyController.dispose();
 
     // Save current delivery state before disposing
-    unawaited(_saveDeliveryState());
+    unawaited(_persistPicklistItems());
 
     // Stop the offline queue and remove URL callbacks
     _deliveryQueue.stop();
@@ -369,7 +373,27 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       receivingSubStep: _receivingSubStep.name,
       receiverName: _receiverNameController.text,
       receiverIdPhotoConfirmed: _receiverIdPhotoConfirmed,
+      picklistItems: _picklistItems,
     );
+  }
+
+  List<Map<String, dynamic>> _parsePicklistItems(dynamic raw) {
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _resolvePicklistItemsForRestore(
+    Map<String, dynamic>? savedState,
+    Map<String, dynamic>? bookingData,
+  ) {
+    final local = _parsePicklistItems(savedState?['picklistItems']);
+    final remote = _parsePicklistItems(bookingData?['picklistItems']);
+
+    if (local.length >= remote.length) return local;
+    return remote;
   }
 
   Future<void> _persistReceivingProgressToFirestore({
@@ -1524,6 +1548,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             _idPhoto,
             const ['receiver_id', 'receiver_id_photo'],
           );
+      final restoredPicklistItems = _resolvePicklistItemsForRestore(
+        savedState,
+        bookingData,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -1538,6 +1566,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             ? mergedSnapshot.receivingSubStep
             : ReceivingSubStep.receiverName;
         _receiverIdPhotoConfirmed = restoredIdConfirmed;
+        _picklistItems
+          ..clear()
+          ..addAll(restoredPicklistItems);
         _loadingDuration = loadingDuration;
         _unloadingDuration = unloadingDuration;
         _loadingDemurrageFee =
@@ -1566,6 +1597,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _startUnloadingTimer();
       } else {
         _unloadingTimer?.cancel();
+      }
+
+      if (restoredPicklistItems.isNotEmpty) {
+        unawaited(_persistPicklistItems());
       }
 
       // After state is fully restored, scan for any orphaned photos that
@@ -2454,13 +2489,16 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   }
 
   Future<void> _persistPicklistItems() async {
+    // Always save locally first so back-navigation and offline use never lose data.
+    await _saveDeliveryState();
+
     try {
       await _firestore.collection('bookings').doc(widget.request.id).update({
         'picklistItems': _picklistItems,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       });
     } catch (e) {
-      debugPrint('Error saving picklist items: $e');
+      debugPrint('Error saving picklist items to Firestore: $e');
     }
   }
 
@@ -3880,43 +3918,50 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldBackground,
-      appBar: AppBar(
-        title: const Text('Delivery Progress'),
-        backgroundColor: AppColors.blueAccent,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0.5,
-        actions: [
-          // Chat button - only show during active delivery
-          if (_currentStep != DeliveryStep.completed)
-            IconButton(
-              icon: const Icon(Icons.chat, color: AppColors.white),
-              onPressed: () => _openChatWithCustomer(),
-              tooltip: 'Chat with Customer',
-            ),
-          // Call button - only show during active delivery
-          if (_currentStep != DeliveryStep.completed)
-            IconButton(
-              icon: const Icon(Icons.phone, color: AppColors.white),
-              onPressed: () => _callCustomer(),
-              tooltip: 'Call Customer',
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildProgressHeader(),
-            _buildSyncBanner(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: _buildCurrentStepContent(),
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          unawaited(_persistPicklistItems());
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.scaffoldBackground,
+        appBar: AppBar(
+          title: const Text('Delivery Progress'),
+          backgroundColor: AppColors.blueAccent,
+          foregroundColor: AppColors.textPrimary,
+          elevation: 0.5,
+          actions: [
+            // Chat button - only show during active delivery
+            if (_currentStep != DeliveryStep.completed)
+              IconButton(
+                icon: const Icon(Icons.chat, color: AppColors.white),
+                onPressed: () => _openChatWithCustomer(),
+                tooltip: 'Chat with Customer',
               ),
-            ),
-            if (_currentStep != DeliveryStep.completed) _buildBottomAction(),
+            // Call button - only show during active delivery
+            if (_currentStep != DeliveryStep.completed)
+              IconButton(
+                icon: const Icon(Icons.phone, color: AppColors.white),
+                onPressed: () => _callCustomer(),
+                tooltip: 'Call Customer',
+              ),
           ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildProgressHeader(),
+              _buildSyncBanner(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildCurrentStepContent(),
+                ),
+              ),
+              if (_currentStep != DeliveryStep.completed) _buildBottomAction(),
+            ],
+          ),
         ),
       ),
     );

@@ -1052,6 +1052,7 @@ class RiderAuthService {
     String? receivingSubStep,
     String? receiverName,
     bool? receiverIdPhotoConfirmed,
+    List<Map<String, dynamic>>? picklistItems,
   }) async {
     try {
       final state = {
@@ -1064,6 +1065,7 @@ class RiderAuthService {
           'receiverName': receiverName.trim(),
         if (receiverIdPhotoConfirmed != null)
           'receiverIdPhotoConfirmed': receiverIdPhotoConfirmed,
+        if (picklistItems != null) 'picklistItems': picklistItems,
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       };
       await _storage.write('activeDeliveryState', state);
