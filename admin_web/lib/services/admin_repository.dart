@@ -1209,8 +1209,12 @@ class AdminRepository {
     if (vehiclePlateNumber != null) {
       final trimmed = vehiclePlateNumber.trim();
       if (trimmed.isNotEmpty) {
-        updates['vehiclePlateNumber'] = trimmed;
-        afterSummary['vehiclePlateNumber'] = trimmed;
+        final normalized =
+            trimmed.replaceAll(RegExp(r'\s'), '').toUpperCase();
+        updates['vehiclePlateNumber'] = normalized;
+        updates['plateNumber'] = normalized;
+        afterSummary['vehiclePlateNumber'] = normalized;
+        afterSummary['plateNumber'] = normalized;
       }
     }
 

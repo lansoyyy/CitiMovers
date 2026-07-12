@@ -424,7 +424,9 @@ class RiderModel {
       email: stringOrNull(json['email']),
       photoUrl: stringOrNull(json['photoUrl']),
       vehicleType: stringOrNull(json['vehicleType']) ?? 'AUV',
-      vehiclePlateNumber: stringOrNull(json['vehiclePlateNumber']),
+      vehiclePlateNumber: stringOrNull(
+            json['vehiclePlateNumber'] ?? json['plateNumber'],
+          ),
       vehicleModel: stringOrNull(json['vehicleModel']),
       vehicleColor: stringOrNull(json['vehicleColor']),
       vehiclePhotoUrl: stringOrNull(json['vehiclePhotoUrl']),

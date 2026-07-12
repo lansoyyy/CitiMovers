@@ -134,26 +134,59 @@ class RiderAuthService {
     return plateNumber.replaceAll(RegExp(r'\s'), '').toUpperCase();
   }
 
-  Future<QuerySnapshot<Map<String, dynamic>>> _findRiderByPlateNumber(
-    String plateNumber,
-  ) {
+  /// Builds case- and spacing-tolerant plate values for Firestore lookups.
+  @visibleForTesting
+  static List<String> plateNumberQueryVariants(String plateNumber) {
     final normalized = normalizePlateNumber(plateNumber);
-    final variants = <String>[normalized];
+    final lower = normalized.toLowerCase();
+    final variants = <String>{normalized, lower};
 
     final match = RegExp(r'^([A-Z]+)(\d+)$').firstMatch(normalized);
     if (match != null) {
-      variants.add('${match.group(1)} ${match.group(2)}');
+      final letters = match.group(1)!;
+      final digits = match.group(2)!;
+      variants.add('$letters $digits');
+      variants.add('${letters.toLowerCase()} $digits');
+    }
+
+    return variants.toList();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _queryRidersByPlateField(
+    String field,
+    List<String> variants,
+  ) {
+    if (variants.isEmpty) {
+      throw ArgumentError.value(variants, 'variants', 'cannot be empty');
     }
 
     final query = variants.length == 1
         ? _firestore
             .collection('riders')
-            .where('vehiclePlateNumber', isEqualTo: variants.first)
+            .where(field, isEqualTo: variants.first)
         : _firestore
             .collection('riders')
-            .where('vehiclePlateNumber', whereIn: variants);
+            .where(field, whereIn: variants);
 
     return query.limit(1).get();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _findRiderByPlateNumber(
+    String plateNumber,
+  ) async {
+    final variants = plateNumberQueryVariants(plateNumber);
+    QuerySnapshot<Map<String, dynamic>>? lastSnapshot;
+
+    for (final field in ['vehiclePlateNumber', 'plateNumber']) {
+      final snapshot = await _queryRidersByPlateField(field, variants);
+      lastSnapshot = snapshot;
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot;
+      }
+    }
+
+    return lastSnapshot ??
+        await _queryRidersByPlateField('vehiclePlateNumber', variants);
   }
 
   String _resolveLoginPhoneNumber(String phoneNumber) {
@@ -530,10 +563,19 @@ class RiderAuthService {
         updatedAt: now,
       );
 
+      final normalizedPlate = vehiclePlateNumber != null &&
+              vehiclePlateNumber.trim().isNotEmpty
+          ? normalizePlateNumber(vehiclePlateNumber)
+          : null;
+
       await riderDocRef.set(
         {
           ...?existingData,
           ...rider.toMap(),
+          if (normalizedPlate != null) ...{
+            'vehiclePlateNumber': normalizedPlate,
+            'plateNumber': normalizedPlate,
+          },
           'password': hashedPassword,
           'riderId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
@@ -796,10 +838,20 @@ class RiderAuthService {
 
         await _saveRiderToStorage(updatedRider);
       } else {
-        await _firestore
-            .collection('riders')
-            .doc(updatedRider.riderId)
-            .set(updatedRider.toMap(), SetOptions(merge: true));
+        final plateUpdate = <String, dynamic>{};
+        if (vehiclePlateNumber != null && vehiclePlateNumber.trim().isNotEmpty) {
+          final normalized = normalizePlateNumber(vehiclePlateNumber);
+          plateUpdate['vehiclePlateNumber'] = normalized;
+          plateUpdate['plateNumber'] = normalized;
+        }
+
+        await _firestore.collection('riders').doc(updatedRider.riderId).set(
+              {
+                ...updatedRider.toMap(),
+                ...plateUpdate,
+              },
+              SetOptions(merge: true),
+            );
       }
 
       _currentRider = updatedRider;
