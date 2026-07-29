@@ -59,16 +59,16 @@ class DefaultFirebaseOptions {
     storageBucket: 'citimovers-346f2.firebasestorage.app',
   );
 
-  /// Replace [appId] after registering the iOS app in Firebase Console
+  /// Replace [appId] after registering the iOS Drivers app in Firebase Console
   /// and downloading GoogleService-Info.plist.
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278',
-    appId: '1:212204568146:ios:REPLACE_WITH_FIREBASE_IOS_APP_ID',
+    appId: '1:212204568146:ios:REPLACE_WITH_FIREBASE_IOS_DRIVERS_APP_ID',
     messagingSenderId: '212204568146',
     projectId: 'citimovers-346f2',
     authDomain: 'citimovers-346f2.firebaseapp.com',
     databaseURL: 'https://citimovers-346f2-default-rtdb.firebaseio.com',
     storageBucket: 'citimovers-346f2.firebasestorage.app',
-    iosBundleId: 'com.algovision.citimovers',
+    iosBundleId: 'com.algovision.citimovers_drivers',
   );
 }
