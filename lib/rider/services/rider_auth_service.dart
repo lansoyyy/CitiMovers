@@ -215,6 +215,8 @@ class RiderAuthService {
     final accountStatus =
         (data['accountStatus'] ?? data['status'] ?? 'pending').toString();
     final status = (data['status'] ?? '').toString();
+    final isDeleted =
+        accountStatus == 'deleted' || status == 'deleted' || data['deletedAt'] != null;
     final isSuspended =
         data['isSuspended'] == true || accountStatus == 'suspended';
     final isApproved = data['isApproved'] == true ||
@@ -222,6 +224,10 @@ class RiderAuthService {
         accountStatus == 'approved' ||
         status == 'active' ||
         status == 'approved';
+
+    if (isDeleted) {
+      return RiderAccessState.suspended;
+    }
 
     if (isSuspended) {
       return RiderAccessState.suspended;
@@ -239,7 +245,7 @@ class RiderAuthService {
       case RiderAccessState.pendingApproval:
         return 'Your account is pending admin approval. Please wait for verification before logging in.';
       case RiderAccessState.suspended:
-        return 'Your rider account is suspended. Please contact CitiMovers support.';
+        return 'Your rider account is unavailable. If you deleted your account, create a new one or contact CitiMovers support.';
       case RiderAccessState.approved:
         return '';
     }
@@ -981,25 +987,23 @@ class RiderAuthService {
     }
   }
 
-  /// Request account deletion
+  /// Request account deletion (Apple App Store Guideline 5.1.1(v)).
+  /// Permanently removes rider data, photos, documents, and local session.
   Future<bool> requestAccountDeletion() async {
     try {
       if (_currentRider == null) return false;
 
       final riderId = _currentRider!.riderId;
 
-      // Mark account for deletion (soft delete)
-      await _firestore.collection('riders').doc(riderId).set({
-        'status': 'deleted',
-        'deletedAt': DateTime.now().toIso8601String(),
-        'updatedAt': DateTime.now().toIso8601String(),
-      }, SetOptions(merge: true));
+      // Permanently delete account data so the request satisfies Apple's
+      // account-deletion requirement (not only a soft-delete flag).
+      final deleted = await permanentlyDeleteAccount(riderId);
+      if (!deleted) return false;
 
-      // Clear local data
       _currentRider = null;
       await _clearRiderFromStorage();
 
-      debugPrint('Rider account deletion requested: $riderId');
+      debugPrint('Rider account deletion completed: $riderId');
       return true;
     } catch (e) {
       debugPrint('Error requesting account deletion: $e');
@@ -1007,7 +1011,7 @@ class RiderAuthService {
     }
   }
 
-  /// Permanently delete rider account (admin only)
+  /// Permanently delete rider account and associated storage objects
   Future<bool> permanentlyDeleteAccount(String riderId) async {
     try {
       // Delete rider document

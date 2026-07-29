@@ -201,7 +201,7 @@ class ProfileScreen extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Delete Account'),
         content: const Text(
-          'Are you sure you want to delete your account? This action cannot be undone.',
+          'This permanently deletes your CitiMovers account and associated profile data. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -211,7 +211,7 @@ class ProfileScreen extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(
-              foregroundColor: AppColors.primaryRed,
+              foregroundColor: AppColors.error,
             ),
             child: const Text('Delete'),
           ),
@@ -220,12 +220,10 @@ class ProfileScreen extends StatelessWidget {
     );
 
     if (confirm == true && context.mounted) {
-      // Delete account from Firebase
       final success = await AuthService().requestAccountDeletion();
 
       if (context.mounted) {
         if (success) {
-          // Navigate to welcome screen after successful deletion
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const WelcomeScreen()),

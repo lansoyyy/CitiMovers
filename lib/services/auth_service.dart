@@ -722,18 +722,23 @@ class AuthService {
     }
   }
 
-  /// Request account deletion
+  /// Request account deletion (Apple App Store Guideline 5.1.1(v)).
+  /// Permanently removes the user document, profile photo, and local session.
   Future<bool> requestAccountDeletion() async {
     try {
       if (_currentUser == null) return false;
 
       final userId = _currentUser!.userId;
 
+      // Delete profile photo from Firebase Storage first
+      try {
+        await StorageService().deleteProfilePhoto(userId);
+      } catch (e) {
+        debugPrint('Error deleting profile photo during account deletion: $e');
+      }
+
       // Delete user document from Firestore
       await _firestore.collection('users').doc(userId).delete();
-
-      // Delete profile photo from Firebase Storage
-      await StorageService().deleteProfilePhoto(userId);
 
       // Clear user from memory and storage
       _currentUser = null;

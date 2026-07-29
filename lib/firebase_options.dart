@@ -50,20 +50,25 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-      apiKey: "AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278",
-      authDomain: "citimovers-346f2.firebaseapp.com",
-      databaseURL: "https://citimovers-346f2-default-rtdb.firebaseio.com",
-      projectId: "citimovers-346f2",
-      storageBucket: "citimovers-346f2.firebasestorage.app",
-      messagingSenderId: "212204568146",
-      appId: "1:212204568146:web:2e9d8c15d433ba9976e98b");
+    apiKey: 'AIzaSyAGwJrSHeJzIpgWd0YyIrOH4Vn6mo08H5s',
+    appId: '1:212204568146:android:3c503703fc00ca6b76e98b',
+    messagingSenderId: '212204568146',
+    projectId: 'citimovers-346f2',
+    authDomain: 'citimovers-346f2.firebaseapp.com',
+    databaseURL: 'https://citimovers-346f2-default-rtdb.firebaseio.com',
+    storageBucket: 'citimovers-346f2.firebasestorage.app',
+  );
 
+  /// Replace [appId] after registering the iOS app in Firebase Console
+  /// and downloading GoogleService-Info.plist.
   static const FirebaseOptions ios = FirebaseOptions(
-      apiKey: "AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278",
-      authDomain: "citimovers-346f2.firebaseapp.com",
-      databaseURL: "https://citimovers-346f2-default-rtdb.firebaseio.com",
-      projectId: "citimovers-346f2",
-      storageBucket: "citimovers-346f2.firebasestorage.app",
-      messagingSenderId: "212204568146",
-      appId: "1:212204568146:web:2e9d8c15d433ba9976e98b");
+    apiKey: 'AIzaSyA_BC1x1V0RJ1qbyIxURnjMblME3r2n278',
+    appId: '1:212204568146:ios:REPLACE_WITH_FIREBASE_IOS_APP_ID',
+    messagingSenderId: '212204568146',
+    projectId: 'citimovers-346f2',
+    authDomain: 'citimovers-346f2.firebaseapp.com',
+    databaseURL: 'https://citimovers-346f2-default-rtdb.firebaseio.com',
+    storageBucket: 'citimovers-346f2.firebasestorage.app',
+    iosBundleId: 'com.algovision.citimovers',
+  );
 }

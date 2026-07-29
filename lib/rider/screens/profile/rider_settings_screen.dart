@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/ui_helpers.dart';
-import '../../../services/auth_service.dart';
 import '../../models/rider_settings_model.dart';
+import '../../services/rider_auth_service.dart';
 import '../../services/rider_settings_service.dart';
+import '../auth/rider_login_screen.dart';
 
 class RiderSettingsScreen extends StatefulWidget {
   const RiderSettingsScreen({super.key});
@@ -14,7 +15,7 @@ class RiderSettingsScreen extends StatefulWidget {
 }
 
 class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
-  final AuthService _authService = AuthService();
+  final RiderAuthService _authService = RiderAuthService();
   final RiderSettingsService _settingsService = RiderSettingsService.instance;
 
   bool _isLoading = true;
@@ -27,7 +28,7 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final riderId = _authService.currentUser?.userId;
+    final riderId = _authService.currentRider?.riderId;
     if (riderId == null) {
       setState(() => _isLoading = false);
       return;
@@ -466,7 +467,7 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Delete Account'),
         content: const Text(
-          'This action cannot be undone. All your data will be permanently deleted.',
+          'This permanently deletes your rider account, profile photo, and uploaded documents. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -476,15 +477,18 @@ class _RiderSettingsScreenState extends State<RiderSettingsScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
+              UIHelpers.showLoadingDialog(context);
               final success = await _authService.requestAccountDeletion();
+              if (!mounted) return;
+              Navigator.of(context, rootNavigator: true).pop();
               if (success) {
-                // Navigate to login screen after deletion
-                if (mounted) {
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    '/',
-                    (route) => false,
-                  );
-                }
+                UIHelpers.showSuccessToast('Account deleted successfully');
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (_) => const RiderLoginScreen(),
+                  ),
+                  (route) => false,
+                );
               } else {
                 UIHelpers.showErrorToast('Failed to delete account');
               }
