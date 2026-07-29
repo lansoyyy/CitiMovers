@@ -720,7 +720,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          content: Text(AdminRepository.describeError(error)),
           backgroundColor: Colors.red,
         ),
       );

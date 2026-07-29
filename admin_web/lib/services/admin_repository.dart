@@ -251,6 +251,60 @@ class AdminRepository {
     return <String, dynamic>{};
   }
 
+  /// Unwraps Flutter-web / Firebase interop errors so UI can show the real cause.
+  ///
+  /// On web, `StateError` thrown inside Firestore transactions often surfaces as
+  /// "Dart exception thrown from converted Future..." instead of the message.
+  static String describeError(Object error) {
+    Object current = error;
+    for (var depth = 0; depth < 6; depth++) {
+      try {
+        final dynamic dyn = current;
+        final candidates = <dynamic>[
+          dyn.error,
+          dyn.dartException,
+          dyn.cause,
+          dyn.exception,
+          dyn.originalException,
+        ];
+        Object? next;
+        for (final candidate in candidates) {
+          if (candidate != null && candidate != current) {
+            next = candidate as Object;
+            break;
+          }
+        }
+        if (next == null) break;
+        current = next;
+      } catch (_) {
+        break;
+      }
+    }
+
+    var message = current is StateError
+        ? current.message
+        : current is FirebaseException
+        ? (current.message?.trim().isNotEmpty == true
+              ? current.message!
+              : current.code)
+        : current.toString();
+
+    message = message
+        .replaceFirst(RegExp(r'^Bad state:\s*'), '')
+        .replaceFirst(RegExp(r'^Exception:\s*'), '')
+        .replaceFirst(RegExp(r'^Error:\s*'), '')
+        .replaceFirst(RegExp(r'^\[cloud_firestore/[^\]]+\]\s*'), '')
+        .trim();
+
+    if (message.isEmpty ||
+        message.contains('converted Future') ||
+        message.contains('boxed error')) {
+      return 'Assignment failed. The selected unit may already have an active '
+          'trip, or this booking can no longer be assigned. Refresh and try again.';
+    }
+    return message;
+  }
+
   static double _asDouble(dynamic value) {
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0;
@@ -393,10 +447,9 @@ class AdminRepository {
   }
 
   static bool isLiveAssignedBookingStatus(dynamic rawStatus) {
+    // Only statuses where a rider is actually tied to an in-progress trip.
+    // Unassigned pending/payment bookings must not lock units.
     const liveStatuses = [
-      'pending',
-      'awaiting_payment',
-      'payment_locked',
       'accepted',
       'arrived_at_pickup',
       'loading',
@@ -1315,7 +1368,7 @@ class AdminRepository {
   }
 
   static Stream<List<Map<String, dynamic>>> streamActiveAssignedBookings({
-    int limit = 200,
+    int limit = 500,
   }) {
     return _db
         .collection(AdminConstants.colBookings)
@@ -1372,7 +1425,60 @@ class AdminRepository {
       throw StateError('Assignment reason is required.');
     }
 
+    // Pre-validate outside the transaction so Flutter web surfaces real messages
+    // instead of the opaque "converted Future" Firebase interop error.
+    final beforeBooking = await getNormalizedBooking(resolvedBookingId);
+    if (beforeBooking == null) {
+      throw StateError('Booking not found.');
+    }
+    if (!canAssignBookingStatus(beforeBooking['status'])) {
+      throw StateError(
+        'Only pending or accepted bookings can be assigned from admin.',
+      );
+    }
+
+    final beforeRider = await getNormalizedRider(resolvedRiderId);
+    if (beforeRider == null) {
+      throw StateError('Rider not found.');
+    }
+    if (_asString(beforeRider['accountStatus'], fallback: 'pending') !=
+        'active') {
+      throw StateError('Only active riders can be assigned.');
+    }
+    if (beforeRider['isSuspended'] == true) {
+      throw StateError('This rider is suspended and cannot be assigned.');
+    }
+
+    final alreadyAssignedRiderId = _coalesceString([
+      beforeBooking['driverId'],
+      beforeBooking['riderId'],
+    ]);
+    if (alreadyAssignedRiderId == resolvedRiderId) {
+      throw StateError('Booking is already assigned to this rider.');
+    }
+
     await _reconcileRiderActiveBookingPointer(resolvedRiderId);
+
+    final liveBookings = await _getLiveAssignedBookingsForRider(
+      resolvedRiderId,
+    );
+    Map<String, dynamic>? blockingBooking;
+    for (final booking in liveBookings) {
+      if (_asString(booking['id']) != resolvedBookingId) {
+        blockingBooking = booking;
+        break;
+      }
+    }
+    if (blockingBooking != null) {
+      final tripLabel = _coalesceString([
+        blockingBooking['tripNumber'],
+        blockingBooking['id'],
+      ], fallback: 'another trip');
+      throw StateError(
+        'This unit already has another live booking ($tripLabel). '
+        'Finish or reassign that trip first.',
+      );
+    }
 
     final bookingRef = _db
         .collection(AdminConstants.colBookings)
@@ -1383,7 +1489,8 @@ class AdminRepository {
     final riderRef = _db.collection(AdminConstants.colRiders).doc(resolvedRiderId);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
 
-    await _db.runTransaction((transaction) async {
+    try {
+      await _db.runTransaction((transaction) async {
       final bookingSnap = await transaction.get(bookingRef);
       if (!bookingSnap.exists) {
         throw StateError('Booking not found.');
@@ -1455,8 +1562,13 @@ class AdminRepository {
             isLiveAssignedBookingStatus(activeBooking['status']);
 
         if (activeBookingStillLive) {
+          final tripLabel = _coalesceString([
+            activeBooking['tripNumber'],
+            activeBooking['id'],
+          ], fallback: 'another trip');
           throw StateError(
-            'This rider already has another live booking assigned.',
+            'This unit already has another live booking ($tripLabel). '
+            'Finish or reassign that trip first.',
           );
         }
       }
@@ -1624,6 +1736,10 @@ class AdminRepository {
         ),
       );
     });
+    } catch (error) {
+      if (error is StateError) rethrow;
+      throw StateError(describeError(error));
+    }
   }
 
   static Future<void> cancelBooking({

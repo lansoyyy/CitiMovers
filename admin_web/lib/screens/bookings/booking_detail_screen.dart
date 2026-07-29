@@ -233,558 +233,31 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   Future<void> _assignRider() async {
-    String? selectedRiderId =
+    final currentRiderId =
         (_bookingData?['driverId'] ?? _bookingData?['riderId'])
             ?.toString()
             .trim();
-    final reasonCtrl = TextEditingController();
-    final actionLabel = selectedRiderId != null && selectedRiderId.isNotEmpty
+    final actionLabel = currentRiderId != null && currentRiderId.isNotEmpty
         ? 'Reassign Rider'
         : 'Assign Rider';
 
     final selection = await showDialog<_RiderAssignmentDialogResult>(
       context: context,
-      builder: (dialogContext) {
-        String? formError;
-        final availableRiderIds = <String>{};
-
-        Map<String, List<Map<String, dynamic>>> groupRiders(
-          List<Map<String, dynamic>> riders,
-        ) {
-          final grouped = <String, List<Map<String, dynamic>>>{};
-          for (final rider in riders) {
-            final unitName = (rider['unitName'] ?? 'Independent Units')
-                .toString()
-                .trim();
-            grouped
-                .putIfAbsent(
-                  unitName.isEmpty ? 'Independent Units' : unitName,
-                  () => <Map<String, dynamic>>[],
-                )
-                .add(rider);
-          }
-
-          final entries = grouped.entries.toList()
-            ..sort(
-              (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
-            );
-          return {
-            for (final entry in entries)
-              entry.key: entry.value
-                ..sort((a, b) {
-                  final onlineCompare =
-                      ((b['isOnline'] == true) ? 1 : 0) -
-                      ((a['isOnline'] == true) ? 1 : 0);
-                  if (onlineCompare != 0) return onlineCompare;
-                  return (a['name'] ?? '')
-                      .toString()
-                      .toLowerCase()
-                      .compareTo((b['name'] ?? '').toString().toLowerCase());
-                }),
-          };
-        }
-
-        String bookingReference(Map<String, dynamic> booking) {
-          final tripNumber = (booking['tripNumber'] ?? '').toString().trim();
-          if (tripNumber.isNotEmpty) return tripNumber;
-          final id = (booking['id'] ?? '').toString();
-          if (id.length <= 8) return id;
-          return id.substring(0, 8).toUpperCase();
-        }
-
-        String riderSubtitle(Map<String, dynamic> rider) {
-          final parts = [
-            (rider['vehicleType'] ?? 'Vehicle').toString().trim(),
-            if ((rider['plateNumber'] ?? '').toString().trim().isNotEmpty)
-              rider['plateNumber'].toString().trim(),
-            if ((rider['phoneNumber'] ?? '').toString().trim().isNotEmpty)
-              rider['phoneNumber'].toString().trim(),
-          ];
-          return parts.join(' • ');
-        }
-
-        String gpsStatus(Map<String, dynamic> rider) {
-          final gpsUpdatedAt = AdminRepository.parseTimestamp(
-            rider['locationUpdatedAt'],
-          );
-          if (gpsUpdatedAt == null) return 'No GPS ping';
-          return 'GPS ${DateFormat('MMM d, h:mm a').format(gpsUpdatedAt)}';
-        }
-
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            final viewportWidth = MediaQuery.of(dialogContext).size.width;
-            final dialogWidth = viewportWidth > 820
-                ? 640.0
-                : viewportWidth * 0.82;
-
-            return AlertDialog(
-              title: Text(actionLabel),
-              content: SizedBox(
-                width: dialogWidth,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Choose the registered unit that should handle this trip. Units already carrying another active trip are locked.',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        color: AdminTheme.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 360),
-                      child: StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: AdminRepository.streamDispatchableRiders(),
-                        builder: (context, riderSnap) {
-                          final riders =
-                              riderSnap.data ?? const <Map<String, dynamic>>[];
-                          availableRiderIds
-                            ..clear()
-                            ..addAll(
-                              riders
-                                  .map((rider) => (rider['id'] ?? '').toString())
-                                  .where((id) => id.isNotEmpty),
-                            );
-
-                          if (riderSnap.connectionState ==
-                                  ConnectionState.waiting &&
-                              riders.isEmpty) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 16),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-                          if (riderSnap.hasError) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              child: Text(
-                                'Unable to load riders right now. ${riderSnap.error}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: Colors.red,
-                                ),
-                              ),
-                            );
-                          }
-                          if (riders.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Text(
-                                'No active registered units are available.',
-                              ),
-                            );
-                          }
-
-                          return StreamBuilder<List<Map<String, dynamic>>>(
-                            stream: AdminRepository.streamActiveAssignedBookings(),
-                            builder: (context, activeSnap) {
-                              if (activeSnap.connectionState ==
-                                      ConnectionState.waiting &&
-                                  !activeSnap.hasData) {
-                                return const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 16),
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                );
-                              }
-                              if (activeSnap.hasError) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  child: Text(
-                                    'Unable to load rider availability right now. ${activeSnap.error}',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: Colors.red,
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              final activeByRider =
-                                  <String, Map<String, dynamic>>{};
-                              for (final booking
-                                  in activeSnap.data ??
-                                      const <Map<String, dynamic>>[]) {
-                                final riderId =
-                                    (booking['driverId'] ??
-                                            booking['riderId'] ??
-                                            '')
-                                        .toString()
-                                        .trim();
-                                if (riderId.isNotEmpty) {
-                                  activeByRider[riderId] = booking;
-                                }
-                              }
-
-                              final groupedRiders = groupRiders(riders);
-                              final visibleSelectedRiderId =
-                                  availableRiderIds.contains(selectedRiderId)
-                                  ? selectedRiderId
-                                  : null;
-
-                              return ListView.separated(
-                                itemCount: groupedRiders.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 14),
-                                itemBuilder: (context, index) {
-                                  final entry = groupedRiders.entries.elementAt(
-                                    index,
-                                  );
-                                  final unitRiders = entry.value;
-                                  final onlineCount = unitRiders
-                                      .where((rider) => rider['isOnline'] == true)
-                                      .length;
-
-                                  return Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: AdminTheme.surface,
-                                      borderRadius: BorderRadius.circular(18),
-                                      border: Border.all(
-                                        color: AdminTheme.divider,
-                                      ),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                entry.key,
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: AdminTheme.textPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: AdminTheme.statusActive
-                                                    .withValues(alpha: 0.1),
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                              ),
-                                              child: Text(
-                                                '$onlineCount/${unitRiders.length} online',
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color:
-                                                      AdminTheme.statusActive,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 10),
-                                        ...unitRiders.map((rider) {
-                                          final riderId =
-                                              (rider['id'] ?? '').toString();
-                                          final activeBooking =
-                                              activeByRider[riderId];
-                                          final isBusyWithOtherBooking =
-                                              activeBooking != null &&
-                                              (activeBooking['id'] ?? '') !=
-                                                  widget.bookingId;
-                                          final isSelected =
-                                              riderId == visibleSelectedRiderId;
-
-                                          return InkWell(
-                                            borderRadius:
-                                                BorderRadius.circular(16),
-                                            onTap: isBusyWithOtherBooking
-                                                ? null
-                                                : () => setDialogState(() {
-                                                    selectedRiderId = riderId;
-                                                    formError = null;
-                                                  }),
-                                            child: AnimatedContainer(
-                                              duration: const Duration(
-                                                milliseconds: 180,
-                                              ),
-                                              margin: const EdgeInsets.only(
-                                                bottom: 10,
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 10,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: isSelected
-                                                    ? AdminTheme.primary
-                                                          .withValues(
-                                                            alpha: 0.06,
-                                                          )
-                                                    : Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                                border: Border.all(
-                                                  color: isSelected
-                                                      ? AdminTheme.primary
-                                                      : AdminTheme.divider,
-                                                ),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  Radio<String>(
-                                                    value: riderId,
-                                                    groupValue:
-                                                        visibleSelectedRiderId,
-                                                    onChanged:
-                                                        isBusyWithOtherBooking
-                                                        ? null
-                                                        : (value) {
-                                                            setDialogState(() {
-                                                              selectedRiderId =
-                                                                  value;
-                                                              formError = null;
-                                                            });
-                                                          },
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Row(
-                                                            children: [
-                                                              Expanded(
-                                                                child: Text(
-                                                                  (rider['name'] ??
-                                                                          'Unnamed Rider')
-                                                                      .toString(),
-                                                                  style: GoogleFonts.inter(
-                                                                    fontSize: 13,
-                                                                    fontWeight:
-                                                                        FontWeight.w700,
-                                                                    color: AdminTheme
-                                                                        .textPrimary,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                              if ((rider['plateNumber'] ?? '')
-                                                                  .toString()
-                                                                  .trim()
-                                                                  .isNotEmpty)
-                                                                Container(
-                                                                  padding:
-                                                                      const EdgeInsets.symmetric(
-                                                                    horizontal: 8,
-                                                                    vertical: 3,
-                                                                  ),
-                                                                  decoration: BoxDecoration(
-                                                                    color: AdminTheme
-                                                                        .primary
-                                                                        .withValues(
-                                                                          alpha: 0.1,
-                                                                        ),
-                                                                    borderRadius:
-                                                                        BorderRadius
-                                                                            .circular(6),
-                                                                  ),
-                                                                  child: Text(
-                                                                    rider['plateNumber']
-                                                                        .toString()
-                                                                        .trim()
-                                                                        .toUpperCase(),
-                                                                    style: GoogleFonts.inter(
-                                                                      fontSize: 12,
-                                                                      fontWeight:
-                                                                          FontWeight.w800,
-                                                                      color: AdminTheme
-                                                                          .primary,
-                                                                      letterSpacing: 0.5,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                            ],
-                                                          ),
-                                                          const SizedBox(
-                                                            height: 4,
-                                                          ),
-                                                          Text(
-                                                            riderSubtitle(rider),
-                                                            style: GoogleFonts.inter(
-                                                              fontSize: 11,
-                                                              color: AdminTheme
-                                                                  .textSecondary,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                            height: 8,
-                                                          ),
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color:
-                                                                isBusyWithOtherBooking
-                                                                ? AdminTheme
-                                                                      .statusPending
-                                                                      .withValues(
-                                                                        alpha: 0.1,
-                                                                      )
-                                                                : (rider['isOnline'] ==
-                                                                          true
-                                                                      ? AdminTheme.statusActive.withValues(
-                                                                          alpha:
-                                                                              0.1,
-                                                                        )
-                                                                      : AdminTheme
-                                                                            .surface),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                          ),
-                                                          child: Text(
-                                                            isBusyWithOtherBooking
-                                                                ? 'Busy on ${bookingReference(activeBooking)}'
-                                                                : (rider['isOnline'] ==
-                                                                          true
-                                                                      ? 'Ready'
-                                                                      : 'Offline'),
-                                                            style: GoogleFonts.inter(
-                                                              fontSize: 11,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              color:
-                                                                  isBusyWithOtherBooking
-                                                                  ? AdminTheme
-                                                                        .statusPending
-                                                                  : (rider['isOnline'] ==
-                                                                            true
-                                                                        ? AdminTheme.statusActive
-                                                                        : AdminTheme.textSecondary),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 6,
-                                                        ),
-                                                        Text(
-                                                          gpsStatus(rider),
-                                                          style: GoogleFonts.inter(
-                                                            fontSize: 11,
-                                                            color: AdminTheme
-                                                                .textSecondary,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        }),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: reasonCtrl,
-                      onChanged: (_) {
-                        if (formError != null &&
-                            reasonCtrl.text.trim().isNotEmpty) {
-                          setDialogState(() => formError = null);
-                        }
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Assignment reason (required)',
-                        errorText: formError,
-                      ),
-                      maxLines: 2,
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final resolvedRiderId = selectedRiderId?.trim() ?? '';
-                    final trimmedReason = reasonCtrl.text.trim();
-                    final hasValidSelection =
-                        resolvedRiderId.isNotEmpty &&
-                        availableRiderIds.contains(resolvedRiderId);
-
-                    if (!hasValidSelection) {
-                      setDialogState(
-                        () => formError = 'Please select a rider.',
-                      );
-                      return;
-                    }
-                    if (trimmedReason.isEmpty) {
-                      setDialogState(
-                        () =>
-                            formError = 'Assignment reason is required.',
-                      );
-                      return;
-                    }
-
-                    Navigator.pop(
-                      dialogContext,
-                      _RiderAssignmentDialogResult(
-                        riderId: resolvedRiderId,
-                        reason: trimmedReason,
-                      ),
-                    );
-                  },
-                  child: Text(actionLabel),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => _AssignRiderDialog(
+        bookingId: widget.bookingId,
+        actionLabel: actionLabel,
+        initialRiderId: currentRiderId,
+      ),
     );
-    reasonCtrl.dispose();
 
     if (selection == null) return;
-
-    final riderId = selection.riderId;
-    final reason = selection.reason;
 
     setState(() => _isMutating = true);
     try {
       await AdminRepository.assignRiderToBooking(
         bookingId: widget.bookingId,
-        riderId: riderId,
-        reason: reason,
+        riderId: selection.riderId,
+        reason: selection.reason,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -795,7 +268,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          content: Text(AdminRepository.describeError(error)),
           backgroundColor: Colors.red,
         ),
       );
@@ -1758,6 +1231,636 @@ class _DeliveryPhotosCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AssignRiderDialog extends StatefulWidget {
+  final String bookingId;
+  final String actionLabel;
+  final String? initialRiderId;
+
+  const _AssignRiderDialog({
+    required this.bookingId,
+    required this.actionLabel,
+    this.initialRiderId,
+  });
+
+  @override
+  State<_AssignRiderDialog> createState() => _AssignRiderDialogState();
+}
+
+class _AssignRiderDialogState extends State<_AssignRiderDialog> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _reasonCtrl = TextEditingController();
+  final Set<String> _availableRiderIds = <String>{};
+
+  String? _selectedRiderId;
+  String? _formError;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialRiderId?.trim();
+    if (initial != null && initial.isNotEmpty) {
+      _selectedRiderId = initial;
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  Map<String, List<Map<String, dynamic>>> _groupRiders(
+    List<Map<String, dynamic>> riders,
+  ) {
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final rider in riders) {
+      final unitName =
+          (rider['unitName'] ?? 'Independent Units').toString().trim();
+      grouped
+          .putIfAbsent(
+            unitName.isEmpty ? 'Independent Units' : unitName,
+            () => <Map<String, dynamic>>[],
+          )
+          .add(rider);
+    }
+
+    final entries = grouped.entries.toList()
+      ..sort((a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()));
+
+    return {
+      for (final entry in entries)
+        entry.key: entry.value
+          ..sort((a, b) {
+            final onlineCompare =
+                ((b['isOnline'] == true) ? 1 : 0) -
+                ((a['isOnline'] == true) ? 1 : 0);
+            if (onlineCompare != 0) return onlineCompare;
+            return (a['name'] ?? '')
+                .toString()
+                .toLowerCase()
+                .compareTo((b['name'] ?? '').toString().toLowerCase());
+          }),
+    };
+  }
+
+  List<Map<String, dynamic>> _filterRiders(List<Map<String, dynamic>> riders) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return riders;
+
+    return riders.where((rider) {
+      final haystack = [
+        rider['name'],
+        rider['plateNumber'],
+        rider['vehicleType'],
+        rider['unitName'],
+        rider['phoneNumber'],
+      ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+      return haystack.contains(query);
+    }).toList();
+  }
+
+  String _bookingReference(Map<String, dynamic> booking) {
+    final tripNumber = (booking['tripNumber'] ?? '').toString().trim();
+    if (tripNumber.isNotEmpty) return tripNumber;
+    final id = (booking['id'] ?? '').toString();
+    if (id.length <= 8) return id;
+    return id.substring(0, 8).toUpperCase();
+  }
+
+  String _riderSubtitle(Map<String, dynamic> rider) {
+    final parts = [
+      (rider['vehicleType'] ?? 'Vehicle').toString().trim(),
+      if ((rider['phoneNumber'] ?? '').toString().trim().isNotEmpty)
+        rider['phoneNumber'].toString().trim(),
+    ];
+    return parts.join(' • ');
+  }
+
+  String _gpsStatus(Map<String, dynamic> rider) {
+    final gpsUpdatedAt = AdminRepository.parseTimestamp(
+      rider['locationUpdatedAt'],
+    );
+    if (gpsUpdatedAt == null) return 'No GPS ping';
+    return 'GPS ${DateFormat('MMM d, h:mm a').format(gpsUpdatedAt)}';
+  }
+
+  bool _isBusyWithOtherBooking(
+    Map<String, dynamic> rider,
+    Map<String, Map<String, dynamic>> activeByRider,
+  ) {
+    final riderId = (rider['id'] ?? '').toString().trim();
+    if (riderId.isEmpty) return false;
+
+    final activeBooking = activeByRider[riderId];
+    if (activeBooking != null &&
+        (activeBooking['id'] ?? '').toString() != widget.bookingId) {
+      return true;
+    }
+
+    final pointerBookingId = (rider['activeBookingId'] ?? '').toString().trim();
+    if (pointerBookingId.isEmpty || pointerBookingId == widget.bookingId) {
+      return false;
+    }
+
+    return AdminRepository.isLiveAssignedBookingStatus(
+      rider['activeBookingStatus'],
+    );
+  }
+
+  Map<String, dynamic>? _busyBookingForRider(
+    Map<String, dynamic> rider,
+    Map<String, Map<String, dynamic>> activeByRider,
+  ) {
+    final riderId = (rider['id'] ?? '').toString().trim();
+    final activeBooking = activeByRider[riderId];
+    if (activeBooking != null &&
+        (activeBooking['id'] ?? '').toString() != widget.bookingId) {
+      return activeBooking;
+    }
+
+    final pointerBookingId = (rider['activeBookingId'] ?? '').toString().trim();
+    if (pointerBookingId.isNotEmpty &&
+        pointerBookingId != widget.bookingId &&
+        AdminRepository.isLiveAssignedBookingStatus(
+          rider['activeBookingStatus'],
+        )) {
+      return {
+        'id': pointerBookingId,
+        'tripNumber': pointerBookingId,
+      };
+    }
+    return null;
+  }
+
+  void _submit() {
+    final resolvedRiderId = _selectedRiderId?.trim() ?? '';
+    final trimmedReason = _reasonCtrl.text.trim();
+    final hasValidSelection =
+        resolvedRiderId.isNotEmpty &&
+        _availableRiderIds.contains(resolvedRiderId);
+
+    if (!hasValidSelection) {
+      setState(() => _formError = 'Please select a rider.');
+      return;
+    }
+    if (trimmedReason.isEmpty) {
+      setState(() => _formError = 'Assignment reason is required.');
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      _RiderAssignmentDialogResult(
+        riderId: resolvedRiderId,
+        reason: trimmedReason,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewportWidth = MediaQuery.of(context).size.width;
+    final dialogWidth = viewportWidth > 820 ? 640.0 : viewportWidth * 0.82;
+
+    return AlertDialog(
+      title: Text(widget.actionLabel),
+      content: SizedBox(
+        width: dialogWidth,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Choose the registered unit that should handle this trip. Units already carrying another active trip are locked.',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: AdminTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _searchCtrl,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                labelText: 'Search units',
+                hintText: 'Name, plate, phone, vehicle, or unit',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        icon: const Icon(Icons.clear, size: 18),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: AdminRepository.streamDispatchableRiders(),
+                builder: (context, riderSnap) {
+                  final allRiders =
+                      riderSnap.data ?? const <Map<String, dynamic>>[];
+                  _availableRiderIds
+                    ..clear()
+                    ..addAll(
+                      allRiders
+                          .map((rider) => (rider['id'] ?? '').toString())
+                          .where((id) => id.isNotEmpty),
+                    );
+
+                  if (riderSnap.connectionState == ConnectionState.waiting &&
+                      allRiders.isEmpty) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+                  if (riderSnap.hasError) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Unable to load riders right now. ${AdminRepository.describeError(riderSnap.error!)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: Colors.red,
+                        ),
+                      ),
+                    );
+                  }
+                  if (allRiders.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('No active registered units are available.'),
+                    );
+                  }
+
+                  final riders = _filterRiders(allRiders);
+                  if (riders.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'No units matched "$_searchQuery".',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: AdminTheme.textSecondary,
+                        ),
+                      ),
+                    );
+                  }
+
+                  return StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: AdminRepository.streamActiveAssignedBookings(),
+                    builder: (context, activeSnap) {
+                      if (activeSnap.connectionState ==
+                              ConnectionState.waiting &&
+                          !activeSnap.hasData) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      if (activeSnap.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            'Unable to load rider availability right now. ${AdminRepository.describeError(activeSnap.error!)}',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: Colors.red,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final activeByRider = <String, Map<String, dynamic>>{};
+                      for (final booking
+                          in activeSnap.data ??
+                              const <Map<String, dynamic>>[]) {
+                        final riderId =
+                            (booking['driverId'] ?? booking['riderId'] ?? '')
+                                .toString()
+                                .trim();
+                        if (riderId.isNotEmpty) {
+                          activeByRider[riderId] = booking;
+                        }
+                      }
+
+                      final groupedRiders = _groupRiders(riders);
+                      final visibleSelectedRiderId =
+                          _availableRiderIds.contains(_selectedRiderId)
+                          ? _selectedRiderId
+                          : null;
+
+                      return ListView.separated(
+                        itemCount: groupedRiders.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 14),
+                        itemBuilder: (context, index) {
+                          final entry = groupedRiders.entries.elementAt(index);
+                          final unitRiders = entry.value;
+                          final onlineCount = unitRiders
+                              .where((rider) => rider['isOnline'] == true)
+                              .length;
+
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AdminTheme.surface,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: AdminTheme.divider),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        entry.key,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: AdminTheme.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AdminTheme.statusActive
+                                            .withValues(alpha: 0.1),
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                      ),
+                                      child: Text(
+                                        '$onlineCount/${unitRiders.length} online',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: AdminTheme.statusActive,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                ...unitRiders.map((rider) {
+                                  final riderId =
+                                      (rider['id'] ?? '').toString();
+                                  final busyBooking = _busyBookingForRider(
+                                    rider,
+                                    activeByRider,
+                                  );
+                                  final isBusy = _isBusyWithOtherBooking(
+                                    rider,
+                                    activeByRider,
+                                  );
+                                  final isSelected =
+                                      riderId == visibleSelectedRiderId;
+
+                                  return InkWell(
+                                    borderRadius: BorderRadius.circular(16),
+                                    onTap: isBusy
+                                        ? null
+                                        : () => setState(() {
+                                              _selectedRiderId = riderId;
+                                              _formError = null;
+                                            }),
+                                    child: AnimatedContainer(
+                                      duration:
+                                          const Duration(milliseconds: 180),
+                                      margin: const EdgeInsets.only(
+                                        bottom: 10,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AdminTheme.primary
+                                                .withValues(alpha: 0.06)
+                                            : Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? AdminTheme.primary
+                                              : AdminTheme.divider,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Radio<String>(
+                                            value: riderId,
+                                            groupValue: visibleSelectedRiderId,
+                                            onChanged: isBusy
+                                                ? null
+                                                : (value) {
+                                                    setState(() {
+                                                      _selectedRiderId = value;
+                                                      _formError = null;
+                                                    });
+                                                  },
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        (rider['name'] ??
+                                                                'Unnamed Rider')
+                                                            .toString(),
+                                                        style:
+                                                            GoogleFonts.inter(
+                                                          fontSize: 13,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: AdminTheme
+                                                              .textPrimary,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if ((rider['plateNumber'] ??
+                                                            '')
+                                                        .toString()
+                                                        .trim()
+                                                        .isNotEmpty)
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 3,
+                                                        ),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: AdminTheme
+                                                              .primary
+                                                              .withValues(
+                                                            alpha: 0.1,
+                                                          ),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(6),
+                                                        ),
+                                                        child: Text(
+                                                          rider['plateNumber']
+                                                              .toString()
+                                                              .trim()
+                                                              .toUpperCase(),
+                                                          style: GoogleFonts
+                                                              .inter(
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .w800,
+                                                            color: AdminTheme
+                                                                .primary,
+                                                            letterSpacing: 0.5,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  _riderSubtitle(rider),
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 11,
+                                                    color: AdminTheme
+                                                        .textSecondary,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: isBusy
+                                                        ? AdminTheme
+                                                              .statusPending
+                                                              .withValues(
+                                                            alpha: 0.1,
+                                                          )
+                                                        : (rider['isOnline'] ==
+                                                                  true
+                                                              ? AdminTheme
+                                                                    .statusActive
+                                                                    .withValues(
+                                                                    alpha: 0.1,
+                                                                  )
+                                                              : AdminTheme
+                                                                    .surface),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      999,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    isBusy
+                                                        ? 'Busy on ${_bookingReference(busyBooking ?? const {})}'
+                                                        : (rider['isOnline'] ==
+                                                                  true
+                                                              ? 'Ready'
+                                                              : 'Offline'),
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: isBusy
+                                                          ? AdminTheme
+                                                              .statusPending
+                                                          : (rider['isOnline'] ==
+                                                                    true
+                                                                ? AdminTheme
+                                                                    .statusActive
+                                                                : AdminTheme
+                                                                    .textSecondary),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  _gpsStatus(rider),
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 11,
+                                                    color: AdminTheme
+                                                        .textSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reasonCtrl,
+              onChanged: (_) {
+                if (_formError != null &&
+                    _reasonCtrl.text.trim().isNotEmpty) {
+                  setState(() => _formError = null);
+                }
+              },
+              decoration: InputDecoration(
+                labelText: 'Assignment reason (required)',
+                errorText: _formError,
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          child: Text(widget.actionLabel),
+        ),
+      ],
     );
   }
 }
