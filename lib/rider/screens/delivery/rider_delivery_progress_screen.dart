@@ -377,6 +377,130 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     );
   }
 
+  /// Navigate back one step within the delivery workflow instead of popping
+  /// the entire screen. This lets riders return to a previous sub-step (e.g.
+  /// signature -> ID photo) to capture missing information.
+  Future<void> _goBackOneStep() async {
+    _logActivity('go_back_one_step');
+
+    if (_currentStep == DeliveryStep.receiving) {
+      switch (_receivingSubStep) {
+        case ReceivingSubStep.signature:
+          await _setReceivingSubStep(ReceivingSubStep.received);
+          return;
+        case ReceivingSubStep.received:
+          await _setReceivingSubStep(ReceivingSubStep.receiverIdPhoto);
+          return;
+        case ReceivingSubStep.receiverIdPhoto:
+          await _setReceivingSubStep(ReceivingSubStep.receiverName);
+          return;
+        case ReceivingSubStep.receiverName:
+          await _setCurrentStep(DeliveryStep.damageReport);
+          return;
+      }
+    }
+
+    if (_currentStep == DeliveryStep.damageReport) {
+      await _setCurrentStep(
+        DeliveryStep.unloading,
+        unloadingSubStep: UnloadingSubStep.finishUnloading,
+      );
+      return;
+    }
+
+    if (_currentStep == DeliveryStep.unloading) {
+      switch (_unloadingSubStep) {
+        case UnloadingSubStep.finishUnloading:
+          await _setUnloadingSubStep(UnloadingSubStep.startUnloading);
+          return;
+        case UnloadingSubStep.startUnloading:
+          await _setUnloadingSubStep(UnloadingSubStep.arrived);
+          return;
+        case UnloadingSubStep.arrived:
+        case null:
+          await _setCurrentStep(DeliveryStep.delivering);
+          return;
+      }
+    }
+
+    if (_currentStep == DeliveryStep.delivering) {
+      await _setCurrentStep(
+        DeliveryStep.loading,
+        loadingSubStep: LoadingSubStep.finishLoading,
+      );
+      return;
+    }
+
+    if (_currentStep == DeliveryStep.loading) {
+      switch (_loadingSubStep) {
+        case LoadingSubStep.finishLoading:
+          await _setLoadingSubStep(LoadingSubStep.startLoading);
+          return;
+        case LoadingSubStep.startLoading:
+          await _setLoadingSubStep(LoadingSubStep.arrived);
+          return;
+        case LoadingSubStep.arrived:
+        case null:
+          await _setCurrentStep(DeliveryStep.headingToWarehouse);
+          return;
+      }
+    }
+
+    // At the very first step: pop the screen to return home.
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Convenience helper used by the signature screen to jump straight back
+  /// to the ID-photo sub-step when the rider tries to complete delivery
+  /// without a valid receiver ID photo.
+  Future<void> _goBackToReceiverIdPhoto() async {
+    _logActivity('go_back_to_receiver_id_photo');
+    // Reset the confirmation so the rider must re-verify the photo after
+    // capturing it.
+    setState(() => _receiverIdPhotoConfirmed = false);
+    await _setReceivingSubStep(ReceivingSubStep.receiverIdPhoto);
+  }
+
+  Future<void> _setReceivingSubStep(ReceivingSubStep subStep) async {
+    setState(() {
+      _receivingSubStep = subStep;
+      // Going back to the ID-photo step requires the rider to re-verify the
+      // captured photo before proceeding again.
+      if (subStep == ReceivingSubStep.receiverIdPhoto) {
+        _receiverIdPhotoConfirmed = false;
+      }
+    });
+    await _persistReceivingProgressToFirestore(
+      receivingSubStep: subStep,
+      receiverName: _receiverNameController.text.trim(),
+      receiverIdPhotoConfirmed: _receiverIdPhotoConfirmed,
+    );
+    await _saveDeliveryState();
+  }
+
+  Future<void> _setLoadingSubStep(LoadingSubStep subStep) async {
+    setState(() => _loadingSubStep = subStep);
+    await _saveDeliveryState();
+  }
+
+  Future<void> _setUnloadingSubStep(UnloadingSubStep subStep) async {
+    setState(() => _unloadingSubStep = subStep);
+    await _saveDeliveryState();
+  }
+
+  Future<void> _setCurrentStep(
+    DeliveryStep step, {
+    LoadingSubStep? loadingSubStep,
+    UnloadingSubStep? unloadingSubStep,
+  }) async {
+    setState(() {
+      _currentStep = step;
+      if (loadingSubStep != null) _loadingSubStep = loadingSubStep;
+      if (unloadingSubStep != null) _unloadingSubStep = unloadingSubStep;
+    });
+    await _saveDeliveryState();
+  }
+
   List<Map<String, dynamic>> _parsePicklistItems(dynamic raw) {
     if (raw is! List) return [];
     return raw
@@ -3919,14 +4043,24 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   @override
   Widget build(BuildContext context) {
     return PopScope(
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
           unawaited(_persistPicklistItems());
+          return;
         }
+        // Intercept the system back gesture/button and step back through the
+        // delivery workflow instead of popping to the home screen.
+        unawaited(_goBackOneStep());
       },
       child: Scaffold(
         backgroundColor: AppColors.scaffoldBackground,
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.white),
+            onPressed: () => unawaited(_goBackOneStep()),
+            tooltip: 'Back',
+          ),
           title: const Text('Delivery Progress'),
           backgroundColor: AppColors.blueAccent,
           foregroundColor: AppColors.textPrimary,
@@ -5396,6 +5530,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         final nowPHT = DateTime.now().toUtc().add(const Duration(hours: 8));
         final formattedDateTime =
             '${nowPHT.month.toString().padLeft(2, '0')}/${nowPHT.day.toString().padLeft(2, '0')}/${nowPHT.year} ${nowPHT.hour.toString().padLeft(2, '0')}:${nowPHT.minute.toString().padLeft(2, '0')}';
+        final idPhotoMissing = !_hasPhotoEvidence(
+          _idPhoto,
+          const ['receiver_id', 'receiver_id_photo'],
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -5579,6 +5717,26 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                         fontSize: 16, fontFamily: 'Bold', color: Colors.white)),
               ),
             ),
+            if (idPhotoMissing) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () => unawaited(_goBackToReceiverIdPhoto()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Back to take ID photo',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontFamily: 'Bold',
+                          color: Colors.white)),
+                ),
+              ),
+            ],
           ],
         );
     }
