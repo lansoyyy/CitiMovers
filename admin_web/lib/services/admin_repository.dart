@@ -341,23 +341,6 @@ class AdminRepository {
     return text.isEmpty ? fallback : text;
   }
 
-  static List<String> _asStringList(dynamic value) {
-    if (value is List) {
-      return value
-          .map((entry) => entry?.toString().trim() ?? '')
-          .where((entry) => entry.isNotEmpty)
-          .toList();
-    }
-    if (value is Map) {
-      return value.values
-          .map((entry) => entry?.toString().trim() ?? '')
-          .where((entry) => entry.isNotEmpty)
-          .toList();
-    }
-    final single = _asString(value);
-    return single.isEmpty ? <String>[] : <String>[single];
-  }
-
   static String _coalesceString(List<dynamic> values, {String fallback = ''}) {
     for (final value in values) {
       final resolved = _asString(value);
@@ -574,23 +557,41 @@ class AdminRepository {
   }
 
   static List<String> _normalizeDeliveryPhotos(dynamic rawPhotos) {
-    if (rawPhotos is Map) {
-      return rawPhotos.values
-          .map((entry) {
-            // Rider app stores photos as { 'url': '...', 'uploadedAt': ... }
-            if (entry is Map) {
-              return (entry['url'] ?? entry['imageUrl'] ?? '')
-                  .toString()
-                  .trim();
-            }
-            return entry?.toString().trim() ?? '';
-          })
-          .where((url) => url.startsWith('http'))
-          .toList();
+    final collected = <String>[];
+    _collectDeliveryPhotoUrls(rawPhotos, collected);
+    return collected.where((url) => url.startsWith('http')).toList();
+  }
+
+  /// Recursively extracts photo URLs from the rider app's deliveryPhotos
+  /// structure, which may contain single URLs, `{url, uploadedAt}` objects,
+  /// or nested lists such as `damage_photos`.
+  static void _collectDeliveryPhotoUrls(dynamic value, List<String> out) {
+    if (value == null) return;
+
+    if (value is Map) {
+      // If the map itself represents a photo object, extract its URL.
+      final photoUrl =
+          (value['url'] ?? value['imageUrl'])?.toString().trim() ?? '';
+      if (photoUrl.isNotEmpty) {
+        out.add(photoUrl);
+        return;
+      }
+      // Otherwise recurse into its values.
+      for (final entry in value.values) {
+        _collectDeliveryPhotoUrls(entry, out);
+      }
+      return;
     }
-    return _asStringList(
-      rawPhotos,
-    ).where((url) => url.startsWith('http')).toList();
+
+    if (value is List) {
+      for (final entry in value) {
+        _collectDeliveryPhotoUrls(entry, out);
+      }
+      return;
+    }
+
+    final text = value.toString().trim();
+    if (text.isNotEmpty) out.add(text);
   }
 
   static Map<String, dynamic> normalizeUserData(

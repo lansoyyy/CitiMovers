@@ -1153,7 +1153,7 @@ class _DemurrageCard extends StatelessWidget {
 
   String _fmt(dynamic ts) {
     final dt = AdminRepository.parseTimestamp(ts);
-    return dt != null ? DateFormat('h:mm a').format(dt) : '—';
+    return dt != null ? DateFormat('MMM d, h:mm a').format(dt) : '—';
   }
 
   Widget _buildDemurrageRow(String label, String value) => Padding(
