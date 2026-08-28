@@ -15,7 +15,6 @@ class IntegrationsConfig {
     // 'billing@citimovers.net',
     // 'finance@citimovers.net',
     // 'president@citimovers.net',
-    'ceo@citimovers.net',
     'potohubsystem@gmail.com',
     'olanalans12345@gmail.com',
     'excel_gesite@yahoo.com'
