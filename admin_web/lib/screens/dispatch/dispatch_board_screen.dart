@@ -618,9 +618,40 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
 
   Future<bool> _assignBookingToRider(
     Map<String, dynamic> booking,
-    Map<String, dynamic> rider,
-  ) async {
+    Map<String, dynamic> rider, {
+    Map<String, dynamic>? activityBooking,
+  }) async {
     if (_isAssigning) return false;
+
+    final isBusy = activityBooking != null;
+    if (isBusy) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Force assign busy unit?'),
+          content: Text(
+            'This unit is currently busy on trip '
+            '${_bookingReference(activityBooking)}. '
+            'Assigning it to a new trip may leave the previous trip '
+            'incomplete. Are you sure you want to continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminTheme.statusPending,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Force Assign'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return false;
+    }
 
     final reasonCtrl = TextEditingController(
       text: 'Dispatched from the admin dispatch board.',
@@ -701,6 +732,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         bookingId: (booking['id'] ?? '').toString(),
         riderId: (rider['id'] ?? '').toString(),
         reason: reason,
+        force: isBusy,
       );
       if (!mounted) return false;
       _scrollUnitsPanelToRider((rider['id'] ?? '').toString());
@@ -1282,7 +1314,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                 );
                                 final canAssign =
                                     selectedBooking != null &&
-                                    activityBooking == null &&
                                     !_isAssigning;
                                 final activityColor = _statusColor(
                                   (activityBooking?['status'] ?? '').toString(),
@@ -1451,6 +1482,8 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                               ? () => _assignBookingToRider(
                                                   selectedBooking,
                                                   rider,
+                                                  activityBooking:
+                                                      activityBooking,
                                                 )
                                               : null,
                                           icon: const Icon(
@@ -1459,10 +1492,10 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                           label: Text(
                                             selectedBooking == null
                                                 ? 'Select Booking'
-                                                : activityBooking != null
-                                                ? 'Busy on Current Trip'
                                                 : _isAssigning
                                                 ? 'Assigning...'
+                                                : activityBooking != null
+                                                ? 'Force Assign to Trip'
                                                 : 'Assign to Trip',
                                           ),
                                         ),

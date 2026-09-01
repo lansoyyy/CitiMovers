@@ -1163,6 +1163,10 @@ class BookingService {
       if (loadingStartedAt != null) {
         updateData['loadingStartedAt'] =
             loadingStartedAt.millisecondsSinceEpoch;
+        // Keep the admin timeline timestamp in sync with the demurrage start.
+        if (status == 'arrived_at_pickup') {
+          updateData['arrivedAtPickupAt'] = loadingStartedAt.millisecondsSinceEpoch;
+        }
       }
 
       if (loadingCompletedAt != null) {
@@ -1173,6 +1177,10 @@ class BookingService {
       if (unloadingStartedAt != null) {
         updateData['unloadingStartedAt'] =
             unloadingStartedAt.millisecondsSinceEpoch;
+        // Keep the admin timeline timestamp in sync with the demurrage start.
+        if (status == 'arrived_at_dropoff') {
+          updateData['arrivedAtDropoffAt'] = unloadingStartedAt.millisecondsSinceEpoch;
+        }
       }
 
       if (unloadingCompletedAt != null) {

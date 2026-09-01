@@ -10,6 +10,14 @@ import '../../services/admin_repository.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
+Map<String, dynamic> _asMap(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return value.map((key, entry) => MapEntry(key.toString(), entry));
+  }
+  return <String, dynamic>{};
+}
+
 class BookingDetailScreen extends StatefulWidget {
   final String bookingId;
   const BookingDetailScreen({super.key, required this.bookingId});
@@ -21,10 +29,12 @@ class BookingDetailScreen extends StatefulWidget {
 class _RiderAssignmentDialogResult {
   final String riderId;
   final String reason;
+  final bool force;
 
   const _RiderAssignmentDialogResult({
     required this.riderId,
     required this.reason,
+    this.force = false,
   });
 }
 
@@ -258,6 +268,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         bookingId: widget.bookingId,
         riderId: selection.riderId,
         reason: selection.reason,
+        force: selection.force,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -396,6 +407,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         ),
     ];
 
+    final deliveryPhotosMap = _asMap(_bookingData?['deliveryPhotosMap']);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final compactActions = constraints.maxWidth < 900;
@@ -474,9 +487,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               const SizedBox(height: 16),
               _SupportNotesCard(bookingId: widget.bookingId, d: d),
               const SizedBox(height: 16),
-              if ((d['deliveryPhotos'] as List?)?.isNotEmpty == true)
-                _DeliveryPhotosCard(
-                  photos: List<String>.from(d['deliveryPhotos']),
+              if (deliveryPhotosMap.isNotEmpty)
+                _CategorizedDeliveryPhotosCard(
+                  photosMap: deliveryPhotosMap,
                 ),
             ],
           ),
@@ -591,6 +604,27 @@ class _StatusTimelineCard extends StatelessWidget {
     ('completed', 'Completed', 'completedAt'),
   ];
 
+  /// The rider app historically stores arrival times under the demurrage
+  /// fields (`loadingStartedAt` / `unloadingStartedAt`). Fall back to those
+  /// when the explicit arrival timestamp is missing so the timeline is
+  /// always populated.
+  static DateTime? _resolveTimelineTimestamp(
+    Map<String, dynamic> d,
+    String statusKey,
+    String tsField,
+  ) {
+    final explicit = AdminRepository.parseTimestamp(d[tsField]);
+    if (explicit != null) return explicit;
+
+    if (statusKey == 'arrived_at_pickup') {
+      return AdminRepository.parseTimestamp(d['loadingStartedAt']);
+    }
+    if (statusKey == 'arrived_at_dropoff') {
+      return AdminRepository.parseTimestamp(d['unloadingStartedAt']);
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentStatus = d['status'] ?? '';
@@ -607,7 +641,7 @@ class _StatusTimelineCard extends StatelessWidget {
             const SizedBox(height: 16),
             ..._timeline.map((step) {
               final (statusKey, label, tsField) = step;
-              final ts = AdminRepository.parseTimestamp(d[tsField]);
+              final ts = _resolveTimelineTimestamp(d, statusKey, tsField);
               final stepIdx = statusOrder.indexOf(statusKey);
               final isDone = stepIdx >= 0 && stepIdx <= currentIdx;
               final isCurrent = statusKey == currentStatus;
@@ -1187,12 +1221,166 @@ class _DemurrageCard extends StatelessWidget {
   );
 }
 
-class _DeliveryPhotosCard extends StatelessWidget {
-  final List<String> photos;
-  const _DeliveryPhotosCard({required this.photos});
+class _PhotoCategory {
+  final String title;
+  final List<String> keys;
+  final bool includeServiceInvoicePrefix;
+
+  const _PhotoCategory({
+    required this.title,
+    required this.keys,
+    this.includeServiceInvoicePrefix = false,
+  });
+}
+
+class _CategorizedDeliveryPhotosCard extends StatelessWidget {
+  final Map<String, dynamic> photosMap;
+
+  const _CategorizedDeliveryPhotosCard({required this.photosMap});
+
+  static const _categories = <_PhotoCategory>[
+    _PhotoCategory(
+      title: 'Arrived at Warehouse',
+      keys: [
+        'warehouse_arrival',
+        'pickup_arrival',
+        'warehouse_arrival_photo_url',
+        'pickup_arrival_photo_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Start Loading',
+      keys: [
+        'start_loading',
+        'start_loading_photo',
+        'start_loading_photo_url',
+        'loading_photo_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Finish Loading',
+      keys: [
+        'finish_loading',
+        'finished_loading',
+        'finish_loading_photo',
+        'finished_loading_photo',
+        'finish_loading_photo_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Service Invoice (POD)',
+      keys: ['service_invoice', 'pod', 'invoice'],
+      includeServiceInvoicePrefix: true,
+    ),
+    _PhotoCategory(
+      title: 'Arrived at Destination',
+      keys: [
+        'destination_arrival',
+        'dropoff_arrival',
+        'destination_arrival_photo_url',
+        'dropoff_arrival_photo_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Start Unloading',
+      keys: [
+        'start_unloading',
+        'start_unloading_photo',
+        'start_unloading_photo_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Finish Unloading',
+      keys: [
+        'finish_unloading',
+        'finished_unloading',
+        'finish_unloading_photo',
+        'finished_unloading_photo',
+        'finish_unloading_photo_url',
+        'unloading_photo_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Damages',
+      keys: [
+        'damage_photo',
+        'damaged_boxes',
+        'empty_truck',
+        'damage_photos',
+        'damaged_items',
+      ],
+    ),
+    _PhotoCategory(
+      title: 'Signed Documents',
+      keys: [
+        'receiver_signature',
+        'signature',
+        'receiver_signature_url',
+      ],
+    ),
+    _PhotoCategory(
+      title: "Picture of ID's",
+      keys: ['receiver_id', 'receiver_id_photo', 'receiver_id_photo_url'],
+    ),
+  ];
+
+  List<String> _extractUrls(dynamic value) {
+    final urls = <String>[];
+    if (value == null) return urls;
+
+    if (value is List) {
+      for (final item in value) {
+        urls.addAll(_extractUrls(item));
+      }
+      return urls;
+    }
+
+    if (value is Map) {
+      for (final field in ['url', 'imageUrl', 'downloadUrl']) {
+        final url = value[field]?.toString().trim();
+        if (url != null &&
+            url.isNotEmpty &&
+            (url.startsWith('http://') || url.startsWith('https://'))) {
+          urls.add(url);
+          return urls;
+        }
+      }
+      // Some maps hold nested photo lists (e.g. damage_photos).
+      for (final entry in value.values) {
+        urls.addAll(_extractUrls(entry));
+      }
+      return urls;
+    }
+
+    final text = value.toString().trim();
+    if (text.isNotEmpty &&
+        (text.startsWith('http://') || text.startsWith('https://'))) {
+      urls.add(text);
+    }
+    return urls;
+  }
+
+  List<String> _categoryUrls(_PhotoCategory category) {
+    final urls = <String>[];
+    for (final key in category.keys) {
+      urls.addAll(_extractUrls(photosMap[key]));
+    }
+    if (category.includeServiceInvoicePrefix) {
+      for (final entry in photosMap.entries) {
+        if (entry.key.startsWith('service_invoice_')) {
+          urls.addAll(_extractUrls(entry.value));
+        }
+      }
+    }
+    return urls;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final visibleCategories = _categories
+        .where((category) => _categoryUrls(category).isNotEmpty)
+        .toList();
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -1201,33 +1389,62 @@ class _DeliveryPhotosCard extends StatelessWidget {
           children: [
             const SectionHeader(title: 'Delivery Photos'),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: photos
-                  .map(
-                    (url) => GestureDetector(
-                      onTap: () => showDialog(
-                        context: context,
-                        builder: (_) => Dialog(
-                          child: InteractiveViewer(
-                            child: CachedNetworkImage(imageUrl: url),
-                          ),
+            if (visibleCategories.isEmpty)
+              const EmptyState(
+                message: 'No delivery photos uploaded yet',
+                icon: Icons.photo_library_outlined,
+              )
+            else
+              ...visibleCategories.map((category) {
+                final urls = _categoryUrls(category);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        category.title,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AdminTheme.textSecondary,
+                          letterSpacing: 0.4,
                         ),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: url,
-                          width: 140,
-                          height: 100,
-                          fit: BoxFit.cover,
-                        ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: urls
+                            .map(
+                              (url) => GestureDetector(
+                                onTap: () => showDialog(
+                                  context: context,
+                                  builder: (_) => Dialog(
+                                    child: InteractiveViewer(
+                                      child: CachedNetworkImage(
+                                        imageUrl: url,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: CachedNetworkImage(
+                                    imageUrl: url,
+                                    width: 140,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
-                    ),
-                  )
-                  .toList(),
-            ),
+                    ],
+                  ),
+                );
+              }),
           ],
         ),
       ),
@@ -1258,6 +1475,9 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
   String? _selectedRiderId;
   String? _formError;
   String _searchQuery = '';
+  List<Map<String, dynamic>> _allRiders = const <Map<String, dynamic>>[];
+  Map<String, Map<String, dynamic>> _activeBookingsByRider =
+      const <String, Map<String, dynamic>>{};
 
   @override
   void initState() {
@@ -1398,7 +1618,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
     return null;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final resolvedRiderId = _selectedRiderId?.trim() ?? '';
     final trimmedReason = _reasonCtrl.text.trim();
     final hasValidSelection =
@@ -1414,11 +1634,56 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
       return;
     }
 
+    final selectedRider = _allRiders.firstWhere(
+      (rider) => (rider['id'] ?? '').toString() == resolvedRiderId,
+      orElse: () => const <String, dynamic>{},
+    );
+    final isBusy = _isBusyWithOtherBooking(
+      selectedRider,
+      _activeBookingsByRider,
+    );
+
+    if (isBusy) {
+      final busyBooking = _busyBookingForRider(
+        selectedRider,
+        _activeBookingsByRider,
+      );
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Force assign busy unit?'),
+          content: Text(
+            'This unit is currently busy on trip '
+            '${_bookingReference(busyBooking ?? const {})}. '
+            'Assigning it to a new trip may leave the previous trip '
+            'incomplete. Are you sure you want to continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminTheme.statusPending,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Force Assign'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    if (!mounted) return;
+
     Navigator.pop(
       context,
       _RiderAssignmentDialogResult(
         riderId: resolvedRiderId,
         reason: trimmedReason,
+        force: isBusy,
       ),
     );
   }
@@ -1471,6 +1736,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                 builder: (context, riderSnap) {
                   final allRiders =
                       riderSnap.data ?? const <Map<String, dynamic>>[];
+                  _allRiders = allRiders;
                   _availableRiderIds
                     ..clear()
                     ..addAll(
@@ -1559,6 +1825,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                           activeByRider[riderId] = booking;
                         }
                       }
+                      _activeBookingsByRider = activeByRider;
 
                       final groupedRiders = _groupRiders(riders);
                       final visibleSelectedRiderId =
@@ -1638,12 +1905,10 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
 
                                   return InkWell(
                                     borderRadius: BorderRadius.circular(16),
-                                    onTap: isBusy
-                                        ? null
-                                        : () => setState(() {
-                                              _selectedRiderId = riderId;
-                                              _formError = null;
-                                            }),
+                                    onTap: () => setState(() {
+                                      _selectedRiderId = riderId;
+                                      _formError = null;
+                                    }),
                                     child: AnimatedContainer(
                                       duration:
                                           const Duration(milliseconds: 180),
@@ -1672,14 +1937,12 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                           Radio<String>(
                                             value: riderId,
                                             groupValue: visibleSelectedRiderId,
-                                            onChanged: isBusy
-                                                ? null
-                                                : (value) {
-                                                    setState(() {
-                                                      _selectedRiderId = value;
-                                                      _formError = null;
-                                                    });
-                                                  },
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _selectedRiderId = value;
+                                                _formError = null;
+                                              });
+                                            },
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
@@ -1806,6 +2069,19 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                                     ),
                                                   ),
                                                 ),
+                                                if (isBusy) ...[
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    'Selecting this unit will override its current trip.',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10,
+                                                      color: AdminTheme
+                                                          .statusPending,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ],
                                                 const SizedBox(height: 6),
                                                 Text(
                                                   _gpsStatus(rider),
@@ -1857,7 +2133,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
           child: const Text('Cancel'),
         ),
         ElevatedButton(
-          onPressed: _submit,
+          onPressed: () => _submit(),
           child: Text(widget.actionLabel),
         ),
       ],

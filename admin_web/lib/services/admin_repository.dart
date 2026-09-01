@@ -804,6 +804,9 @@ class AdminRepository {
           parseTimestamp(raw['issueClaimedAt']),
       'issueNotesCount': issueNotesCount,
       'deliveryPhotos': deliveryPhotos,
+      'deliveryPhotosMap': raw['deliveryPhotos'] is Map
+          ? Map<String, dynamic>.from(raw['deliveryPhotos'] as Map)
+          : <String, dynamic>{},
       'createdAt':
           parseTimestamp(raw['createdAt']) ?? parseTimestamp(raw['updatedAt']),
       'updatedAt': parseTimestamp(raw['updatedAt']),
@@ -1411,6 +1414,7 @@ class AdminRepository {
     required String bookingId,
     required String riderId,
     required String reason,
+    bool force = false,
   }) async {
     final resolvedBookingId = bookingId.trim();
     final resolvedRiderId = riderId.trim();
@@ -1460,25 +1464,27 @@ class AdminRepository {
 
     await _reconcileRiderActiveBookingPointer(resolvedRiderId);
 
-    final liveBookings = await _getLiveAssignedBookingsForRider(
-      resolvedRiderId,
-    );
-    Map<String, dynamic>? blockingBooking;
-    for (final booking in liveBookings) {
-      if (_asString(booking['id']) != resolvedBookingId) {
-        blockingBooking = booking;
-        break;
-      }
-    }
-    if (blockingBooking != null) {
-      final tripLabel = _coalesceString([
-        blockingBooking['tripNumber'],
-        blockingBooking['id'],
-      ], fallback: 'another trip');
-      throw StateError(
-        'This unit already has another live booking ($tripLabel). '
-        'Finish or reassign that trip first.',
+    if (!force) {
+      final liveBookings = await _getLiveAssignedBookingsForRider(
+        resolvedRiderId,
       );
+      Map<String, dynamic>? blockingBooking;
+      for (final booking in liveBookings) {
+        if (_asString(booking['id']) != resolvedBookingId) {
+          blockingBooking = booking;
+          break;
+        }
+      }
+      if (blockingBooking != null) {
+        final tripLabel = _coalesceString([
+          blockingBooking['tripNumber'],
+          blockingBooking['id'],
+        ], fallback: 'another trip');
+        throw StateError(
+          'This unit already has another live booking ($tripLabel). '
+          'Finish or reassign that trip first.',
+        );
+      }
     }
 
     final bookingRef = _db
@@ -1548,7 +1554,8 @@ class AdminRepository {
         riderActiveBookingSnap = await transaction.get(riderActiveBookingRef);
       }
 
-      if (riderActiveBookingId.isNotEmpty &&
+      if (!force &&
+          riderActiveBookingId.isNotEmpty &&
           riderActiveBookingId != resolvedBookingId) {
         final activeBooking =
             riderActiveBookingSnap != null && riderActiveBookingSnap.exists
