@@ -110,6 +110,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   static const String _serviceInvoiceCaptureType = 'Service Invoice';
   static const String _warehouseArrivalCaptureType = 'Warehouse Arrival GPS';
   static const String _destinationArrivalCaptureType = 'Destination Arrival GPS';
+  static const String _signedDocsCaptureType = 'Signed Documents';
 
   DeliveryStep _currentStep = DeliveryStep.headingToWarehouse;
   LoadingSubStep? _loadingSubStep;
@@ -167,6 +168,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   final List<File> _serviceInvoicePhotos = [];
   final List<String> _serviceInvoicePhotoUrls = [];
+
+  // Signed documents / receipts from the drop-off site (optional upload).
+  final List<File> _signedDocPhotos = [];
+  final List<String> _signedDocPhotoUrls = [];
 
   final List<Map<String, dynamic>> _picklistItems = [];
 
@@ -374,6 +379,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       receiverName: _receiverNameController.text,
       receiverIdPhotoConfirmed: _receiverIdPhotoConfirmed,
       picklistItems: _picklistItems,
+      loadingStartTimeMs: _loadingStartTime?.millisecondsSinceEpoch,
+      unloadingStartTimeMs: _unloadingStartTime?.millisecondsSinceEpoch,
     );
   }
 
@@ -590,6 +597,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         return 'damaged_boxes';
       case 'Empty Truck':
         return 'empty_truck';
+      case 'Signed Documents':
+        return 'signed_documents';
       default:
         return photoType.toLowerCase().replaceAll(' ', '_');
     }
@@ -618,6 +627,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
     if (stage == 'damaged_boxes' || stage.startsWith('damaged_boxes_')) {
       return 'Damaged Boxes';
+    }
+    if (stage == 'signed_documents' ||
+        stage.startsWith('signed_documents_')) {
+      return 'Signed Documents';
     }
 
     switch (stage) {
@@ -851,6 +864,12 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                     .any((existing) => existing.path == file.path)) {
                   _serviceInvoicePhotos.add(file);
                 }
+              } else if (stage == 'signed_documents' ||
+                  stage.startsWith('signed_documents_')) {
+                if (!_signedDocPhotos
+                    .any((existing) => existing.path == file.path)) {
+                  _signedDocPhotos.add(file);
+                }
               }
               break;
           }
@@ -951,6 +970,11 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
                 !_damagePhotos.any((existing) => existing.path == file.path)) {
               _damagePhotos.add(file);
               needsStateUpdate = true;
+            } else if ((stage == 'signed_documents' ||
+                    stage.startsWith('signed_documents_')) &&
+                !_signedDocPhotos.any((existing) => existing.path == file.path)) {
+              _signedDocPhotos.add(file);
+              needsStateUpdate = true;
             }
             break;
         }
@@ -1015,6 +1039,21 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         await _queueStandardPhotoUpload(
           photoType,
           file,
+          flushImmediately: false,
+        );
+      }
+    }
+
+    // Signed documents / receipts captured at the drop-off site.
+    if (_signedDocPhotos.isNotEmpty) {
+      for (final file in _signedDocPhotos) {
+        if (await _deliveryQueue.isLocalFilePending(file.path)) continue;
+        await _deliveryQueue.enqueuePhotoUpload(
+          bookingId: widget.request.id,
+          storageStage: 'signed_documents_${_signedDocPhotos.indexOf(file) + 1}',
+          firestoreStage:
+              'signed_documents_${_signedDocPhotos.indexOf(file) + 1}',
+          localFilePath: file.path,
           flushImmediately: false,
         );
       }
@@ -1332,6 +1371,83 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     );
   }
 
+  /// Take a photo of signed documents / receipts collected at the drop-off
+  /// site. Optional — riders can upload as many as needed.
+  Future<void> _takeSignedDocsPhoto() async {
+    _logActivity('signed_docs:take_photo');
+    final file = await _pickDeliveryCameraImage(_signedDocsCaptureType);
+    if (file == null) return;
+
+    await _processSignedDocsPhoto(
+      file,
+      alreadyPrepared: _isPersistedDeliveryPhoto(file),
+    );
+  }
+
+  Future<void> _processSignedDocsPhoto(
+    File file, {
+    bool recovered = false,
+    bool alreadyPrepared = false,
+  }) async {
+    if (!mounted) return;
+
+    File prepared = file;
+    if (!alreadyPrepared && !_isPersistedDeliveryPhoto(file)) {
+      try {
+        prepared = await _storageService.prepareDeliveryPhotoForQueue(
+          file,
+          bookingId: widget.request.id,
+          stageKey: 'signed_documents',
+        );
+      } catch (e) {
+        debugPrint('Error preparing signed documents photo: $e');
+        if (mounted) {
+          UIHelpers.showErrorToast(
+              'Could not save photo. Please try again.');
+        }
+        await _clearPendingCameraCapture();
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      if (!_signedDocPhotos.any((existing) => existing.path == prepared.path)) {
+        _signedDocPhotos.add(prepared);
+      }
+    });
+
+    final stage = 'signed_documents_${_signedDocPhotos.length}';
+
+    await _deliveryQueue.enqueuePhotoUpload(
+      bookingId: widget.request.id,
+      storageStage: stage,
+      firestoreStage: stage,
+      localFilePath: prepared.path,
+      flushImmediately: false,
+    );
+
+    _deliveryQueue.onUrlResolved(widget.request.id, stage, (url) {
+      if (!mounted) return;
+      if (_signedDocPhotoUrls.contains(url)) return;
+      setState(() => _signedDocPhotoUrls.add(url));
+    });
+
+    await _clearPendingCameraCapture();
+    await _saveDeliveryState();
+
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deliveryQueue.requestFlush();
+    });
+
+    final prefix = recovered ? 'Recovered ' : '';
+    UIHelpers.showSuccessToast(
+      '$prefix signed document photo saved! Uploading in background.',
+    );
+  }
+
   Future<void> _recoverLostDeliveryCameraCapture() async {
     final pendingInfo = _readPendingCameraCapture();
     if (pendingInfo == null) return;
@@ -1389,11 +1505,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       try {
         final firestoreStage = captureType == _serviceInvoiceCaptureType
             ? 'service_invoice'
-            : captureType == _warehouseArrivalCaptureType
-                ? 'warehouse_arrival'
-                : captureType == _destinationArrivalCaptureType
-                    ? 'destination_arrival'
-                    : _firestoreStageForPhotoType(captureType);
+            : captureType == _signedDocsCaptureType
+                ? 'signed_documents'
+                : captureType == _warehouseArrivalCaptureType
+                    ? 'warehouse_arrival'
+                    : captureType == _destinationArrivalCaptureType
+                        ? 'destination_arrival'
+                        : _firestoreStageForPhotoType(captureType);
         persisted = await _storageService.prepareDeliveryPhotoForQueue(
           file,
           bookingId: widget.request.id,
@@ -1415,6 +1533,12 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     final alreadyPrepared = _isPersistedDeliveryPhoto(file);
     if (captureType == _serviceInvoiceCaptureType) {
       await _processServiceInvoicePhoto(
+        file,
+        recovered: true,
+        alreadyPrepared: alreadyPrepared,
+      );
+    } else if (captureType == _signedDocsCaptureType) {
+      await _processSignedDocsPhoto(
         file,
         recovered: true,
         alreadyPrepared: alreadyPrepared,
@@ -1614,6 +1738,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       await _restorePhotosFromBookingAndDisk(bookingData);
       final restoredServiceInvoiceUrls =
           _extractDeliveryPhotoUrlsByPrefix(bookingData, 'service_invoice_');
+      final restoredSignedDocUrls = _extractDeliveryPhotoUrlsByPrefix(
+        bookingData,
+        'signed_documents_',
+      );
       final mergedSnapshot = savedState == null
           ? inferredSnapshot
           : _mergeDeliveryStates(
@@ -1633,26 +1761,66 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             );
 
       final now = DateTime.now();
-      final loadingStartedAt =
+      var loadingStartedAt =
           _parseBookingDateTime(bookingData?['loadingStartedAt']);
       final loadingCompletedAt =
           _parseBookingDateTime(bookingData?['loadingCompletedAt']);
-      final unloadingStartedAt =
+      var unloadingStartedAt =
           _parseBookingDateTime(bookingData?['unloadingStartedAt']);
       final unloadingCompletedAt =
           _parseBookingDateTime(bookingData?['unloadingCompletedAt']);
 
+      // Prefer the locally-saved wall-clock start captured at the moment of
+      // arrival. It can predate the Firestore write (or exist even when the
+      // write failed offline), and demurrage must count from actual arrival.
+      final localLoadingStartMs = savedState?['loadingStartTimeMs'] as int?;
+      if (localLoadingStartMs != null) {
+        final localStart =
+            DateTime.fromMillisecondsSinceEpoch(localLoadingStartMs);
+        if (loadingStartedAt == null || localStart.isBefore(loadingStartedAt)) {
+          loadingStartedAt = localStart;
+        }
+      }
+      final localUnloadingStartMs = savedState?['unloadingStartTimeMs'] as int?;
+      if (localUnloadingStartMs != null) {
+        final localStart =
+            DateTime.fromMillisecondsSinceEpoch(localUnloadingStartMs);
+        if (unloadingStartedAt == null ||
+            localStart.isBefore(unloadingStartedAt)) {
+          unloadingStartedAt = localStart;
+        }
+      }
+
+      // Fallback: the rider is inside the loading/unloading phase but no
+      // demurrage start was ever recorded (the arrival write may have failed
+      // offline). Start counting from now so demurrage still runs; the sync
+      // below persists the start to Firestore.
+      if (mergedSnapshot.step == DeliveryStep.loading &&
+          loadingStartedAt == null &&
+          loadingCompletedAt == null) {
+        loadingStartedAt = now;
+      }
+      if (mergedSnapshot.step == DeliveryStep.unloading &&
+          unloadingStartedAt == null &&
+          unloadingCompletedAt == null) {
+        unloadingStartedAt = now;
+      }
+
+      // Loading demurrage ends when loading completes (service invoice).
+      // Unloading demurrage runs from "Arrived at Destination" until the
+      // documents are received/signed (delivery completion), so it stays
+      // active for any non-final booking once unloading has started — even
+      // while the rider is in the damage-report / receiving phases.
       final loadingDuration = loadingStartedAt == null
           ? Duration.zero
           : (loadingCompletedAt ?? now).difference(loadingStartedAt);
       final unloadingDuration = unloadingStartedAt == null
           ? Duration.zero
-          : (unloadingCompletedAt ?? now).difference(unloadingStartedAt);
+          : now.difference(unloadingStartedAt);
 
       final loadingActive =
           loadingStartedAt != null && loadingCompletedAt == null;
-      final unloadingActive =
-          unloadingStartedAt != null && unloadingCompletedAt == null;
+      final unloadingActive = unloadingStartedAt != null;
 
       final savedReceiverName =
           savedState?['receiverName']?.toString().trim() ?? '';
@@ -1702,6 +1870,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _serviceInvoicePhotoUrls
           ..clear()
           ..addAll(restoredServiceInvoiceUrls);
+        _signedDocPhotoUrls
+          ..clear()
+          ..addAll(restoredSignedDocUrls);
         _damagePhotoUrls
           ..clear()
           ..addAll(_extractDamagePhotoUrls(bookingData));
@@ -1727,11 +1898,66 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         unawaited(_persistPicklistItems());
       }
 
+      // Best-effort: push locally-restored demurrage starts to Firestore so
+      // the admin sees the correct demurrage window even if the original
+      // arrival write failed offline.
+      unawaited(_syncRestoredDemurrageStartsToFirestore(
+        loadingStartedAt: loadingStartedAt,
+        unloadingStartedAt: unloadingStartedAt,
+        bookingData: bookingData,
+      ));
+
       // After state is fully restored, scan for any orphaned photos that
       // were persisted to disk but not yet linked to in-memory state.
       unawaited(_processOrphanedPendingPhotos());
     } catch (e) {
       debugPrint('Error restoring saved delivery state: $e');
+    }
+  }
+
+  /// Re-writes demurrage start timestamps to Firestore when they were only
+  /// recoverable from the local saved state (e.g. the original arrival write
+  /// never reached Firestore because the app was offline or was killed).
+  Future<void> _syncRestoredDemurrageStartsToFirestore({
+    required DateTime? loadingStartedAt,
+    required DateTime? unloadingStartedAt,
+    required Map<String, dynamic>? bookingData,
+  }) async {
+    try {
+      final updates = <String, dynamic>{};
+      final storedLoadingStart =
+          _parseBookingDateTime(bookingData?['loadingStartedAt']);
+      if (loadingStartedAt != null &&
+          (storedLoadingStart == null ||
+              loadingStartedAt.isBefore(storedLoadingStart))) {
+        updates['loadingStartedAt'] =
+            loadingStartedAt.millisecondsSinceEpoch;
+        updates['arrivedAtPickupAt'] =
+            loadingStartedAt.millisecondsSinceEpoch;
+      }
+      final storedUnloadingStart =
+          _parseBookingDateTime(bookingData?['unloadingStartedAt']);
+      if (unloadingStartedAt != null &&
+          (storedUnloadingStart == null ||
+              unloadingStartedAt.isBefore(storedUnloadingStart))) {
+        updates['unloadingStartedAt'] =
+            unloadingStartedAt.millisecondsSinceEpoch;
+        updates['arrivedAtDropoffAt'] =
+            unloadingStartedAt.millisecondsSinceEpoch;
+      }
+      if (updates.isEmpty) return;
+
+      await _firestore
+          .collection('bookings')
+          .doc(widget.request.id)
+          .update({
+        ...updates,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+      debugPrint(
+          'Restored demurrage start times synced to Firestore: $updates');
+    } catch (e) {
+      debugPrint('Error syncing restored demurrage starts: $e');
     }
   }
 
@@ -2054,27 +2280,49 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
     _logActivity('arrived_at_pickup');
 
+    // Capture ONE wall-clock instant for the demurrage start so the local
+    // timer and the Firestore write can never disagree.
+    final arrivedAt = DateTime.now();
+
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
-      _loadingStartTime = DateTime.now();
+      // Never reset an existing start time: if the rider stepped back and
+      // re-confirmed arrival, demurrage still counts from the first arrival.
+      _loadingStartTime ??= arrivedAt;
+      _loadingDuration = DateTime.now().difference(_loadingStartTime!);
+      _loadingDemurrageFee =
+          DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
       _startLoadingTimer();
     });
 
-    // Save delivery state
+    // Save delivery state (now includes the demurrage start for restore)
     _saveDeliveryState();
 
-    // Update booking status in Firestore with arrival photo and remarks
-    await _bookingService.updateBookingStatusWithDetails(
+    // Update booking status in Firestore with arrival photo and remarks.
+    // On failure (offline), queue the status + demurrage start so it still
+    // reaches Firestore when connectivity returns.
+    final okArrival = await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'arrived_at_pickup',
-      loadingStartedAt: DateTime.now(),
+      loadingStartedAt: _loadingStartTime,
       picklistItems: _picklistItems,
       deliveryPhotos: {
         'warehouse_arrival': _warehouseArrivalPhotoUrl,
         'warehouse_arrival_remarks': result['remarks'] ?? '',
       },
     );
+    if (!okArrival) {
+      debugPrint('Failed updating arrived_at_pickup — queuing offline.');
+      await _deliveryQueue.enqueueStatusUpdate(
+        bookingId: widget.request.id,
+        status: 'arrived_at_pickup',
+        data: {
+          'loadingStartedAt': _loadingStartTime!.millisecondsSinceEpoch,
+          'arrivedAtPickupAt': _loadingStartTime!.millisecondsSinceEpoch,
+        },
+      );
+    }
 
     UIHelpers.showSuccessToast(
         'Arrived at warehouse! GPS photo captured. Demurrage timer started.');
@@ -2551,9 +2799,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   void _startLoadingTimer() {
     _loadingTimer?.cancel();
-    _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    void tick() {
       if (!mounted) {
-        timer.cancel();
+        _loadingTimer?.cancel();
         return;
       }
       setState(() {
@@ -2563,6 +2811,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _loadingDemurrageFee =
             DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
       });
+    }
+
+    tick(); // update immediately so the demurrage shows the moment it starts
+    _loadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      tick();
     });
   }
 
@@ -2853,12 +3110,17 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
 
     _loadingTimer?.cancel();
+    // Final elapsed time from the wall-clock start so the last seconds
+    // between ticks are counted in the demurrage fee.
+    if (_loadingStartTime != null) {
+      _loadingDuration = DateTime.now().difference(_loadingStartTime!);
+    }
     _loadingDemurrageFee =
         DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
 
-    // Update booking status in Firestore with demurrage data
-    // Note: delivery photos are already saved by addDeliveryPhoto when taken
-    await _bookingService.updateBookingStatusWithDetails(
+    // Update booking status in Firestore with demurrage data.
+    // Note: delivery photos are already saved by addDeliveryPhoto when taken.
+    final okLoading = await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'loading_complete',
       loadingCompletedAt: DateTime.now(),
@@ -2866,6 +3128,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       loadingDemurrageSeconds: _loadingDuration.inSeconds,
       picklistItems: _picklistItems,
     );
+    if (!okLoading) {
+      debugPrint('Failed updating loading_complete — queuing offline.');
+      await _deliveryQueue.enqueueStatusUpdate(
+        bookingId: widget.request.id,
+        status: 'loading_complete',
+        data: {
+          'loadingCompletedAt': DateTime.now().millisecondsSinceEpoch,
+          'loadingDemurrageFee': _loadingDemurrageFee,
+          'loadingDemurrageSeconds': _loadingDuration.inSeconds,
+        },
+      );
+    }
 
     setState(() {
       _currentStep = DeliveryStep.delivering;
@@ -2902,27 +3176,48 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
     _logActivity('arrived_at_dropoff');
 
+    // Capture ONE wall-clock instant for the demurrage start so the local
+    // timer and the Firestore write can never disagree.
+    final arrivedAt = DateTime.now();
+
     setState(() {
       _currentStep = DeliveryStep.unloading;
       _unloadingSubStep = UnloadingSubStep.arrived;
-      _unloadingStartTime = DateTime.now();
+      // Never reset an existing start time on a re-confirmed arrival.
+      _unloadingStartTime ??= arrivedAt;
+      _unloadingDuration = DateTime.now().difference(_unloadingStartTime!);
+      _unloadingDemurrageFee =
+          DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
       _startUnloadingTimer();
     });
 
     // Save delivery state
     _saveDeliveryState();
 
-    // Update booking status in Firestore with arrival photo and remarks
-    await _bookingService.updateBookingStatusWithDetails(
+    // Update booking status in Firestore with arrival photo and remarks.
+    // On failure (offline), queue the status + demurrage start.
+    final okArrivalDropoff =
+        await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'arrived_at_dropoff',
-      unloadingStartedAt: DateTime.now(),
+      unloadingStartedAt: _unloadingStartTime,
       picklistItems: _picklistItems,
       deliveryPhotos: {
         'destination_arrival': _destinationArrivalPhotoUrl,
         'destination_arrival_remarks': result['remarks'] ?? '',
       },
     );
+    if (!okArrivalDropoff) {
+      debugPrint('Failed updating arrived_at_dropoff — queuing offline.');
+      await _deliveryQueue.enqueueStatusUpdate(
+        bookingId: widget.request.id,
+        status: 'arrived_at_dropoff',
+        data: {
+          'unloadingStartedAt': _unloadingStartTime!.millisecondsSinceEpoch,
+          'arrivedAtDropoffAt': _unloadingStartTime!.millisecondsSinceEpoch,
+        },
+      );
+    }
 
     UIHelpers.showSuccessToast(
         'Arrived at destination! GPS photo captured. Demurrage timer started.');
@@ -3418,9 +3713,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   void _startUnloadingTimer() {
     _unloadingTimer?.cancel();
-    _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    void tick() {
       if (!mounted) {
-        timer.cancel();
+        _unloadingTimer?.cancel();
         return;
       }
       setState(() {
@@ -3430,6 +3725,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         _unloadingDemurrageFee =
             DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
       });
+    }
+
+    tick(); // update immediately so the demurrage shows the moment it starts
+    _unloadingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      tick();
     });
   }
 
@@ -3469,20 +3773,28 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     // Note: URL gate removed — photos are saved locally and queued for upload.
     // Driver can proceed as soon as both photos are taken.
 
-    _unloadingTimer?.cancel();
-    _unloadingDemurrageFee =
-        DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
+    // NOTE: The unloading demurrage timer keeps running past this point —
+    // per QA it must continue until the documents are received/signed
+    // (end of the receiving phase) and is finalized in _completeDelivery.
 
-    // Update booking status in Firestore with demurrage data
-    // Note: delivery photos are already saved by addDeliveryPhoto when taken
-    await _bookingService.updateBookingStatusWithDetails(
+    // Update booking status in Firestore with demurrage data.
+    // Note: delivery photos are already saved by addDeliveryPhoto when taken.
+    final okUnloading = await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'unloading_complete',
       unloadingCompletedAt: DateTime.now(),
-      unloadingDemurrageFee: _unloadingDemurrageFee,
-      destinationDemurrageSeconds: _unloadingDuration.inSeconds,
       picklistItems: _picklistItems,
     );
+    if (!okUnloading) {
+      debugPrint('Failed updating unloading_complete — queuing offline.');
+      await _deliveryQueue.enqueueStatusUpdate(
+        bookingId: widget.request.id,
+        status: 'unloading_complete',
+        data: {
+          'unloadingCompletedAt': DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    }
 
     setState(() {
       _currentStep = DeliveryStep.damageReport;
@@ -3526,21 +3838,30 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
     final receivedAt = now;
 
+    // ── Finalize the unloading demurrage ──
+    // Per QA, the unloading demurrage runs from "Arrived at Destination"
+    // until the documents are received/signed (this point).
+    _unloadingTimer?.cancel();
+    if (_unloadingStartTime != null) {
+      _unloadingDuration = DateTime.now().difference(_unloadingStartTime!);
+    }
+    _unloadingDemurrageFee =
+        DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
+
     // Save demurrage values BEFORE they are reset (used for wallet payout below)
     final savedLoadingDemurrage = _loadingDemurrageFee;
     final savedUnloadingDemurrage = _unloadingDemurrageFee;
-
-    _unloadingTimer?.cancel();
 
     final loadingSeconds = _loadingDuration.inSeconds;
     final destinationSeconds = _unloadingDuration.inSeconds;
 
     // Update booking status in Firestore with completion data
-    await _bookingService.updateBookingStatusWithDetails(
+    final okCompleted = await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
       status: 'completed',
       completedAt: DateTime.now(),
       receiverName: _receiverNameController.text,
+      unloadingDemurrageFee: _unloadingDemurrageFee,
       loadingDemurrageSeconds: loadingSeconds,
       destinationDemurrageSeconds: destinationSeconds,
       totalDemurrageSeconds: loadingSeconds + destinationSeconds,
@@ -3553,6 +3874,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         'received_at_pht': receivedAt.toIso8601String(),
       },
     );
+    if (!okCompleted) {
+      debugPrint('Failed updating completed — queuing demurrage offline.');
+      await _deliveryQueue.enqueueStatusUpdate(
+        bookingId: widget.request.id,
+        status: 'completed',
+        data: {
+          'unloadingDemurrageFee': _unloadingDemurrageFee,
+          'destinationDemurrageSeconds': destinationSeconds,
+          'totalDemurrageSeconds': loadingSeconds + destinationSeconds,
+        },
+      );
+    }
 
     final bookingDoc = await _getBookingDoc(widget.request.id);
     final lockedFare = (bookingDoc?['estimatedFare'] as num?)?.toDouble() ??
@@ -3833,6 +4166,17 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         if (!damagePhotoUrls.contains(url)) damagePhotoUrls.add(url);
       }
 
+      // Signed documents / receipts uploaded from the drop-off site
+      final signedDocUrlList = <String>[];
+      for (final entry in deliveryPhotos.entries) {
+        if (!entry.key.startsWith('signed_documents')) continue;
+        final url = extractUrl(entry.value);
+        if (url != null && url.isNotEmpty) signedDocUrlList.add(url);
+      }
+      for (final url in _signedDocPhotoUrls) {
+        if (!signedDocUrlList.contains(url)) signedDocUrlList.add(url);
+      }
+
       final rdd = scheduledAt ?? createdAt ?? now;
       final rddStr = DateFormat('yyyyMMdd').format(rdd);
       final subject =
@@ -3895,6 +4239,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         'damage_photo_count': '${damagePhotoUrls.length}',
         // Invoice & picklist
         'service_invoice_urls': invoiceUrls.join('\n'),
+        'signed_document_urls': signedDocUrlList.join('\n'),
+        'signed_document_count': '${signedDocUrlList.length}',
         'picklist_items': formatPicklist(
             (picklistFromBooking is List && picklistFromBooking.isNotEmpty)
                 ? picklistFromBooking
@@ -4771,6 +5117,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Unloading demurrage keeps running until docs are received/signed.
+        _buildDemurrageTimerCard('Destination Demurrage', _unloadingDuration,
+            _unloadingDemurrageFee),
+        const SizedBox(height: 12),
         _buildTotalDemurrageHoursCard(),
         const SizedBox(height: 24),
         const Text('Damaged While Unloading',
@@ -5252,6 +5602,117 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
         const SizedBox(height: 24),
 
+        // Signed Documents / Receipts (optional upload)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.description_outlined,
+                    size: 18, color: AppColors.primaryBlue),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'Signed Documents / Receipts (Optional)',
+                    style: TextStyle(fontSize: 14, fontFamily: 'Medium'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Upload receipts or signed documents received from the drop-off site.',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            if (_signedDocPhotos.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(_signedDocPhotos.length, (index) {
+                  return Stack(
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.lightGrey),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            _signedDocPhotos[index],
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _signedDocPhotos.removeAt(index);
+                              if (index < _signedDocPhotoUrls.length) {
+                                _signedDocPhotoUrls.removeAt(index);
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryRed,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.close,
+                                size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      // Upload indicator
+                      if (index >= _signedDocPhotoUrls.length)
+                        Positioned(
+                          bottom: 4,
+                          right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
+              ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _takeSignedDocsPhoto,
+              icon: const Icon(Icons.add_a_photo),
+              label: Text(
+                  _signedDocPhotos.isEmpty ? 'Take Photo' : 'Add More Photos'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryBlue,
+                side: const BorderSide(color: AppColors.primaryBlue),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
         // Continue Button
         SizedBox(
           width: double.infinity,
@@ -5315,6 +5776,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   Widget _buildReceivingView() {
     final totalDemurrageCard = Column(
       children: [
+        // Unloading demurrage keeps running until docs are received/signed.
+        _buildDemurrageTimerCard('Destination Demurrage', _unloadingDuration,
+            _unloadingDemurrageFee),
+        const SizedBox(height: 12),
         _buildTotalDemurrageHoursCard(),
         const SizedBox(height: 16),
       ],

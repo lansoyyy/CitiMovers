@@ -1224,12 +1224,12 @@ class _DemurrageCard extends StatelessWidget {
 class _PhotoCategory {
   final String title;
   final List<String> keys;
-  final bool includeServiceInvoicePrefix;
+  final List<String> keyPrefixes;
 
   const _PhotoCategory({
     required this.title,
     required this.keys,
-    this.includeServiceInvoicePrefix = false,
+    this.keyPrefixes = const [],
   });
 }
 
@@ -1270,7 +1270,7 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
     _PhotoCategory(
       title: 'Service Invoice (POD)',
       keys: ['service_invoice', 'pod', 'invoice'],
-      includeServiceInvoicePrefix: true,
+      keyPrefixes: ['service_invoice_'],
     ),
     _PhotoCategory(
       title: 'Arrived at Destination',
@@ -1316,7 +1316,9 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
         'receiver_signature',
         'signature',
         'receiver_signature_url',
+        'signed_documents',
       ],
+      keyPrefixes: ['signed_documents_'],
     ),
     _PhotoCategory(
       title: "Picture of ID's",
@@ -1365,9 +1367,9 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
     for (final key in category.keys) {
       urls.addAll(_extractUrls(photosMap[key]));
     }
-    if (category.includeServiceInvoicePrefix) {
+    for (final prefix in category.keyPrefixes) {
       for (final entry in photosMap.entries) {
-        if (entry.key.startsWith('service_invoice_')) {
+        if (entry.key.startsWith(prefix)) {
           urls.addAll(_extractUrls(entry.value));
         }
       }

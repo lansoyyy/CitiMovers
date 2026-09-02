@@ -244,11 +244,15 @@ class DeliveryQueueService {
   }
 
   /// Queue a booking status update for offline-first sync.
+  ///
+  /// [data] holds extra booking fields that must land together with the
+  /// status (e.g. demurrage start timestamps) when the device is offline.
   Future<void> enqueueStatusUpdate({
     required String bookingId,
     required String status,
     String? driverId,
     String? subStep,
+    Map<String, dynamic>? data,
   }) async {
     final entry = DeliveryQueueEntry(
       id: '${bookingId}__status_${status}_${DateTime.now().millisecondsSinceEpoch}',
@@ -258,6 +262,7 @@ class DeliveryQueueService {
         'status': status,
         'driverId': driverId,
         'subStep': subStep,
+        if (data != null && data.isNotEmpty) 'data': data,
       },
       createdAt: DateTime.now(),
     );
@@ -488,6 +493,7 @@ class DeliveryQueueService {
       final status = p['status'] as String?;
       final driverId = p['driverId'] as String?;
       final subStep = p['subStep'] as String?;
+      final extraData = p['data'];
 
       if (status == null) {
         debugPrint('[DeliveryQueue] Status update missing status field');
@@ -508,6 +514,16 @@ class DeliveryQueueService {
         if (subStep != null) {
           await _firestore.collection('bookings').doc(bookingId).update({
             'currentSubStep': subStep,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // Merge any extra booking fields (e.g. demurrage start timestamps)
+        // that were captured offline so they are not lost.
+        if (extraData is Map && extraData.isNotEmpty) {
+          await _firestore.collection('bookings').doc(bookingId).update({
+            ...extraData.map(
+                (key, value) => MapEntry(key.toString(), value)),
             'updatedAt': FieldValue.serverTimestamp(),
           });
         }
