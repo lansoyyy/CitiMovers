@@ -1397,6 +1397,14 @@ class AdminRepository {
   static Future<DocumentSnapshot> getBooking(String bookingId) =>
       _db.collection(AdminConstants.colBookings).doc(bookingId).get();
 
+  /// Live stream of a single booking so the detail screen reflects rider
+  /// updates the moment they land in Firestore instead of requiring the
+  /// admin to navigate away and back.
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> streamBooking(
+    String bookingId,
+  ) =>
+      _db.collection(AdminConstants.colBookings).doc(bookingId).snapshots();
+
   static Future<Map<String, dynamic>?> getNormalizedBooking(
     String bookingId,
   ) async {

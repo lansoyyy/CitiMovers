@@ -1172,6 +1172,12 @@ class BookingService {
       if (loadingCompletedAt != null) {
         updateData['loadingCompletedAt'] =
             loadingCompletedAt.millisecondsSinceEpoch;
+        // Loading complete marks the start of transit — nothing in the app
+        // writes an explicit inTransitAt click, so derive it here so the
+        // admin timeline has a timestamp for the In Transit step.
+        if (status == 'loading_complete') {
+          updateData['inTransitAt'] = loadingCompletedAt.millisecondsSinceEpoch;
+        }
       }
 
       if (unloadingStartedAt != null) {

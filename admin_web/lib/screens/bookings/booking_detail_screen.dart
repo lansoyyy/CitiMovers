@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
@@ -43,11 +45,41 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   bool _loading = true;
   bool _isMutating = false;
   String? _loadError;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _bookingSub;
 
   @override
   void initState() {
     super.initState();
     _loadBooking();
+    _subscribeToBooking();
+  }
+
+  @override
+  void dispose() {
+    _bookingSub?.cancel();
+    super.dispose();
+  }
+
+  /// Live subscription so rider-side updates (arrivals, loading, unloading,
+  /// completion) appear immediately while the admin has this page open.
+  void _subscribeToBooking() {
+    _bookingSub?.cancel();
+    _bookingSub = AdminRepository.streamBooking(widget.bookingId).listen(
+      (snap) {
+        if (!mounted || !snap.exists) return;
+        setState(() {
+          _bookingData = AdminRepository.normalizeBookingData(
+            widget.bookingId,
+            _asMap(snap.data()),
+          );
+          _loading = false;
+          _loadError = null;
+        });
+      },
+      onError: (error) {
+        debugPrint('Booking stream error: $error');
+      },
+    );
   }
 
   Future<void> _loadBooking() async {
@@ -601,28 +633,69 @@ class _StatusTimelineCard extends StatelessWidget {
     ('arrived_at_dropoff', 'Arrived at Dropoff', 'arrivedAtDropoffAt'),
     ('unloading', 'Unloading Started', 'unloadingStartedAt'),
     ('unloading_complete', 'Unloading Complete', 'unloadingCompletedAt'),
+    // Not a booking status — marks the receiving milestone when the
+    // receiver's documents were received/signed (before completion).
+    ('docs_received', 'Documents Received / Signed', ''),
     ('completed', 'Completed', 'completedAt'),
   ];
 
-  /// The rider app historically stores arrival times under the demurrage
-  /// fields (`loadingStartedAt` / `unloadingStartedAt`). Fall back to those
-  /// when the explicit arrival timestamp is missing so the timeline is
-  /// always populated.
+  /// The demurrage fields (`loadingStartedAt` / `unloadingStartedAt`) record
+  /// the ARRIVAL click, which can be hours before work physically starts.
+  /// The stage photos carry the real start times, so prefer those for the
+  /// Loading/Unloading "Started" rows and fall back to the arrival stamps.
+  static DateTime? _stagePhotoTime(
+    Map<String, dynamic> d,
+    List<String> keys,
+  ) {
+    final photos = _asMap(d['deliveryPhotosMap']);
+    for (final key in keys) {
+      final value = photos[key];
+      if (value is Map) {
+        final ts = AdminRepository.parseTimestamp(
+          value['uploadedAt'] ?? value['timestamp'],
+        );
+        if (ts != null) return ts;
+      }
+    }
+    return null;
+  }
+
   static DateTime? _resolveTimelineTimestamp(
     Map<String, dynamic> d,
     String statusKey,
     String tsField,
   ) {
-    final explicit = AdminRepository.parseTimestamp(d[tsField]);
-    if (explicit != null) return explicit;
-
-    if (statusKey == 'arrived_at_pickup') {
-      return AdminRepository.parseTimestamp(d['loadingStartedAt']);
+    switch (statusKey) {
+      case 'arrived_at_pickup':
+        return AdminRepository.parseTimestamp(d['arrivedAtPickupAt']) ??
+            AdminRepository.parseTimestamp(d['loadingStartedAt']);
+      case 'loading':
+        return _stagePhotoTime(d, [
+              'start_loading',
+              'start_loading_photo',
+            ]) ??
+            AdminRepository.parseTimestamp(d['loadingStartedAt']);
+      case 'arrived_at_dropoff':
+        return AdminRepository.parseTimestamp(d['arrivedAtDropoffAt']) ??
+            AdminRepository.parseTimestamp(d['unloadingStartedAt']);
+      case 'unloading':
+        return _stagePhotoTime(d, [
+              'start_unloading',
+              'start_unloading_photo',
+            ]) ??
+            AdminRepository.parseTimestamp(d['unloadingStartedAt']);
+      case 'docs_received':
+        // Prefer the signature-capture timestamp (PHT ISO string written by
+        // the rider app the moment the receiver signed), then the signature
+        // photo upload time, then completion as a legacy fallback.
+        final signedAt = AdminRepository.parseTimestamp(
+          _asMap(d['deliveryPhotosMap'])['receiver_signature_timestamp'],
+        );
+        if (signedAt != null) return signedAt;
+        return _stagePhotoTime(d, ['receiver_signature', 'signature']) ??
+            AdminRepository.parseTimestamp(d['completedAt']);
     }
-    if (statusKey == 'arrived_at_dropoff') {
-      return AdminRepository.parseTimestamp(d['unloadingStartedAt']);
-    }
-    return null;
+    return AdminRepository.parseTimestamp(d[tsField]);
   }
 
   @override
@@ -642,9 +715,17 @@ class _StatusTimelineCard extends StatelessWidget {
             ..._timeline.map((step) {
               final (statusKey, label, tsField) = step;
               final ts = _resolveTimelineTimestamp(d, statusKey, tsField);
-              final stepIdx = statusOrder.indexOf(statusKey);
-              final isDone = stepIdx >= 0 && stepIdx <= currentIdx;
-              final isCurrent = statusKey == currentStatus;
+              // "Documents Received / Signed" is a milestone rather than a
+              // booking status: it sits at the completion rank and lights up
+              // as soon as a docs timestamp exists (or once completed).
+              final isDocsStep = statusKey == 'docs_received';
+              final stepIdx = isDocsStep
+                  ? statusOrder.indexOf('completed')
+                  : statusOrder.indexOf(statusKey);
+              final isDone = isDocsStep
+                  ? ts != null || (stepIdx >= 0 && stepIdx <= currentIdx)
+                  : stepIdx >= 0 && stepIdx <= currentIdx;
+              final isCurrent = !isDocsStep && statusKey == currentStatus;
 
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1157,9 +1238,10 @@ class _DemurrageCard extends StatelessWidget {
           children: [
             const SectionHeader(title: 'Demurrage'),
             const SizedBox(height: 12),
-            _buildDemurrageRow('Loading Started', _fmt(d['loadingStartedAt'])),
             _buildDemurrageRow(
-              'Loading Completed',
+                'Demurrage Start (Arrival)', _fmt(d['loadingStartedAt'])),
+            _buildDemurrageRow(
+              'Demurrage End (Loading Done)',
               _fmt(d['loadingCompletedAt']),
             ),
             _buildDemurrageRow(
@@ -1168,11 +1250,11 @@ class _DemurrageCard extends StatelessWidget {
             ),
             const Divider(color: AdminTheme.divider),
             _buildDemurrageRow(
-              'Unloading Started',
+              'Demurrage Start (Arrival)',
               _fmt(d['unloadingStartedAt']),
             ),
             _buildDemurrageRow(
-              'Unloading Completed',
+              'Demurrage End (Unloading Done)',
               _fmt(d['unloadingCompletedAt']),
             ),
             _buildDemurrageRow(

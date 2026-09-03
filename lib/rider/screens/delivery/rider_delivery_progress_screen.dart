@@ -189,6 +189,30 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       double.tryParse(widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
       0.0;
 
+  /// Forward progress order used to make sure arrival writes can only move
+  /// the booking status FORWARD — never backwards over a later stage.
+  static const List<String> _statusProgressOrder = [
+    'pending',
+    'awaiting_payment',
+    'payment_locked',
+    'accepted',
+    'arrived_at_pickup',
+    'loading',
+    'loading_complete',
+    'in_transit',
+    'arrived_at_dropoff',
+    'unloading',
+    'unloading_complete',
+    'damage_reported',
+    'receiving',
+    'completed',
+  ];
+
+  int _statusRank(String status) {
+    final idx = _statusProgressOrder.indexOf(status);
+    return idx < 0 ? -1 : idx;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2284,12 +2308,36 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     // timer and the Firestore write can never disagree.
     final arrivedAt = DateTime.now();
 
+    // Read the current booking first so a re-confirmed arrival can never
+    // regress the workflow or overwrite an earlier demurrage start. This
+    // previously produced impossible admin timelines (e.g. "Arrived at
+    // Pickup" stamped days AFTER "Loading Complete") when riders stepped
+    // back and re-arrived or restarted the app mid-trip.
+    Map<String, dynamic>? booking;
+    try {
+      booking = await _getBookingDoc(widget.request.id);
+    } catch (e) {
+      debugPrint('Could not read booking before arrival write: $e');
+    }
+    final currentStatus = BookingStatusService.normalizeStatus(
+      (booking?['status'] ?? '').toString(),
+    );
+    final existingLoadingStart =
+        _parseBookingDateTime(booking?['loadingStartedAt']);
+    final canAdvanceStatus =
+        !BookingStatusService.isFinalStatus(currentStatus) &&
+            _statusRank(currentStatus) < _statusRank('arrived_at_pickup');
+
+    // Demurrage keeps counting from the originally recorded start when one
+    // already exists.
+    final demurrageStart = existingLoadingStart ?? arrivedAt;
+
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
       // Never reset an existing start time: if the rider stepped back and
       // re-confirmed arrival, demurrage still counts from the first arrival.
-      _loadingStartTime ??= arrivedAt;
+      _loadingStartTime ??= demurrageStart;
       _loadingDuration = DateTime.now().difference(_loadingStartTime!);
       _loadingDemurrageFee =
           DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
@@ -2300,12 +2348,17 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _saveDeliveryState();
 
     // Update booking status in Firestore with arrival photo and remarks.
-    // On failure (offline), queue the status + demurrage start so it still
-    // reaches Firestore when connectivity returns.
+    // - The status only ever moves forward (never back to arrived_at_pickup).
+    // - loadingStartedAt is only written when Firestore does not have one
+    //   yet, so the original arrival timestamp is preserved.
+    // On failure (offline), queue the update so it still reaches Firestore.
+    final nextStatus =
+        canAdvanceStatus ? 'arrived_at_pickup' : currentStatus;
     final okArrival = await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
-      status: 'arrived_at_pickup',
-      loadingStartedAt: _loadingStartTime,
+      status: nextStatus,
+      loadingStartedAt:
+          existingLoadingStart == null ? _loadingStartTime : null,
       picklistItems: _picklistItems,
       deliveryPhotos: {
         'warehouse_arrival': _warehouseArrivalPhotoUrl,
@@ -2316,10 +2369,12 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       debugPrint('Failed updating arrived_at_pickup — queuing offline.');
       await _deliveryQueue.enqueueStatusUpdate(
         bookingId: widget.request.id,
-        status: 'arrived_at_pickup',
+        status: nextStatus,
         data: {
-          'loadingStartedAt': _loadingStartTime!.millisecondsSinceEpoch,
-          'arrivedAtPickupAt': _loadingStartTime!.millisecondsSinceEpoch,
+          if (existingLoadingStart == null) ...{
+            'loadingStartedAt': _loadingStartTime!.millisecondsSinceEpoch,
+            'arrivedAtPickupAt': _loadingStartTime!.millisecondsSinceEpoch,
+          },
         },
       );
     }
@@ -3130,11 +3185,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     );
     if (!okLoading) {
       debugPrint('Failed updating loading_complete — queuing offline.');
+      final completedAtMs = DateTime.now().millisecondsSinceEpoch;
       await _deliveryQueue.enqueueStatusUpdate(
         bookingId: widget.request.id,
         status: 'loading_complete',
         data: {
-          'loadingCompletedAt': DateTime.now().millisecondsSinceEpoch,
+          'loadingCompletedAt': completedAtMs,
+          'inTransitAt': completedAtMs,
           'loadingDemurrageFee': _loadingDemurrageFee,
           'loadingDemurrageSeconds': _loadingDuration.inSeconds,
         },
@@ -3180,11 +3237,32 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     // timer and the Firestore write can never disagree.
     final arrivedAt = DateTime.now();
 
+    // Read the current booking first so a re-confirmed arrival can never
+    // regress the workflow or overwrite an earlier demurrage start.
+    Map<String, dynamic>? booking;
+    try {
+      booking = await _getBookingDoc(widget.request.id);
+    } catch (e) {
+      debugPrint('Could not read booking before dropoff arrival write: $e');
+    }
+    final currentStatus = BookingStatusService.normalizeStatus(
+      (booking?['status'] ?? '').toString(),
+    );
+    final existingUnloadingStart =
+        _parseBookingDateTime(booking?['unloadingStartedAt']);
+    final canAdvanceStatus =
+        !BookingStatusService.isFinalStatus(currentStatus) &&
+            _statusRank(currentStatus) < _statusRank('arrived_at_dropoff');
+
+    // Demurrage keeps counting from the originally recorded start when one
+    // already exists.
+    final demurrageStart = existingUnloadingStart ?? arrivedAt;
+
     setState(() {
       _currentStep = DeliveryStep.unloading;
       _unloadingSubStep = UnloadingSubStep.arrived;
       // Never reset an existing start time on a re-confirmed arrival.
-      _unloadingStartTime ??= arrivedAt;
+      _unloadingStartTime ??= demurrageStart;
       _unloadingDuration = DateTime.now().difference(_unloadingStartTime!);
       _unloadingDemurrageFee =
           DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
@@ -3195,12 +3273,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _saveDeliveryState();
 
     // Update booking status in Firestore with arrival photo and remarks.
-    // On failure (offline), queue the status + demurrage start.
+    // - The status only ever moves forward.
+    // - unloadingStartedAt is only written when Firestore does not have one
+    //   yet, so the original arrival timestamp is preserved.
+    // On failure (offline), queue the update.
+    final nextStatus =
+        canAdvanceStatus ? 'arrived_at_dropoff' : currentStatus;
     final okArrivalDropoff =
         await _bookingService.updateBookingStatusWithDetails(
       bookingId: widget.request.id,
-      status: 'arrived_at_dropoff',
-      unloadingStartedAt: _unloadingStartTime,
+      status: nextStatus,
+      unloadingStartedAt:
+          existingUnloadingStart == null ? _unloadingStartTime : null,
       picklistItems: _picklistItems,
       deliveryPhotos: {
         'destination_arrival': _destinationArrivalPhotoUrl,
@@ -3211,10 +3295,14 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       debugPrint('Failed updating arrived_at_dropoff — queuing offline.');
       await _deliveryQueue.enqueueStatusUpdate(
         bookingId: widget.request.id,
-        status: 'arrived_at_dropoff',
+        status: nextStatus,
         data: {
-          'unloadingStartedAt': _unloadingStartTime!.millisecondsSinceEpoch,
-          'arrivedAtDropoffAt': _unloadingStartTime!.millisecondsSinceEpoch,
+          if (existingUnloadingStart == null) ...{
+            'unloadingStartedAt':
+                _unloadingStartTime!.millisecondsSinceEpoch,
+            'arrivedAtDropoffAt':
+                _unloadingStartTime!.millisecondsSinceEpoch,
+          },
         },
       );
     }
