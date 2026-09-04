@@ -27,6 +27,39 @@ class MapsService {
   // Session token for Places API - reused within a search session
   String? _currentSessionToken;
 
+  // Lightweight in-memory cache for billable Google Maps API results so
+  // repeated lookups for the same place/route/query reuse the last answer.
+  // Covers device GPS jitter (riders barely move between ticks) and repeated
+  // Directions/Geocoding calls across the booking and tracking flows.
+  final Map<String, _CacheEntry> _apiCache = {};
+
+  static const int _minAutocompleteLength = 2;
+  static const Duration _autocompleteCacheTtl = Duration(minutes: 2);
+  static const Duration _emptyAutocompleteCacheTtl = Duration(seconds: 45);
+  static const Duration _placeDetailsCacheTtl = Duration(minutes: 10);
+  static const Duration _routeCacheTtl = Duration(minutes: 10);
+  static const Duration _reverseGeocodeCacheTtl = Duration(minutes: 10);
+  static const Duration _forwardGeocodeCacheTtl = Duration(hours: 24);
+
+  _CacheLookup _getCached(String key) {
+    final entry = _apiCache[key];
+    if (entry == null) return _CacheLookup(false, null);
+    if (DateTime.now().isAfter(entry.expiresAt)) {
+      _apiCache.remove(key);
+      return _CacheLookup(false, null);
+    }
+    return _CacheLookup(true, entry.value);
+  }
+
+  void _setCached(String key, dynamic value, Duration ttl) {
+    _apiCache[key] = _CacheEntry(value, DateTime.now().add(ttl));
+  }
+
+  /// Round to ~3 decimal places (~111 m) so GPS jitter maps to one cache key.
+  static String _roundedCoordKey(double value) {
+    return ((value * 1000).roundToDouble() / 1000).toStringAsFixed(3);
+  }
+
   // Fuel price per liter from Firestore configs/app (default matches Firestore seed value)
   double _fuelPricePerLiter = 130.0;
 
@@ -61,6 +94,17 @@ class MapsService {
 
   /// Search places using Google Places Autocomplete API
   Future<List<PlaceSuggestion>> searchPlaces(String query) async {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.length < _minAutocompleteLength) {
+      return [];
+    }
+
+    final cacheKey = 'places:$normalizedQuery';
+    final cached = _getCached(cacheKey);
+    if (cached.hit) {
+      return (cached.value as List<PlaceSuggestion>?) ?? [];
+    }
+
     if (!isConfigured) {
       debugPrint('Google Maps API key not configured. Using mock data.');
       // Return mock data if API key is not set
@@ -102,7 +146,7 @@ class MapsService {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
           final predictions = data['predictions'] as List;
-          return predictions.map((prediction) {
+          final suggestions = predictions.map((prediction) {
             return PlaceSuggestion(
               placeId: prediction['place_id'],
               description: prediction['description'],
@@ -111,8 +155,11 @@ class MapsService {
                   prediction['structured_formatting']['secondary_text'] ?? '',
             );
           }).toList();
+          _setCached(cacheKey, suggestions, _autocompleteCacheTtl);
+          return suggestions;
         } else if (data['status'] == 'ZERO_RESULTS') {
           debugPrint('No places found for query: $query');
+          _setCached(cacheKey, <PlaceSuggestion>[], _emptyAutocompleteCacheTtl);
           return [];
         } else if (data['status'] == 'OVER_QUERY_LIMIT') {
           debugPrint('Google Maps API query limit exceeded');
@@ -151,6 +198,12 @@ class MapsService {
       );
     }
 
+    final cacheKey = 'place_details:$placeId';
+    final cached = _getCached(cacheKey);
+    if (cached.hit) {
+      return cached.value as LocationModel?;
+    }
+
     try {
       final response = await RetryUtility.retryMapsOperation(() async {
         return await http.get(
@@ -183,7 +236,7 @@ class MapsService {
             }
           }
 
-          return LocationModel(
+          final locationModel = LocationModel(
             address: result['formatted_address'],
             latitude: location['lat'],
             longitude: location['lng'],
@@ -192,8 +245,11 @@ class MapsService {
             country: country,
             postalCode: postalCode,
           );
+          _setCached(cacheKey, locationModel, _placeDetailsCacheTtl);
+          return locationModel;
         } else if (data['status'] == 'NOT_FOUND') {
           debugPrint('Place not found: $placeId');
+          _setCached(cacheKey, null, _placeDetailsCacheTtl);
           return null;
         } else if (data['status'] == 'REQUEST_DENIED') {
           debugPrint('Google Maps API request denied - check API key');
@@ -237,6 +293,15 @@ class MapsService {
       );
     }
 
+    final cacheKey = 'route:${_roundedCoordKey(origin.latitude)}'
+        ',${_roundedCoordKey(origin.longitude)}'
+        '|${_roundedCoordKey(destination.latitude)}'
+        ',${_roundedCoordKey(destination.longitude)}';
+    final cached = _getCached(cacheKey);
+    if (cached.hit) {
+      return cached.value as RouteInfo?;
+    }
+
     try {
       final response = await RetryUtility.retryMapsOperation(() async {
         return await http.get(
@@ -259,11 +324,13 @@ class MapsService {
           final polylinePoints =
               _decodePolyline(route['overview_polyline']['points']);
 
-          return RouteInfo(
+          final routeInfo = RouteInfo(
             distanceKm: distance,
             durationMinutes: duration.round(),
             polylinePoints: polylinePoints,
           );
+          _setCached(cacheKey, routeInfo, _routeCacheTtl);
+          return routeInfo;
         } else if (data['status'] == 'ZERO_RESULTS') {
           debugPrint('No route found between locations');
           return null;
@@ -375,6 +442,12 @@ class MapsService {
   /// Get address from coordinates (reverse geocoding)
   Future<LocationModel?> getAddressFromCoordinates(
       double lat, double lng) async {
+    final cacheKey = 'reverse:${_roundedCoordKey(lat)},${_roundedCoordKey(lng)}';
+    final cached = _getCached(cacheKey);
+    if (cached.hit) {
+      return cached.value as LocationModel?;
+    }
+
     if (!isConfigured) {
       debugPrint('Google Maps API key not configured. Using mock data.');
       // Mock implementation if API key is not set
@@ -419,7 +492,7 @@ class MapsService {
             }
           }
 
-          return LocationModel(
+          final locationModel = LocationModel(
             address: result['formatted_address'],
             latitude: lat,
             longitude: lng,
@@ -428,8 +501,11 @@ class MapsService {
             country: country,
             postalCode: postalCode,
           );
+          _setCached(cacheKey, locationModel, _reverseGeocodeCacheTtl);
+          return locationModel;
         } else if (data['status'] == 'ZERO_RESULTS') {
           debugPrint('No address found for coordinates: $lat, $lng');
+          _setCached(cacheKey, null, _reverseGeocodeCacheTtl);
           return null;
         } else if (data['status'] == 'REQUEST_DENIED') {
           debugPrint('Google Maps API request denied - check API key');
@@ -451,6 +527,12 @@ class MapsService {
 
   /// Get coordinates from address (forward geocoding)
   Future<LocationModel?> getCoordinatesFromAddress(String address) async {
+    final cacheKey = 'forward:${address.trim().toLowerCase()}';
+    final cached = _getCached(cacheKey);
+    if (cached.hit) {
+      return cached.value as LocationModel?;
+    }
+
     if (!isConfigured) {
       debugPrint('Google Maps API key not configured. Using mock data.');
       // Mock implementation if API key is not set
@@ -496,7 +578,7 @@ class MapsService {
             }
           }
 
-          return LocationModel(
+          final locationModel = LocationModel(
             address: result['formatted_address'],
             latitude: location['lat'],
             longitude: location['lng'],
@@ -505,8 +587,11 @@ class MapsService {
             country: country,
             postalCode: postalCode,
           );
+          _setCached(cacheKey, locationModel, _forwardGeocodeCacheTtl);
+          return locationModel;
         } else if (data['status'] == 'ZERO_RESULTS') {
           debugPrint('No coordinates found for address: $address');
+          _setCached(cacheKey, null, _forwardGeocodeCacheTtl);
           return null;
         } else if (data['status'] == 'REQUEST_DENIED') {
           debugPrint('Google Maps API request denied - check API key');
@@ -525,6 +610,18 @@ class MapsService {
       return null;
     }
   }
+}
+
+class _CacheLookup {
+  final bool hit;
+  final dynamic value;
+  _CacheLookup(this.hit, this.value);
+}
+
+class _CacheEntry {
+  final dynamic value;
+  final DateTime expiresAt;
+  _CacheEntry(this.value, this.expiresAt);
 }
 
 /// Place Suggestion Model

@@ -76,8 +76,8 @@ class RiderForegroundLocationService {
       RiderForegroundLocationService._();
 
   static const Duration _defaultInterval = Duration(seconds: 12);
-  static const Duration _addressRefreshInterval = Duration(seconds: 15);
-  static const double _addressRefreshDistanceMeters = 100;
+  static const Duration _addressRefreshInterval = Duration(seconds: 60);
+  static const double _addressRefreshDistanceMeters = 300;
 
   final ValueNotifier<RiderForegroundLocationState> stateNotifier =
       ValueNotifier<RiderForegroundLocationState>(

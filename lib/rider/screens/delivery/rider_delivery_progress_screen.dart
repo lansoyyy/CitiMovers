@@ -2017,13 +2017,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
     final newLatLng = LatLng(location.latitude, location.longitude);
 
-    // Throttle reverse geocoding — only every 15 s or if moved > 100 m
+    // Throttle reverse geocoding — only every 30 s or if moved > 250 m
     String? address = _currentDriverAddress;
     final now = DateTime.now();
     final shouldUpdateAddress = _lastAddressUpdate == null ||
-        now.difference(_lastAddressUpdate!).inSeconds >= 15 ||
+        now.difference(_lastAddressUpdate!).inSeconds >= 30 ||
         (_currentDriverLocation != null &&
-            _distanceMeters(_currentDriverLocation!, newLatLng) > 100);
+            _distanceMeters(_currentDriverLocation!, newLatLng) > 250);
 
     if (shouldUpdateAddress) {
       final result = await _mapsService.getAddressFromCoordinates(
