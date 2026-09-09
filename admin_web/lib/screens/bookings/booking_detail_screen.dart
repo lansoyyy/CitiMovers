@@ -440,6 +440,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     ];
 
     final deliveryPhotosMap = _asMap(_bookingData?['deliveryPhotosMap']);
+    final deliveryPhotosList =
+        (_bookingData?['deliveryPhotos'] as List?) ?? [];
+
+    // Debug logging for photo diagnostics
+    debugPrint('[BookingDetail] deliveryPhotosMap keys: ${deliveryPhotosMap.keys.toList()}');
+    debugPrint('[BookingDetail] deliveryPhotosMap isEmpty: ${deliveryPhotosMap.isEmpty}');
+    debugPrint('[BookingDetail] deliveryPhotosList length: ${deliveryPhotosList.length}');
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -522,6 +529,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               if (deliveryPhotosMap.isNotEmpty)
                 _CategorizedDeliveryPhotosCard(
                   photosMap: deliveryPhotosMap,
+                )
+              else if ((d['deliveryPhotos'] as List?)?.isNotEmpty == true)
+                _FlatDeliveryPhotosCard(
+                  urls: (d['deliveryPhotos'] as List)
+                      .whereType<String>()
+                      .where((url) => url.startsWith('http'))
+                      .toList(),
                 ),
             ],
           ),
@@ -1499,7 +1513,7 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
-                        children: urls
+                          children: urls
                             .map(
                               (url) => GestureDetector(
                                 onTap: () => showDialog(
@@ -1508,6 +1522,43 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
                                     child: InteractiveViewer(
                                       child: CachedNetworkImage(
                                         imageUrl: url,
+                                        errorWidget:
+                                            (context, url, error) => Container(
+                                              width: 300,
+                                              height: 200,
+                                              color: Colors.grey[200],
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.broken_image,
+                                                    color: Colors.grey,
+                                                    size: 48,
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    'Failed to load image',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 12,
+                                                      color: Colors.grey,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    url.length > 60
+                                                        ? '${url.substring(0, 60)}...'
+                                                        : url,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 9,
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                       ),
                                     ),
                                   ),
@@ -1519,6 +1570,16 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
                                     width: 140,
                                     height: 100,
                                     fit: BoxFit.cover,
+                                    errorWidget:
+                                        (context, url, error) => Container(
+                                          width: 140,
+                                          height: 100,
+                                          color: Colors.grey[200],
+                                          child: const Icon(
+                                            Icons.broken_image,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
                                   ),
                                 ),
                               ),
@@ -1529,6 +1590,70 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
                   ),
                 );
               }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FlatDeliveryPhotosCard extends StatelessWidget {
+  final List<String> urls;
+  const _FlatDeliveryPhotosCard({required this.urls});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SectionHeader(title: 'Delivery Photos'),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: urls
+                  .map(
+                    (url) => GestureDetector(
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => Dialog(
+                          child: InteractiveViewer(
+                            child: CachedNetworkImage(
+                              imageUrl: url,
+                              errorWidget: (context, url, error) => Container(
+                                width: 140,
+                                height: 100,
+                                color: Colors.grey[200],
+                                child: const Icon(Icons.broken_image,
+                                    color: Colors.grey),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CachedNetworkImage(
+                          imageUrl: url,
+                          width: 140,
+                          height: 100,
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => Container(
+                            width: 140,
+                            height: 100,
+                            color: Colors.grey[200],
+                            child: const Icon(Icons.broken_image,
+                                color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
           ],
         ),
       ),

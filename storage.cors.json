@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://lansoyyy.github.io", "http://localhost:*", "https://citimovers-346f2.web.app"],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Disposition", "Content-Range", "X-Goog-Generation", "X-Goog-Metageneration", "X-Goog-Upload-Content-Type", "Access-Control-Allow-Origin"],
+    "maxAgeSeconds": 3600
+  }
+]
