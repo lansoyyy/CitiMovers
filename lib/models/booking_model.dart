@@ -47,6 +47,8 @@ class BookingModel {
   final DateTime? unloadingCompletedAt;
   final double? loadingDemurrageFee;
   final double? unloadingDemurrageFee;
+  final DateTime? pickupCallTime;
+  final DateTime? loadingDocsReceivedAt;
   final Map<String, dynamic>? deliveryPhotos;
   final String? receiverName;
   final List<dynamic>? picklistItems;
@@ -101,6 +103,8 @@ class BookingModel {
     this.unloadingCompletedAt,
     this.loadingDemurrageFee,
     this.unloadingDemurrageFee,
+    this.pickupCallTime,
+    this.loadingDocsReceivedAt,
     this.deliveryPhotos,
     this.receiverName,
     this.picklistItems,
@@ -297,6 +301,8 @@ class BookingModel {
       unloadingCompletedAt: _parseFirestoreDate(map['unloadingCompletedAt']),
       loadingDemurrageFee: (map['loadingDemurrageFee'] as num?)?.toDouble(),
       unloadingDemurrageFee: (map['unloadingDemurrageFee'] as num?)?.toDouble(),
+      pickupCallTime: _parseFirestoreDate(map['pickupCallTime']),
+      loadingDocsReceivedAt: _parseFirestoreDate(map['loadingDocsReceivedAt']),
       deliveryPhotos: _parseMap(map['deliveryPhotos']),
       receiverName: map['receiverName'] as String?,
       picklistItems: map['picklistItems'] as List<dynamic>?,
@@ -353,6 +359,8 @@ class BookingModel {
       'unloadingCompletedAt': unloadingCompletedAt?.millisecondsSinceEpoch,
       'loadingDemurrageFee': loadingDemurrageFee,
       'unloadingDemurrageFee': unloadingDemurrageFee,
+      'pickupCallTime': pickupCallTime?.millisecondsSinceEpoch,
+      'loadingDocsReceivedAt': loadingDocsReceivedAt?.millisecondsSinceEpoch,
       'deliveryPhotos': deliveryPhotos,
       'receiverName': receiverName,
       'picklistItems': picklistItems,
@@ -412,6 +420,8 @@ class BookingModel {
     DateTime? unloadingCompletedAt,
     double? loadingDemurrageFee,
     double? unloadingDemurrageFee,
+    DateTime? pickupCallTime,
+    DateTime? loadingDocsReceivedAt,
     Map<String, dynamic>? deliveryPhotos,
     String? receiverName,
     List<dynamic>? picklistItems,
@@ -461,6 +471,9 @@ class BookingModel {
       loadingDemurrageFee: loadingDemurrageFee ?? this.loadingDemurrageFee,
       unloadingDemurrageFee:
           unloadingDemurrageFee ?? this.unloadingDemurrageFee,
+      pickupCallTime: pickupCallTime ?? this.pickupCallTime,
+      loadingDocsReceivedAt:
+          loadingDocsReceivedAt ?? this.loadingDocsReceivedAt,
       deliveryPhotos: deliveryPhotos ?? this.deliveryPhotos,
       receiverName: receiverName ?? this.receiverName,
       picklistItems: picklistItems ?? this.picklistItems,

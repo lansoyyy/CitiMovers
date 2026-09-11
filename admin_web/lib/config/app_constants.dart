@@ -69,6 +69,7 @@ class AdminConstants {
   static const String auditSuspendRider = 'suspend_rider';
   static const String auditReactivateRider = 'reactivate_rider';
   static const String auditAssignBooking = 'assign_booking';
+  static const String auditSetBookingCallTime = 'set_booking_call_time';
   static const String auditCancelBooking = 'cancel_booking';
   static const String auditAddBookingNote = 'add_booking_note';
   static const String auditClaimBookingIssue = 'claim_booking_issue';

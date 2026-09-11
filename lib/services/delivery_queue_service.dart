@@ -14,7 +14,7 @@ import 'storage_service.dart';
 
 // ─────────────────────────── enums ───────────────────────────
 
-enum DeliveryQueueOpType { photoUpload, statusUpdate, photoRecord }
+enum DeliveryQueueOpType { photoUpload, statusUpdate, photoRecord, fieldUpdate }
 
 enum DeliverySyncStatus {
   /// Queue is empty and nothing is in flight.
@@ -270,6 +270,28 @@ class DeliveryQueueService {
     _flush(); // best-effort immediate attempt
   }
 
+  /// Queue a pure field merge for offline-first sync.
+  ///
+  /// Unlike [enqueueStatusUpdate] this never touches the booking status —
+  /// it only merges [data] into the document when connectivity returns.
+  /// Use it for timestamp corrections that must never regress a status that
+  /// advanced while the device was offline.
+  Future<void> enqueueFieldUpdate({
+    required String bookingId,
+    required Map<String, dynamic> data,
+  }) async {
+    if (data.isEmpty) return;
+    final entry = DeliveryQueueEntry(
+      id: '${bookingId}__fields_${DateTime.now().millisecondsSinceEpoch}',
+      type: DeliveryQueueOpType.fieldUpdate,
+      bookingId: bookingId,
+      payload: {'data': data},
+      createdAt: DateTime.now(),
+    );
+    await _enqueue(entry);
+    _flush(); // best-effort immediate attempt
+  }
+
   // ─────────────────────────── force sync ───────────────────────────
 
   /// Block (poll) until all pending entries for [bookingId] are flushed or
@@ -402,6 +424,8 @@ class DeliveryQueueService {
         return _executePhotoRecord(entry);
       case DeliveryQueueOpType.statusUpdate:
         return _executeStatusUpdate(entry);
+      case DeliveryQueueOpType.fieldUpdate:
+        return _executeFieldUpdate(entry);
     }
   }
 
@@ -484,6 +508,29 @@ class DeliveryQueueService {
       stage: p['firestoreStage'] as String,
       photoUrl: p['photoUrl'] as String,
     );
+  }
+
+  /// Merges queued booking fields into the document without touching the
+  /// booking status, so a field correction can never regress a status that
+  /// advanced while the device was offline.
+  Future<bool> _executeFieldUpdate(DeliveryQueueEntry entry) async {
+    try {
+      final data = entry.payload['data'];
+      if (data is! Map || data.isEmpty) {
+        return true; // nothing to merge — remove from queue
+      }
+
+      await _firestore.collection('bookings').doc(entry.bookingId).update({
+        ...data.map((key, value) => MapEntry(key.toString(), value)),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint(
+          '[DeliveryQueue] ✅ Fields merged: ${entry.bookingId} (${data.length})');
+      return true;
+    } catch (e) {
+      debugPrint('[DeliveryQueue] ❌ Field merge error: $e');
+      return false; // Keep in queue for retry
+    }
   }
 
   Future<bool> _executeStatusUpdate(DeliveryQueueEntry entry) async {

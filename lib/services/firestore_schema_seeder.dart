@@ -87,6 +87,11 @@ class FirestoreSchemaSeeder {
               'loadingEndTime': 'number?',
               'unloadingStartTime': 'number?',
               'unloadingEndTime': 'number?',
+              'pickupCallTime': 'number?',
+              'callTimeSetAt': 'timestamp?',
+              'callTimeSetBy': 'string?',
+              'loadingDemurrageStartSource': 'string?',
+              'loadingDocsReceivedAt': 'number?',
             },
           },
           'saved_locations': {

@@ -122,6 +122,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   Duration _loadingDuration = Duration.zero;
   double _loadingDemurrageFee = 0.0;
   DateTime? _loadingStartTime; // wall-clock start for accurate elapsed time
+  DateTime? _arrivalAtPickup; // actual arrival instant (rule 4/5 comparison)
+  DateTime? _callTime; // manual call-time entry (admin); null = not scheduled
+  DateTime? _serviceInvoiceCapturedAt; // docs-received instant (fee end)
   File? _startLoadingPhoto;
   File? _finishLoadingPhoto;
 
@@ -316,7 +319,19 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         .snapshots()
         .listen((snap) {
       if (!mounted || !snap.exists) return;
-      final status = (snap.data()?['status'] ?? '').toString();
+      final data = snap.data();
+      final status = (data?['status'] ?? '').toString();
+
+      // Pick up a call time the dispatcher set while the rider is still en
+      // route, so the demurrage decision can use it at arrival. Once the
+      // demurrage start is recorded a late entry never rewrites history.
+      if (_loadingStartTime == null) {
+        final callTime = _parseBookingDateTime(data?['pickupCallTime']);
+        if (callTime != _callTime) {
+          setState(() => _callTime = callTime);
+        }
+      }
+
       const cancelledStatuses = [
         'cancelled',
         'cancelled_by_customer',
@@ -405,6 +420,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       picklistItems: _picklistItems,
       loadingStartTimeMs: _loadingStartTime?.millisecondsSinceEpoch,
       unloadingStartTimeMs: _unloadingStartTime?.millisecondsSinceEpoch,
+      arrivalAtPickupMs: _arrivalAtPickup?.millisecondsSinceEpoch,
+      serviceInvoiceCapturedAtMs:
+          _serviceInvoiceCapturedAt?.millisecondsSinceEpoch,
+      pickupCallTimeMs: _callTime?.millisecondsSinceEpoch,
     );
   }
 
@@ -1308,6 +1327,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     if (!mounted) return;
 
     _applyStandardPhotoToState(photoType, prepared, onPicked: onPicked);
+    if (photoType == 'Start Loading') {
+      await _applyLoadingStartDemurrageRule(prepared);
+    }
     await _saveDeliveryState();
     if (photoType == 'Receiver ID') {
       await _persistReceivingProgressToFirestore(
@@ -1336,6 +1358,11 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     bool alreadyPrepared = false,
   }) async {
     if (!mounted) return;
+
+    // Docs-received moment (client rule 7): the first Service Invoice photo
+    // marks the end of the loading demurrage count. Capture the instant
+    // before any upload/prepare latency.
+    _serviceInvoiceCapturedAt ??= DateTime.now();
 
     File prepared = file;
     if (!alreadyPrepared && !_isPersistedDeliveryPhoto(file)) {
@@ -1789,10 +1816,24 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           _parseBookingDateTime(bookingData?['loadingStartedAt']);
       final loadingCompletedAt =
           _parseBookingDateTime(bookingData?['loadingCompletedAt']);
+      final loadingDocsReceivedAt =
+          _parseBookingDateTime(bookingData?['loadingDocsReceivedAt']);
       var unloadingStartedAt =
           _parseBookingDateTime(bookingData?['unloadingStartedAt']);
       final unloadingCompletedAt =
           _parseBookingDateTime(bookingData?['unloadingCompletedAt']);
+
+      // Manual call-time entry (rules 1/3/5): Firestore is authoritative;
+      // the local copy is only a fallback for offline restores. A cleared
+      // entry (key present but null) must clear the local value too.
+      if (bookingData?.containsKey('pickupCallTime') ?? false) {
+        _callTime = _parseBookingDateTime(bookingData?['pickupCallTime']);
+      } else {
+        final localCallTimeMs = savedState?['pickupCallTimeMs'] as int?;
+        _callTime ??= localCallTimeMs != null
+            ? DateTime.fromMillisecondsSinceEpoch(localCallTimeMs)
+            : null;
+      }
 
       // Prefer the locally-saved wall-clock start captured at the moment of
       // arrival. It can predate the Firestore write (or exist even when the
@@ -1805,6 +1846,30 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           loadingStartedAt = localStart;
         }
       }
+      final localArrivalAtPickupMs = savedState?['arrivalAtPickupMs'] as int?;
+      var arrivalAtPickup = _parseBookingDateTime(
+        bookingData?['arrivedAtPickupAt'],
+      );
+      if (localArrivalAtPickupMs != null) {
+        final localArrival =
+            DateTime.fromMillisecondsSinceEpoch(localArrivalAtPickupMs);
+        if (arrivalAtPickup == null || localArrival.isBefore(arrivalAtPickup)) {
+          arrivalAtPickup = localArrival;
+        }
+      }
+      _arrivalAtPickup = arrivalAtPickup;
+
+      // The docs-received instant (rule 7): the exact shutter time from the
+      // saved state wins; the earliest uploaded invoice record is the
+      // fallback. Either ends the loading demurrage count.
+      final localInvoiceMs = savedState?['serviceInvoiceCapturedAtMs'] as int?;
+      _serviceInvoiceCapturedAt = localInvoiceMs != null
+          ? DateTime.fromMillisecondsSinceEpoch(localInvoiceMs)
+          : _earliestStageUploadedAt(
+              _normalizeDeliveryPhotos(bookingData?['deliveryPhotos']),
+              'service_invoice_',
+            );
+
       final localUnloadingStartMs = savedState?['unloadingStartTimeMs'] as int?;
       if (localUnloadingStartMs != null) {
         final localStart =
@@ -1817,12 +1882,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
       // Fallback: the rider is inside the loading/unloading phase but no
       // demurrage start was ever recorded (the arrival write may have failed
-      // offline). Start counting from now so demurrage still runs; the sync
-      // below persists the start to Firestore.
+      // offline). Start counting from now so demurrage still runs — unless a
+      // call time is still in the future, in which case counting begins at
+      // the call time (rules 1/5). The sync below persists the start.
       if (mergedSnapshot.step == DeliveryStep.loading &&
           loadingStartedAt == null &&
           loadingCompletedAt == null) {
-        loadingStartedAt = now;
+        final callTime = _callTime;
+        loadingStartedAt =
+                callTime != null && callTime.isAfter(now) ? callTime : now;
       }
       if (mergedSnapshot.step == DeliveryStep.unloading &&
           unloadingStartedAt == null &&
@@ -1830,14 +1898,16 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         unloadingStartedAt = now;
       }
 
-      // Loading demurrage ends when loading completes (service invoice).
-      // Unloading demurrage runs from "Arrived at Destination" until the
-      // documents are received/signed (delivery completion), so it stays
-      // active for any non-final booking once unloading has started — even
-      // while the rider is in the damage-report / receiving phases.
+      // Loading demurrage ends at docs received (rule 7); the loading
+      // completion click is the legacy fallback. Unloading demurrage runs
+      // from "Arrived at Destination" until the documents are received/
+      // signed (delivery completion), so it stays active for any non-final
+      // booking once unloading has started — even while the rider is in the
+      // damage-report / receiving phases.
       final loadingDuration = loadingStartedAt == null
           ? Duration.zero
-          : (loadingCompletedAt ?? now).difference(loadingStartedAt);
+          : (loadingDocsReceivedAt ?? loadingCompletedAt ?? now)
+              .difference(loadingStartedAt);
       final unloadingDuration = unloadingStartedAt == null
           ? Duration.zero
           : now.difference(unloadingStartedAt);
@@ -1927,6 +1997,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       // arrival write failed offline.
       unawaited(_syncRestoredDemurrageStartsToFirestore(
         loadingStartedAt: loadingStartedAt,
+        arrivalAtPickup: _arrivalAtPickup,
         unloadingStartedAt: unloadingStartedAt,
         bookingData: bookingData,
       ));
@@ -1944,6 +2015,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   /// never reached Firestore because the app was offline or was killed).
   Future<void> _syncRestoredDemurrageStartsToFirestore({
     required DateTime? loadingStartedAt,
+    required DateTime? arrivalAtPickup,
     required DateTime? unloadingStartedAt,
     required Map<String, dynamic>? bookingData,
   }) async {
@@ -1956,8 +2028,20 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               loadingStartedAt.isBefore(storedLoadingStart))) {
         updates['loadingStartedAt'] =
             loadingStartedAt.millisecondsSinceEpoch;
-        updates['arrivedAtPickupAt'] =
-            loadingStartedAt.millisecondsSinceEpoch;
+        updates['loadingDemurrageStartSource'] = _demurrageStartSourceFor(
+          loadingStartedAt,
+          arrival: arrivalAtPickup,
+          callTime: _callTime,
+        );
+      }
+      // The physical arrival is tracked separately from the demurrage start
+      // (which can be the call time) so the admin timeline stays truthful.
+      final storedArrivalAtPickup =
+          _parseBookingDateTime(bookingData?['arrivedAtPickupAt']);
+      if (arrivalAtPickup != null &&
+          (storedArrivalAtPickup == null ||
+              arrivalAtPickup.isBefore(storedArrivalAtPickup))) {
+        updates['arrivedAtPickupAt'] = arrivalAtPickup.millisecondsSinceEpoch;
       }
       final storedUnloadingStart =
           _parseBookingDateTime(bookingData?['unloadingStartedAt']);
@@ -1996,6 +2080,44 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       return DateTime.tryParse(value);
     }
     return null;
+  }
+
+  /// Infers which client rule produced a demurrage start, for the admin
+  /// panel's audit trail (rule 3: the system must show which instant it used).
+  String _demurrageStartSourceFor(
+    DateTime start, {
+    DateTime? arrival,
+    DateTime? callTime,
+  }) {
+    if (callTime != null && start == callTime) {
+      return DemurrageUtils.sourceCallTime;
+    }
+    if (arrival != null && start == arrival) {
+      return DemurrageUtils.sourceArrival;
+    }
+    return DemurrageUtils.sourceLoadingStart;
+  }
+
+  /// Earliest uploadedAt among queued stage photos (e.g. `service_invoice_1`,
+  /// `service_invoice_2`) — used to recover the docs-received instant.
+  DateTime? _earliestStageUploadedAt(
+    Map<String, dynamic> photos,
+    String prefix,
+  ) {
+    DateTime? earliest;
+    for (final entry in photos.entries) {
+      if (!entry.key.startsWith(prefix)) continue;
+      final value = entry.value;
+      if (value is Map) {
+        final ts = _parseBookingDateTime(
+          value['uploadedAt'] ?? value['timestamp'],
+        );
+        if (ts != null && (earliest == null || ts.isBefore(earliest))) {
+          earliest = ts;
+        }
+      }
+    }
+    return earliest;
   }
 
   /// Start periodic location tracking — every 3 seconds for real-time navigation
@@ -2324,9 +2446,34 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     );
     final existingLoadingStart =
         _parseBookingDateTime(booking?['loadingStartedAt']);
+    final existingArrivalAtPickup =
+        _parseBookingDateTime(booking?['arrivedAtPickupAt']);
     final canAdvanceStatus =
         !BookingStatusService.isFinalStatus(currentStatus) &&
             _statusRank(currentStatus) < _statusRank('arrived_at_pickup');
+
+    // Manual call-time entry (rules 1/3/5): when the dispatcher scheduled a
+    // call time and the unit arrived earlier, counting must begin at the
+    // call time — not at the arrival click. Later arrivals count from the
+    // actual arrival (rule 4). No call time keeps the legacy behaviour.
+    final callTime = (booking?.containsKey('pickupCallTime') ?? false)
+        ? _parseBookingDateTime(booking?['pickupCallTime'])
+        : _callTime;
+    _callTime = callTime;
+
+    String demurrageSource;
+    if (existingLoadingStart != null) {
+      final storedSource =
+          (booking?['loadingDemurrageStartSource'] ?? '').toString().trim();
+      demurrageSource = storedSource.isNotEmpty
+          ? storedSource
+          : DemurrageUtils.sourceArrival;
+    } else {
+      demurrageSource = DemurrageUtils.resolveDemurrageStart(
+        arrival: arrivedAt,
+        callTime: callTime,
+      ).source;
+    }
 
     // Demurrage keeps counting from the originally recorded start when one
     // already exists.
@@ -2335,6 +2482,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     setState(() {
       _currentStep = DeliveryStep.loading;
       _loadingSubStep = LoadingSubStep.arrived;
+      // The physical arrival instant is kept separately from the demurrage
+      // start so rule 6 (loading before call time) can still compare them.
+      _arrivalAtPickup ??= existingArrivalAtPickup ?? arrivedAt;
       // Never reset an existing start time: if the rider stepped back and
       // re-confirmed arrival, demurrage still counts from the first arrival.
       _loadingStartTime ??= demurrageStart;
@@ -2359,6 +2509,11 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       status: nextStatus,
       loadingStartedAt:
           existingLoadingStart == null ? _loadingStartTime : null,
+      loadingDemurrageStartSource:
+          existingLoadingStart == null ? demurrageSource : null,
+      arrivalAtPickupAt: existingArrivalAtPickup == null
+          ? (_arrivalAtPickup ?? arrivedAt)
+          : null,
       picklistItems: _picklistItems,
       deliveryPhotos: {
         'warehouse_arrival': _warehouseArrivalPhotoUrl,
@@ -2373,8 +2528,11 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         data: {
           if (existingLoadingStart == null) ...{
             'loadingStartedAt': _loadingStartTime!.millisecondsSinceEpoch,
-            'arrivedAtPickupAt': _loadingStartTime!.millisecondsSinceEpoch,
+            'loadingDemurrageStartSource': demurrageSource,
           },
+          if (existingArrivalAtPickup == null)
+            'arrivedAtPickupAt':
+                (_arrivalAtPickup ?? arrivedAt).millisecondsSinceEpoch,
         },
       );
     }
@@ -2885,6 +3043,55 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     _saveDeliveryState();
   }
 
+  /// Client rule 6: when the unit arrived earlier than the call time AND
+  /// physically started loading before the call time, demurrage counts from
+  /// the loading start instead of the call time.
+  ///
+  /// The demurrage start can only ever move EARLIER here — never later — so
+  /// re-processing the same photo (recovery path) is a no-op. The photo's
+  /// modification time marks the physical loading start; on a fresh capture
+  /// that equals "now".
+  Future<void> _applyLoadingStartDemurrageRule(File photo) async {
+    final loadingStart = _safePhotoTime(photo);
+    final currentStart = _loadingStartTime;
+    if (currentStart == null || !loadingStart.isBefore(currentStart)) {
+      return;
+    }
+
+    setState(() {
+      _loadingStartTime = loadingStart;
+      _loadingDuration = DateTime.now().difference(loadingStart);
+      _loadingDemurrageFee =
+          DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
+    });
+    _saveDeliveryState();
+
+    try {
+      await _firestore.collection('bookings').doc(widget.request.id).update({
+        'loadingStartedAt': loadingStart.millisecondsSinceEpoch,
+        'loadingDemurrageStartSource': DemurrageUtils.sourceLoadingStart,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('Failed writing rule-6 demurrage start — queuing offline.');
+      await _deliveryQueue.enqueueFieldUpdate(
+        bookingId: widget.request.id,
+        data: {
+          'loadingStartedAt': loadingStart.millisecondsSinceEpoch,
+          'loadingDemurrageStartSource': DemurrageUtils.sourceLoadingStart,
+        },
+      );
+    }
+  }
+
+  DateTime _safePhotoTime(File photo) {
+    try {
+      return photo.lastModifiedSync();
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
   void _finishLoadingPhotoProcess() {
     setState(() {
       _loadingSubStep = LoadingSubStep.finishLoading;
@@ -3165,10 +3372,15 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     }
 
     _loadingTimer?.cancel();
+    // Client rule 7: the loading demurrage count ends when the documents
+    // (Service Invoice) were received, not at the finish-loading click.
+    // Fall back to the click when no invoice instant is known.
+    final docsEnd = _serviceInvoiceCapturedAt ?? DateTime.now();
     // Final elapsed time from the wall-clock start so the last seconds
     // between ticks are counted in the demurrage fee.
     if (_loadingStartTime != null) {
-      _loadingDuration = DateTime.now().difference(_loadingStartTime!);
+      final docsDuration = docsEnd.difference(_loadingStartTime!);
+      _loadingDuration = docsDuration.isNegative ? Duration.zero : docsDuration;
     }
     _loadingDemurrageFee =
         DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
@@ -3179,6 +3391,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       bookingId: widget.request.id,
       status: 'loading_complete',
       loadingCompletedAt: DateTime.now(),
+      loadingDocsReceivedAt: docsEnd,
       loadingDemurrageFee: _loadingDemurrageFee,
       loadingDemurrageSeconds: _loadingDuration.inSeconds,
       picklistItems: _picklistItems,
@@ -3192,6 +3405,7 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         data: {
           'loadingCompletedAt': completedAtMs,
           'inTransitAt': completedAtMs,
+          'loadingDocsReceivedAt': docsEnd.millisecondsSinceEpoch,
           'loadingDemurrageFee': _loadingDemurrageFee,
           'loadingDemurrageSeconds': _loadingDuration.inSeconds,
         },
@@ -3920,10 +4134,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     // The queue callback (_registerQueueCallbacks) will update Firestore when it resolves.
 
     // ── Capture + attempt immediate signature upload ──
+    // The docs-received instant is taken BEFORE the upload so network
+    // latency is never billed into the unloading demurrage (client rule 7).
+    final docsReceivedAt = DateTime.now();
     String? signatureUrl = await _captureAndUploadSignature();
 
     // Capture Philippine Time (UTC+8) timestamp for receiver signature
-    final now = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final now = docsReceivedAt.toUtc().add(const Duration(hours: 8));
     final receivedAt = now;
 
     // ── Finalize the unloading demurrage ──
@@ -3931,7 +4148,9 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
     // until the documents are received/signed (this point).
     _unloadingTimer?.cancel();
     if (_unloadingStartTime != null) {
-      _unloadingDuration = DateTime.now().difference(_unloadingStartTime!);
+      final docsDuration = docsReceivedAt.difference(_unloadingStartTime!);
+      _unloadingDuration =
+          docsDuration.isNegative ? Duration.zero : docsDuration;
     }
     _unloadingDemurrageFee =
         DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
@@ -6352,8 +6571,10 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
   Widget _buildDemurrageTimerCard(String title, Duration duration, double fee) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String timerText =
-        '${twoDigits(duration.inHours)}:${twoDigits(duration.inMinutes.remainder(60))}:${twoDigits(duration.inSeconds.remainder(60))}';
+    final awaitingCallTime = duration.isNegative;
+    final shown = awaitingCallTime ? -duration : duration;
+    final timerText =
+        '${twoDigits(shown.inHours)}:${twoDigits(shown.inMinutes.remainder(60))}:${twoDigits(shown.inSeconds.remainder(60))}';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -6374,18 +6595,29 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             ],
           ),
           const SizedBox(height: 12),
-          Text(timerText,
+          Text(awaitingCallTime ? 'Starts in $timerText' : timerText,
               style: const TextStyle(
                   fontSize: 32,
                   fontFamily: 'Bold',
                   color: AppColors.textPrimary)),
           const SizedBox(height: 8),
-          // Text('Current Fee: P${fee.toStringAsFixed(2)}',
-          //     style: const TextStyle(
-          //         fontSize: 14, color: AppColors.textSecondary)),
-          // const SizedBox(height: 4),
-          // const Text('Fees apply every 4 hours (25% of fare)',
-          //     style: TextStyle(fontSize: 10, color: AppColors.textHint)),
+          if (awaitingCallTime && _callTime != null) ...[
+            Text(
+              'Waiting for call time — '
+              'demurrage starts at ${DateFormat('h:mm a').format(_callTime!)}',
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 4),
+          ],
+          if (!awaitingCallTime) ...[
+            Text('Current Fee: P${fee.toStringAsFixed(2)}',
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.textSecondary)),
+            const SizedBox(height: 4),
+            const Text('First 4 hours free · +25% of fare per 4-hour block',
+                style: TextStyle(fontSize: 10, color: AppColors.textHint)),
+          ],
         ],
       ),
     );

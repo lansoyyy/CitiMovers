@@ -2008,6 +2008,60 @@ class AdminRepository {
     });
   }
 
+  /// Sets (or clears) the manual pickup call-time entry for a booking.
+  ///
+  /// The call time drives the demurrage start decision on the rider side
+  /// (rules 1/3/5/6). Once demurrage has started the call time is locked —
+  /// a late change would silently disagree with the running timer.
+  static Future<void> setBookingCallTime({
+    required String bookingId,
+    DateTime? callTime,
+  }) async {
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(bookingId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+
+    final bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists) {
+      throw StateError('Booking not found.');
+    }
+
+    final beforeData = normalizeBookingData(bookingId, _asMap(bookingSnap.data()));
+    if (parseTimestamp(beforeData['loadingStartedAt']) != null) {
+      throw StateError(
+          'Demurrage has already started for this trip — the call time '
+          'can no longer be changed.');
+    }
+
+    final batch = _db.batch();
+    batch.set(bookingRef, {
+      if (callTime != null)
+        'pickupCallTime': callTime.millisecondsSinceEpoch
+      else
+        'pickupCallTime': FieldValue.delete(),
+      'callTimeSetAt': FieldValue.serverTimestamp(),
+      'callTimeSetBy': AdminConstants.adminUsername,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    batch.set(
+      auditRef,
+      _buildAuditEntry(
+        action: AdminConstants.auditSetBookingCallTime,
+        entityType: 'booking',
+        entityId: bookingId,
+        reason: callTime == null
+            ? 'Call time cleared'
+            : 'Call time set to ${callTime.toIso8601String()}',
+        before: {'pickupCallTime': beforeData['pickupCallTime']},
+        after: {
+          'pickupCallTime': callTime?.millisecondsSinceEpoch,
+        },
+      ),
+    );
+    await batch.commit();
+  }
+
   static Future<void> addBookingAdminNote({
     required String bookingId,
     required String note,

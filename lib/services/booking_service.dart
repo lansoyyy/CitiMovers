@@ -1138,6 +1138,9 @@ class BookingService {
     int? loadingDemurrageSeconds,
     int? destinationDemurrageSeconds,
     int? totalDemurrageSeconds,
+    DateTime? loadingDocsReceivedAt,
+    String? loadingDemurrageStartSource,
+    DateTime? arrivalAtPickupAt,
     List<Map<String, dynamic>>? picklistItems,
     Map<String, dynamic>? deliveryPhotos,
     String? deliveryProgressStep,
@@ -1164,8 +1167,11 @@ class BookingService {
         updateData['loadingStartedAt'] =
             loadingStartedAt.millisecondsSinceEpoch;
         // Keep the admin timeline timestamp in sync with the demurrage start.
+        // With a call time the demurrage start can precede the physical
+        // arrival, so the explicit actual arrival wins when provided.
         if (status == 'arrived_at_pickup') {
-          updateData['arrivedAtPickupAt'] = loadingStartedAt.millisecondsSinceEpoch;
+          updateData['arrivedAtPickupAt'] =
+              (arrivalAtPickupAt ?? loadingStartedAt).millisecondsSinceEpoch;
         }
       }
 
@@ -1232,6 +1238,16 @@ class BookingService {
 
       if (totalDemurrageSeconds != null) {
         updateData['totalDemurrageSeconds'] = totalDemurrageSeconds;
+      }
+
+      if (loadingDocsReceivedAt != null) {
+        updateData['loadingDocsReceivedAt'] =
+            loadingDocsReceivedAt.millisecondsSinceEpoch;
+      }
+
+      if (loadingDemurrageStartSource != null &&
+          loadingDemurrageStartSource.isNotEmpty) {
+        updateData['loadingDemurrageStartSource'] = loadingDemurrageStartSource;
       }
 
       if (picklistItems != null) {

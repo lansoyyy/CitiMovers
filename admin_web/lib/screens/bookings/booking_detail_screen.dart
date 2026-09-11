@@ -364,6 +364,149 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     }
   }
 
+  /// Opens the date/time pickers to set (or clear) the pickup call time.
+  /// Demurrage rules (1/3/5/6): an early arrival counts from the call time,
+  /// a late arrival from actual arrival, and loading that starts before the
+  /// call time counts from the loading start.
+  Future<void> _editCallTime() async {
+    final currentCallTime = AdminRepository.parseTimestamp(
+      _bookingData?['pickupCallTime'],
+    );
+
+    // When a call time already exists offer to change or clear it.
+    if (currentCallTime != null) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          final viewportWidth = MediaQuery.of(dialogContext).size.width;
+          final dialogWidth = viewportWidth > 560 ? 420.0 : viewportWidth * 0.82;
+          return AlertDialog(
+            title: const Text('Call Time'),
+            content: SizedBox(
+              width: dialogWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Current call time: '
+                    '${DateFormat('EEE, MMM d, h:mm a').format(currentCallTime)}',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Demurrage counts from the call time when the unit '
+                    'arrives earlier, from the arrival when it is late, '
+                    'and from the loading start when loading begins '
+                    'before the call time.',
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(dialogContext, 'clear'),
+                child: const Text('Clear'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AdminTheme.accent,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, 'change'),
+                child: const Text('Change'),
+              ),
+            ],
+          );
+        },
+      );
+      if (!mounted || choice == null) return;
+
+      if (choice == 'clear') {
+        setState(() => _isMutating = true);
+        try {
+          await AdminRepository.setBookingCallTime(
+            bookingId: widget.bookingId,
+          );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Call time cleared.')),
+          );
+          await _loadBooking();
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AdminRepository.describeError(error)),
+              backgroundColor: Colors.red,
+            ),
+          );
+        } finally {
+          if (mounted) {
+            setState(() => _isMutating = false);
+          }
+        }
+        return;
+      }
+    }
+
+    final initialDate = currentCallTime ?? DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(initialDate.year - 1),
+      lastDate: DateTime(initialDate.year + 1),
+      helpText: 'Pickup call time date',
+    );
+    if (!mounted || pickedDate == null) return;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialDate),
+      helpText: 'Pickup call time',
+    );
+    if (!mounted || pickedTime == null) return;
+
+    final combined = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    setState(() => _isMutating = true);
+    try {
+      await AdminRepository.setBookingCallTime(
+        bookingId: widget.bookingId,
+        callTime: combined,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Call time set to ${DateFormat('MMM d, h:mm a').format(combined)}.',
+          ),
+        ),
+      );
+      await _loadBooking();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AdminRepository.describeError(error)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -513,14 +656,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               if (stackDetailCards) ...[
                 _PaymentCard(d: d),
                 const SizedBox(height: 16),
-                _DemurrageCard(d: d),
+                _DemurrageCard(d: d, onEditCallTime: _editCallTime),
               ] else
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _PaymentCard(d: d)),
                     const SizedBox(width: 16),
-                    Expanded(child: _DemurrageCard(d: d)),
+                    Expanded(
+                      child: _DemurrageCard(d: d, onEditCallTime: _editCallTime),
+                    ),
                   ],
                 ),
               const SizedBox(height: 16),
@@ -643,6 +788,9 @@ class _StatusTimelineCard extends StatelessWidget {
     ('arrived_at_pickup', 'Arrived at Pickup', 'arrivedAtPickupAt'),
     ('loading', 'Loading Started', 'loadingStartedAt'),
     ('loading_complete', 'Loading Complete', 'loadingCompletedAt'),
+    // Not a booking status — marks when the pickup documents (Service
+    // Invoice / POD) were received, which also ends the loading demurrage.
+    ('pickup_docs_received', 'Documents Received (Pickup)', ''),
     ('in_transit', 'In Transit', 'inTransitAt'),
     ('arrived_at_dropoff', 'Arrived at Dropoff', 'arrivedAtDropoffAt'),
     ('unloading', 'Unloading Started', 'unloadingStartedAt'),
@@ -674,6 +822,29 @@ class _StatusTimelineCard extends StatelessWidget {
     return null;
   }
 
+  /// Earliest uploadedAt among prefixed stage photos (e.g. `service_invoice_1`,
+  /// `service_invoice_2`) — the rider queues invoices under numbered keys.
+  static DateTime? _earliestStagePhotoTime(
+    Map<String, dynamic> d,
+    String prefix,
+  ) {
+    final photos = _asMap(d['deliveryPhotosMap']);
+    DateTime? earliest;
+    for (final entry in photos.entries) {
+      if (!entry.key.startsWith(prefix)) continue;
+      final value = entry.value;
+      if (value is Map) {
+        final ts = AdminRepository.parseTimestamp(
+          value['uploadedAt'] ?? value['timestamp'],
+        );
+        if (ts != null && (earliest == null || ts.isBefore(earliest))) {
+          earliest = ts;
+        }
+      }
+    }
+    return earliest;
+  }
+
   static DateTime? _resolveTimelineTimestamp(
     Map<String, dynamic> d,
     String statusKey,
@@ -689,6 +860,12 @@ class _StatusTimelineCard extends StatelessWidget {
               'start_loading_photo',
             ]) ??
             AdminRepository.parseTimestamp(d['loadingStartedAt']);
+      case 'pickup_docs_received':
+        // The Service Invoice (POD) marks the pickup documents as received —
+        // the same instant that ends the loading demurrage count.
+        return AdminRepository.parseTimestamp(d['loadingDocsReceivedAt']) ??
+            _stagePhotoTime(d, ['service_invoice', 'invoice']) ??
+            _earliestStagePhotoTime(d, 'service_invoice_');
       case 'arrived_at_dropoff':
         return AdminRepository.parseTimestamp(d['arrivedAtDropoffAt']) ??
             AdminRepository.parseTimestamp(d['unloadingStartedAt']);
@@ -729,17 +906,23 @@ class _StatusTimelineCard extends StatelessWidget {
             ..._timeline.map((step) {
               final (statusKey, label, tsField) = step;
               final ts = _resolveTimelineTimestamp(d, statusKey, tsField);
-              // "Documents Received / Signed" is a milestone rather than a
-              // booking status: it sits at the completion rank and lights up
-              // as soon as a docs timestamp exists (or once completed).
-              final isDocsStep = statusKey == 'docs_received';
-              final stepIdx = isDocsStep
+              // "Documents Received" rows are milestones rather than booking
+              // statuses: they light up as soon as a docs timestamp exists
+              // (or once the flow has moved past their anchor step). The
+              // pickup milestone anchors at In Transit, the dropoff one at
+              // Completed.
+              final isMilestoneStep = statusKey == 'docs_received' ||
+                  statusKey == 'pickup_docs_received';
+              final milestoneRank = statusKey == 'docs_received'
                   ? statusOrder.indexOf('completed')
+                  : statusOrder.indexOf('in_transit');
+              final stepIdx = isMilestoneStep
+                  ? milestoneRank
                   : statusOrder.indexOf(statusKey);
-              final isDone = isDocsStep
+              final isDone = isMilestoneStep
                   ? ts != null || (stepIdx >= 0 && stepIdx <= currentIdx)
                   : stepIdx >= 0 && stepIdx <= currentIdx;
-              final isCurrent = !isDocsStep && statusKey == currentStatus;
+              final isCurrent = !isMilestoneStep && statusKey == currentStatus;
 
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1237,12 +1420,43 @@ class _SupportNotesCard extends StatelessWidget {
 
 class _DemurrageCard extends StatelessWidget {
   final Map<String, dynamic> d;
-  const _DemurrageCard({required this.d});
+  final VoidCallback onEditCallTime;
+
+  const _DemurrageCard({required this.d, required this.onEditCallTime});
+
+  String _sourceLabel(String source) {
+    switch (source) {
+      case 'call_time':
+        return 'from call time';
+      case 'loading_start':
+        return 'from start loading';
+      case 'arrival':
+        return 'from arrival';
+      default:
+        // Legacy bookings started counting at the arrival click.
+        return 'from arrival';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final loadingFee = (d['loadingDemurrageFee'] ?? 0) as num;
     final unloadingFee = (d['unloadingDemurrageFee'] ?? 0) as num;
+    final callTime = AdminRepository.parseTimestamp(d['pickupCallTime']);
+    final demurrageStarted =
+        AdminRepository.parseTimestamp(d['loadingStartedAt']) != null;
+    final loadingSource =
+        (d['loadingDemurrageStartSource'] ?? '').toString().trim();
+    final loadingDocsEnd = AdminRepository.parseTimestamp(
+          d['loadingDocsReceivedAt'],
+        ) ??
+        AdminRepository.parseTimestamp(d['loadingCompletedAt']);
+    final signatureTs = AdminRepository.parseTimestamp(
+      _asMap(d['deliveryPhotosMap'])['receiver_signature_timestamp'],
+    );
+    final unloadingDocsEnd = signatureTs ??
+        AdminRepository.parseTimestamp(d['completedAt']) ??
+        AdminRepository.parseTimestamp(d['unloadingCompletedAt']);
 
     return Card(
       child: Padding(
@@ -1252,11 +1466,17 @@ class _DemurrageCard extends StatelessWidget {
           children: [
             const SectionHeader(title: 'Demurrage'),
             const SizedBox(height: 12),
+            _buildCallTimeRow(context, callTime, demurrageStarted),
+            const Divider(color: AdminTheme.divider),
             _buildDemurrageRow(
-                'Demurrage Start (Arrival)', _fmt(d['loadingStartedAt'])),
+              'Demurrage Start (Pickup)',
+              demurrageStarted
+                  ? '${_fmt(d['loadingStartedAt'])} · ${_sourceLabel(loadingSource)}'
+                  : _fmt(d['loadingStartedAt']),
+            ),
             _buildDemurrageRow(
-              'Demurrage End (Loading Done)',
-              _fmt(d['loadingCompletedAt']),
+              'Demurrage End (Docs Received)',
+              _fmt(loadingDocsEnd),
             ),
             _buildDemurrageRow(
               'Loading Fee',
@@ -1268,8 +1488,8 @@ class _DemurrageCard extends StatelessWidget {
               _fmt(d['unloadingStartedAt']),
             ),
             _buildDemurrageRow(
-              'Demurrage End (Unloading Done)',
-              _fmt(d['unloadingCompletedAt']),
+              'Demurrage End (Docs Received)',
+              _fmt(unloadingDocsEnd),
             ),
             _buildDemurrageRow(
               'Unloading Fee',
@@ -1277,6 +1497,60 @@ class _DemurrageCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCallTimeRow(
+    BuildContext context,
+    DateTime? callTime,
+    bool demurrageStarted,
+  ) {
+    final value = callTime != null
+        ? DateFormat('EEE, MMM d, h:mm a').format(callTime)
+        : 'Not set';
+    final canEdit = !demurrageStarted;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(
+              'Call Time (Pickup)',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: AdminTheme.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              softWrap: true,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight:
+                    callTime != null ? FontWeight.w600 : FontWeight.w400,
+                color: callTime != null
+                    ? AdminTheme.textPrimary
+                    : AdminTheme.textSecondary,
+              ),
+            ),
+          ),
+          Tooltip(
+            message: canEdit
+                ? 'Set or clear the pickup call time'
+                : 'Demurrage already started — the call time is locked',
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: canEdit ? onEditCallTime : null,
+              icon: const Icon(Icons.edit_outlined, size: 16),
+            ),
+          ),
+        ],
       ),
     );
   }

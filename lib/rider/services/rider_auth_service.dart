@@ -1111,6 +1111,9 @@ class RiderAuthService {
     List<Map<String, dynamic>>? picklistItems,
     int? loadingStartTimeMs,
     int? unloadingStartTimeMs,
+    int? arrivalAtPickupMs,
+    int? serviceInvoiceCapturedAtMs,
+    int? pickupCallTimeMs,
   }) async {
     try {
       final state = {
@@ -1127,6 +1130,10 @@ class RiderAuthService {
         if (loadingStartTimeMs != null) 'loadingStartTimeMs': loadingStartTimeMs,
         if (unloadingStartTimeMs != null)
           'unloadingStartTimeMs': unloadingStartTimeMs,
+        if (arrivalAtPickupMs != null) 'arrivalAtPickupMs': arrivalAtPickupMs,
+        if (serviceInvoiceCapturedAtMs != null)
+          'serviceInvoiceCapturedAtMs': serviceInvoiceCapturedAtMs,
+        if (pickupCallTimeMs != null) 'pickupCallTimeMs': pickupCallTimeMs,
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       };
       await _storage.write('activeDeliveryState', state);
