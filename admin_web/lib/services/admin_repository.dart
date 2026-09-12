@@ -1227,6 +1227,19 @@ class AdminRepository {
     });
   }
 
+  /// Normalizes Philippine mobile numbers to the +63 international form the
+  /// rider app expects, so lookups and password salting stay consistent.
+  ///
+  /// Accepts `+639XXXXXXXXX`, `09XXXXXXXXX`, `9XXXXXXXXX`, and `63XXXXXXXXXX`.
+  static String? _normalizeRiderPhoneNumber(String input) {
+    var digits = input.trim().replaceAll(RegExp(r'[\s\-()]'), '');
+    if (digits.isEmpty) return null;
+    if (digits.startsWith('+')) return digits;
+    if (digits.startsWith('0')) digits = digits.substring(1);
+    if (digits.startsWith('63') && digits.length == 12) return '+$digits';
+    return '+63$digits';
+  }
+
   static Future<void> updateRiderProfile({
     required String riderId,
     String? name,
@@ -1256,10 +1269,10 @@ class AdminRepository {
     }
 
     if (phoneNumber != null) {
-      final trimmed = phoneNumber.trim();
-      if (trimmed.isNotEmpty) {
-        updates['phoneNumber'] = trimmed;
-        afterSummary['phoneNumber'] = trimmed;
+      final normalized = _normalizeRiderPhoneNumber(phoneNumber);
+      if (normalized != null && normalized.isNotEmpty) {
+        updates['phoneNumber'] = normalized;
+        afterSummary['phoneNumber'] = normalized;
       }
     }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
@@ -193,9 +194,26 @@ class RiderAuthService {
     return _normalizePhoneNumber(phoneNumber);
   }
 
-  static String _hashPassword(String password, String salt) {
+  /// Hashes [password] with [salt] (`sha256("<salt>:<password>")`).
+  ///
+  /// The salt must come from the rider's `passwordSalt` field. Legacy riders
+  /// registered before per-rider salts fall back to their phone number until
+  /// the next successful login migrates them (see [loginRider]).
+  static String hashPassword(String password, String salt) {
     final bytes = utf8.encode('$salt:$password');
     return sha256.convert(bytes).toString();
+  }
+
+  /// Random per-rider salt persisted in the rider document as `passwordSalt`.
+  ///
+  /// The salt is intentionally independent of mutable profile fields, so
+  /// admin edits to a rider's name or phone number can never invalidate a
+  /// stored password hash again.
+  static String generateSalt() {
+    final random = Random.secure();
+    return List<int>.generate(16, (_) => random.nextInt(256))
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
   }
 
   /// Prefer server data when online so access checks are not based on a stale
@@ -533,7 +551,8 @@ class RiderAuthService {
         _ => now.toIso8601String(),
       };
 
-      final hashedPassword = _hashPassword(password, normalizedPhoneNumber);
+      final passwordSalt = generateSalt();
+      final hashedPassword = hashPassword(password, passwordSalt);
 
       final rider = RiderModel(
         riderId: normalizedPhoneNumber,
@@ -583,6 +602,7 @@ class RiderAuthService {
             'plateNumber': normalizedPlate,
           },
           'password': hashedPassword,
+          'passwordSalt': passwordSalt,
           'riderId': normalizedPhoneNumber,
           'phoneNumber': normalizedPhoneNumber,
           if (helper1Name != null && helper1Name.trim().isNotEmpty)
@@ -662,17 +682,33 @@ class RiderAuthService {
       final data = Map<String, dynamic>.from(snapshot.docs.first.data());
       final riderDocRef = snapshot.docs.first.reference;
 
-      final storedHash = data['password'] as String?;
-      if (storedHash == null || storedHash.isEmpty) return null;
-
       final riderPhone = _normalizePhoneNumber(
         (data['phoneNumber'] ?? data['phone'] ?? data['contactNumber'] ?? '')
             .toString(),
       );
       if (riderPhone.isEmpty) return null;
 
-      final inputHash = _hashPassword(password, riderPhone);
+      final storedHash = data['password'] as String?;
+      if (storedHash == null || storedHash.isEmpty) return null;
+
+      // Riders registered before per-rider salts have no passwordSalt: their
+      // hash was derived from the (mutable) phone number. Verify against the
+      // stored salt when present, falling back to the phone for legacy docs.
+      final storedSalt = (data['passwordSalt'] as String?)?.trim() ?? '';
+      final isLegacyHash = storedSalt.isEmpty;
+      final salt = isLegacyHash ? riderPhone : storedSalt;
+
+      final inputHash = hashPassword(password, salt);
       if (storedHash != inputHash) return null;
+
+      // Zero-downtime migration: re-salt a legacy phone-derived hash with a
+      // random salt on the next successful login so profile edits can never
+      // invalidate it again. Persisted by the doc write below.
+      if (isLegacyHash) {
+        final migratedSalt = generateSalt();
+        data['passwordSalt'] = migratedSalt;
+        data['password'] = hashPassword(password, migratedSalt);
+      }
 
       data['riderId'] = riderPhone;
       data['phoneNumber'] = riderPhone;
