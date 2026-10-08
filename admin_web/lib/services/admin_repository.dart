@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
+import '../utils/contact_parsing.dart';
+import '../utils/partner_stamp.dart';
 
 class AdminRepository {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -1231,14 +1233,8 @@ class AdminRepository {
   /// rider app expects, so lookups and password salting stay consistent.
   ///
   /// Accepts `+639XXXXXXXXX`, `09XXXXXXXXX`, `9XXXXXXXXX`, and `63XXXXXXXXXX`.
-  static String? _normalizeRiderPhoneNumber(String input) {
-    var digits = input.trim().replaceAll(RegExp(r'[\s\-()]'), '');
-    if (digits.isEmpty) return null;
-    if (digits.startsWith('+')) return digits;
-    if (digits.startsWith('0')) digits = digits.substring(1);
-    if (digits.startsWith('63') && digits.length == 12) return '+$digits';
-    return '+63$digits';
-  }
+  static String? _normalizeRiderPhoneNumber(String input) =>
+      ContactParsing.normalizePhone(input);
 
   static Future<void> updateRiderProfile({
     required String riderId,
@@ -1622,6 +1618,24 @@ class AdminRepository {
         previousRiderSnap = await transaction.get(previousRiderRef);
       }
 
+      // Resolve the unit's partner (if any) before any writes so the booking
+      // carries a self-contained report snapshot: the rider app routes the
+      // completion report without extra queries and history stays accurate
+      // even if the partner configuration changes later.
+      final riderPartnerId = _asString(riderData['partnerId']).trim();
+      DocumentSnapshot<Map<String, dynamic>>? partnerSnap;
+      if (riderPartnerId.isNotEmpty) {
+        partnerSnap = await transaction.get(
+          _db.collection(AdminConstants.colPartners).doc(riderPartnerId),
+        );
+      }
+      final partnerStamp = PartnerStamp.resolveBookingPartnerStamp(
+        partnerId: riderPartnerId,
+        partnerRaw: partnerSnap != null && partnerSnap.exists
+            ? _asMap(partnerSnap.data())
+            : null,
+      );
+
       transaction.set(bookingRef, {
         'driverId': resolvedRiderId,
         'riderId': resolvedRiderId,
@@ -1636,6 +1650,7 @@ class AdminRepository {
         'lastAdminActionAt': FieldValue.serverTimestamp(),
         'lastAdminActionBy': AdminConstants.adminUsername,
         'updatedAt': FieldValue.serverTimestamp(),
+        ...partnerStamp,
       }, SetOptions(merge: true));
 
       transaction.set(deliveryRequestRef, {

@@ -8,6 +8,7 @@ import '../../config/rider_document_requirements.dart';
 import '../../config/theme.dart';
 import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
+import '../../services/partner_repository.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -197,6 +198,148 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
     }
   }
 
+  /// Opens the partner picker for this unit (rider) and applies the change.
+  Future<void> _assignPartner() async {
+    List<Map<String, dynamic>> partners;
+    try {
+      partners = await AdminPartnerRepository.streamPartners().first;
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to load partners: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+
+    const noPartnerValue = '__independent__';
+    final currentPartnerId =
+        (_riderData?['partnerId'] ?? '').toString().trim();
+
+    final selection = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Assign Partner'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, noPartnerValue),
+            child: Row(
+              children: [
+                Icon(
+                  currentPartnerId.isEmpty
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 18,
+                  color: AdminTheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Independent unit (no partner)',
+                    style: GoogleFonts.inter(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: AdminTheme.divider),
+          if (partners.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No partners registered yet. Create one from the Partners '
+                'section first.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AdminTheme.textSecondary,
+                ),
+              ),
+            ),
+          ...partners.map((partner) {
+            final partnerId = (partner['id'] ?? '').toString();
+            final isSelected = partnerId == currentPartnerId;
+            final isActive =
+                (partner['status'] ?? 'active') == 'active';
+            return SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, partnerId),
+              child: Row(
+                children: [
+                  Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 18,
+                    color: AdminTheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      (partner['name'] ?? 'Unnamed Partner').toString(),
+                      style: GoogleFonts.inter(fontSize: 13),
+                    ),
+                  ),
+                  if (!isActive)
+                    Text(
+                      'inactive',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AdminTheme.textSecondary,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+
+    if (!mounted || selection == null) return;
+    if (selection == noPartnerValue && currentPartnerId.isEmpty) return;
+    if (selection == currentPartnerId) return;
+
+    if (selection != noPartnerValue && currentPartnerId.isNotEmpty) {
+      final confirmed = await ConfirmDialog.show(
+        context,
+        title: 'Reassign Unit?',
+        message: 'This unit is currently attached to another partner. '
+            'Future trips will report to the new partner instead.',
+        confirmLabel: 'Reassign',
+        confirmColor: AdminTheme.statusPending,
+      );
+      if (!confirmed) return;
+    }
+
+    try {
+      if (selection == noPartnerValue) {
+        await AdminPartnerRepository.removeRiderFromPartner(
+          riderId: widget.riderId,
+        );
+      } else {
+        await AdminPartnerRepository.assignRiderToPartner(
+          riderId: widget.riderId,
+          partnerId: selection,
+        );
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Partner assignment updated.')),
+      );
+      _loadRider();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _rejectDocument(String docKey, String docLabel) async {
     final reasonCtrl = TextEditingController();
     final confirmed =
@@ -353,6 +496,41 @@ class _RiderDetailScreenState extends State<RiderDetailScreen>
                             if (plate.isNotEmpty)
                               _InfoChip(Icons.pin_outlined, plate),
                             _InfoChip(Icons.star_outline, '$rating ★'),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.handshake_outlined,
+                              size: 14,
+                              color: AdminTheme.textSecondary,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                (d['partnerName'] ?? '').toString().trim().isNotEmpty
+                                    ? 'Partner: ${d['partnerName']}'
+                                    : 'Independent unit (no partner)',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: (d['partnerName'] ?? '')
+                                          .toString()
+                                          .trim()
+                                          .isNotEmpty
+                                      ? AdminTheme.textPrimary
+                                      : AdminTheme.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _assignPartner,
+                              child: const Text(
+                                'Change',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
                           ],
                         ),
                       ],

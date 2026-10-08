@@ -29,6 +29,7 @@ import 'package:citimovers/services/wallet_service.dart';
 import 'package:citimovers/services/gps_map_camera_service.dart';
 import 'package:citimovers/services/chat_service.dart';
 import 'package:citimovers/utils/demurrage_utils.dart';
+import 'package:citimovers/utils/report_recipients.dart';
 import 'package:citimovers/screens/chat/chat_screen.dart';
 import 'package:citimovers/models/location_model.dart';
 import 'package:citimovers/services/delivery_queue_service.dart';
@@ -4600,6 +4601,13 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
           if (!to.contains('@')) continue;
           allRecipients.add(to);
         }
+      }
+
+      // Partner report recipients — stamped on the booking when this trip was
+      // assigned to one of the subcon partner's units. Each partner contact
+      // receives a private copy of the same completion report.
+      for (final to in ReportRecipients.partnerEmailsFromBooking(bookingData)) {
+        allRecipients.add(to);
       }
 
       for (final to in allRecipients) {

@@ -22,6 +22,7 @@ class AdminConstants {
   // Firestore collections (using 'riders' as source of truth, not 'drivers')
   static const String colUsers = 'users';
   static const String colRiders = 'riders';
+  static const String colPartners = 'partners';
   static const String colBookings = 'bookings';
   static const String colTripCounters = 'trip_counters';
   static const String colDeliveryRequests = 'delivery_requests';
@@ -37,6 +38,7 @@ class AdminConstants {
   static const String colChatRooms = 'chatRooms';
   static const String colAdminAuditLogs = 'admin_audit_logs';
   static const String colBookingAdminNotes = 'admin_notes';
+  static const String colAppConfig = 'app_config';
 
   // Booking statuses
   static const List<String> bookingStatuses = [
@@ -69,6 +71,11 @@ class AdminConstants {
   static const String auditSuspendRider = 'suspend_rider';
   static const String auditReactivateRider = 'reactivate_rider';
   static const String auditAssignBooking = 'assign_booking';
+  static const String auditCreatePartner = 'create_partner';
+  static const String auditUpdatePartner = 'update_partner';
+  static const String auditPartnerStatus = 'update_partner_status';
+  static const String auditAssignPartnerUnit = 'assign_partner_unit';
+  static const String auditRemovePartnerUnit = 'remove_partner_unit';
   static const String auditSetBookingCallTime = 'set_booking_call_time';
   static const String auditCancelBooking = 'cancel_booking';
   static const String auditAddBookingNote = 'add_booking_note';
@@ -80,4 +87,5 @@ class AdminConstants {
   static const String auditSendNotification = 'send_notification';
   static const String auditRunBackfill = 'run_backfill';
   static const String auditUpdateRiderProfile = 'update_rider_profile';
+  static const String auditUpdateReportSettings = 'update_report_settings';
 }

@@ -7,6 +7,8 @@ import '../screens/customers/customers_screen.dart';
 import '../screens/customers/customer_detail_screen.dart';
 import '../screens/riders/riders_screen.dart';
 import '../screens/riders/rider_detail_screen.dart';
+import '../screens/partners/partners_screen.dart';
+import '../screens/partners/partner_detail_screen.dart';
 import '../screens/bookings/bookings_screen.dart';
 import '../screens/bookings/booking_detail_screen.dart';
 import '../screens/dispatch/dispatch_board_screen.dart';
@@ -16,6 +18,7 @@ import '../screens/promos/promos_screen.dart';
 import '../screens/audit_logs/audit_logs_screen.dart';
 import '../screens/maintenance/maintenance_screen.dart';
 import '../screens/settings/rate_settings_screen.dart';
+import '../screens/settings/report_settings_screen.dart';
 import '../screens/support/support_tickets_screen.dart';
 import '../services/auth_service.dart';
 
@@ -71,6 +74,15 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
               RiderDetailScreen(riderId: state.pathParameters['id']!),
         ),
         GoRoute(
+          path: '/partners',
+          builder: (context, state) => const PartnersScreen(),
+        ),
+        GoRoute(
+          path: '/partners/:id',
+          builder: (context, state) =>
+              PartnerDetailScreen(partnerId: state.pathParameters['id']!),
+        ),
+        GoRoute(
           path: '/bookings',
           builder: (context, state) => const BookingsScreen(),
         ),
@@ -90,6 +102,10 @@ GoRouter buildRouter(AdminAuthService auth) => GoRouter(
         GoRoute(
           path: '/rate-settings',
           builder: (context, state) => const RateSettingsScreen(),
+        ),
+        GoRoute(
+          path: '/report-settings',
+          builder: (context, state) => const ReportSettingsScreen(),
         ),
         GoRoute(
           path: '/notifications',

@@ -728,6 +728,22 @@ class _BookingInfoCard extends StatelessWidget {
               d['customerPhone'] ?? d['userPhone'] ?? '—',
             ),
             _buildRow('Rider', d['riderName'] ?? '—'),
+            if ((d['partnerName'] ?? '').toString().trim().isNotEmpty)
+              _buildRow('Partner', d['partnerName'].toString()),
+            if (((d['partnerReportEmails'] as List?) ?? const []).isNotEmpty)
+              _buildRow(
+                'Partner Reports',
+                ((d['partnerReportEmails'] as List)
+                        .map((value) => value.toString())
+                        .join(', ')),
+              ),
+            if (((d['partnerReportPhones'] as List?) ?? const []).isNotEmpty)
+              _buildRow(
+                'Partner Numbers',
+                ((d['partnerReportPhones'] as List)
+                        .map((value) => value.toString())
+                        .join(', ')),
+              ),
             _buildRow('Vehicle', d['vehicleType'] ?? d['truckType'] ?? '—'),
             const Divider(color: AdminTheme.divider),
             _buildRow('Pickup', d['pickupAddress'] ?? '—'),

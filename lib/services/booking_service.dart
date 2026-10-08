@@ -11,6 +11,7 @@ import 'customer_profile_helper.dart';
 import 'rate_config_service.dart';
 import '../models/location_model.dart';
 import '../models/vehicle_model.dart';
+import '../utils/partner_stamp.dart';
 
 /// Booking Service for CitiMovers
 /// Handles booking creation, updates, and management with Firebase Firestore
@@ -1415,6 +1416,23 @@ class BookingService {
           return false;
         }
 
+        // Resolve the unit's partner (if any) before any writes so the
+        // booking carries a self-contained partner report snapshot.
+        final riderPartnerId =
+            (riderData['partnerId'] as String?)?.trim() ?? '';
+        DocumentSnapshot<Map<String, dynamic>>? partnerSnap;
+        if (riderPartnerId.isNotEmpty) {
+          partnerSnap = await txn.get(
+            _firestore.collection('partners').doc(riderPartnerId),
+          );
+        }
+        final partnerStamp = PartnerStamp.resolveBookingPartnerStamp(
+          partnerId: riderPartnerId,
+          partnerRaw: partnerSnap != null && partnerSnap.exists
+              ? partnerSnap.data()
+              : null,
+        );
+
         txn.update(bookingRef, {
           'driverId': riderId,
           'riderId': riderId,
@@ -1423,6 +1441,7 @@ class BookingService {
           'status': 'accepted',
           'acceptedAt': nowMs,
           'updatedAt': nowMs,
+          ...partnerStamp,
         });
 
         txn.set(
