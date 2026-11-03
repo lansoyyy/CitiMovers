@@ -472,7 +472,7 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
               padding: const EdgeInsets.only(left: 20, right: 20),
               child: const Text(
                 textAlign: TextAlign.center,
-                'Stay online. Assigned trips will appear here automatically after dispatch.',
+                'Stay online. Assigned trips will appear here automatically after dispatch. You can hold up to 2 active trips: 1 scheduled and 1 realtime pickup.',
                 style: TextStyle(
                   fontSize: 14,
                   fontFamily: 'Regular',
@@ -734,7 +734,11 @@ class _RiderDeliveriesTabState extends State<RiderDeliveriesTab>
             );
           }
         } else if (mounted) {
-          UIHelpers.showErrorToast('Failed to accept delivery');
+          final reason =
+              await _authService.getAcceptanceBlockReason(delivery.id);
+          if (mounted) {
+            UIHelpers.showErrorToast(reason ?? 'Failed to accept delivery');
+          }
         }
       } catch (e) {
         if (mounted) {

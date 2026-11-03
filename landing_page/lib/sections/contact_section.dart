@@ -130,6 +130,13 @@ class _ContactInfoPanel extends StatelessWidget {
               const SizedBox(height: 24),
               _ContactItem(
                 icon: Icons.location_on_rounded,
+                label: 'Home Office',
+                value:
+                    'Block 39 Lot 20 Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City 1117',
+              ),
+              const SizedBox(height: 20),
+              _ContactItem(
+                icon: Icons.location_on_rounded,
                 label: 'Field Office',
                 value: '3JCP+2V2, Marange Road,\nSan Fernando, Pampanga',
               ),
@@ -148,6 +155,14 @@ class _ContactInfoPanel extends StatelessWidget {
                 value: '0967-489-3335',
                 isLink: true,
                 url: 'tel:+639674893335',
+              ),
+              const SizedBox(height: 20),
+              _ContactItem(
+                icon: Icons.email_rounded,
+                label: 'Email',
+                value: 'Ceo@citimovers.net',
+                isLink: true,
+                url: 'mailto:Ceo@citimovers.net',
               ),
               const SizedBox(height: 20),
               _ContactItem(

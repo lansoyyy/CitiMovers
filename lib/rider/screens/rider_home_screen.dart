@@ -34,6 +34,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
   String? _lastResumedBookingId;
   DateTime? _lastResumeAt;
   StreamSubscription<List<BookingModel>>? _activeBookingSubscription;
+  bool _notifiedMultipleActiveBookings = false;
 
   bool _isDuplicateResume(String bookingId) {
     if (!ModalRoute.of(context)!.isCurrent) return true;
@@ -94,7 +95,32 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
         .getActiveDriverBookings(rider.riderId)
         .listen((bookings) {
       if (!mounted) return;
-      if (bookings.isEmpty) return;
+      if (bookings.isEmpty) {
+        _notifiedMultipleActiveBookings = false;
+        return;
+      }
+
+      // Riders can hold up to two live trips (1 scheduled + 1 realtime
+      // pickup). With two active trips, let the rider choose from the
+      // Deliveries tab instead of auto-opening one.
+      if (bookings.length > 1) {
+        final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+        if (isCurrentRoute && !_notifiedMultipleActiveBookings) {
+          _notifiedMultipleActiveBookings = true;
+          _tabController.animateTo(1);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'You now have 2 active deliveries. '
+                'Open Deliveries to manage both trips.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      _notifiedMultipleActiveBookings = false;
       final booking = bookings.first;
       final bookingId = booking.bookingId ?? '';
       if (bookingId.isEmpty) return;
@@ -120,6 +146,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
       final rider = await _authService.getCurrentRider();
       if (rider == null || !mounted) return;
 
+      final activeBookings =
+          await _bookingService.getActiveDriverBookings(rider.riderId).first;
+      if (!mounted) return;
+
+      if (activeBookings.length > 1) {
+        _tabController.animateTo(1);
+        return;
+      }
+
       BookingModel? booking;
 
       // Fast-path: restore from saved active state if possible.
@@ -134,8 +169,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen>
         }
       }
 
-      booking ??=
-          await _bookingService.getMostRecentActiveDriverBooking(rider.riderId);
+      booking ??= activeBookings.isEmpty ? null : activeBookings.first;
 
       if (booking == null) {
         await _authService.clearActiveDeliveryState();

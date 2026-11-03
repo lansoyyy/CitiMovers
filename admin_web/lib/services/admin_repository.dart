@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_constants.dart';
 import '../utils/contact_parsing.dart';
 import '../utils/partner_stamp.dart';
+import '../utils/rider_booking_capacity.dart';
 
 class AdminRepository {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -528,32 +529,66 @@ class AdminRepository {
     final canonicalStatus = canonicalBooking == null
         ? ''
         : _asString(canonicalBooking['status']);
+
+    Map<String, dynamic>? scheduledBooking;
+    Map<String, dynamic>? realtimeBooking;
+    for (final booking in liveBookings) {
+      if (RiderBookingCapacity.isScheduled(booking['bookingType'])) {
+        scheduledBooking ??= booking;
+      } else {
+        realtimeBooking ??= booking;
+      }
+    }
+    final scheduledBookingId = scheduledBooking == null
+        ? ''
+        : _asString(scheduledBooking['id']);
+    final realtimeBookingId = realtimeBooking == null
+        ? ''
+        : _asString(realtimeBooking['id']);
+
     final currentActiveBookingId = _asString(riderData['activeBookingId']);
     final currentActiveBookingStatus = _asString(
       riderData['activeBookingStatus'],
     );
+    final currentScheduledBookingId =
+        _asString(riderData['activeScheduledBookingId']);
+    final currentRealtimeBookingId =
+        _asString(riderData['activeRealtimeBookingId']);
 
     if (canonicalBookingId.isNotEmpty) {
       if (currentActiveBookingId == canonicalBookingId &&
-          currentActiveBookingStatus == canonicalStatus) {
+          currentActiveBookingStatus == canonicalStatus &&
+          currentScheduledBookingId == scheduledBookingId &&
+          currentRealtimeBookingId == realtimeBookingId) {
         return;
       }
 
       await riderRef.set({
         'activeBookingId': canonicalBookingId,
         'activeBookingStatus': canonicalStatus,
+        'activeScheduledBookingId': scheduledBookingId.isEmpty
+            ? FieldValue.delete()
+            : scheduledBookingId,
+        'activeRealtimeBookingId': realtimeBookingId.isEmpty
+            ? FieldValue.delete()
+            : realtimeBookingId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return;
     }
 
-    if (currentActiveBookingId.isEmpty && currentActiveBookingStatus.isEmpty) {
+    if (currentActiveBookingId.isEmpty &&
+        currentActiveBookingStatus.isEmpty &&
+        currentScheduledBookingId.isEmpty &&
+        currentRealtimeBookingId.isEmpty) {
       return;
     }
 
     await riderRef.set({
       'activeBookingId': FieldValue.delete(),
       'activeBookingStatus': FieldValue.delete(),
+      'activeScheduledBookingId': FieldValue.delete(),
+      'activeRealtimeBookingId': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -1431,7 +1466,6 @@ class AdminRepository {
     required String bookingId,
     required String riderId,
     required String reason,
-    bool force = false,
   }) async {
     final resolvedBookingId = bookingId.trim();
     final resolvedRiderId = riderId.trim();
@@ -1481,27 +1515,20 @@ class AdminRepository {
 
     await _reconcileRiderActiveBookingPointer(resolvedRiderId);
 
-    if (!force) {
-      final liveBookings = await _getLiveAssignedBookingsForRider(
-        resolvedRiderId,
-      );
-      Map<String, dynamic>? blockingBooking;
-      for (final booking in liveBookings) {
-        if (_asString(booking['id']) != resolvedBookingId) {
-          blockingBooking = booking;
-          break;
-        }
-      }
-      if (blockingBooking != null) {
-        final tripLabel = _coalesceString([
-          blockingBooking['tripNumber'],
-          blockingBooking['id'],
-        ], fallback: 'another trip');
-        throw StateError(
-          'This unit already has another live booking ($tripLabel). '
-          'Finish or reassign that trip first.',
-        );
-      }
+    final liveBookings = await _getLiveAssignedBookingsForRider(
+      resolvedRiderId,
+    );
+    final capacityConflict = RiderBookingCapacity.conflictMessage(
+      candidateBookingType: beforeBooking['bookingType'],
+      liveBookings: liveBookings,
+      excludingBookingId: resolvedBookingId,
+      referenceBuilder: (booking) => _coalesceString([
+        booking['tripNumber'],
+        booking['id'],
+      ], fallback: 'another trip'),
+    );
+    if (capacityConflict != null) {
+      throw StateError(capacityConflict);
     }
 
     final bookingRef = _db
@@ -1512,6 +1539,7 @@ class AdminRepository {
         .doc(resolvedBookingId);
     final riderRef = _db.collection(AdminConstants.colRiders).doc(resolvedRiderId);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+    String previousRiderIdToReconcile = '';
 
     try {
       await _db.runTransaction((transaction) async {
@@ -1571,31 +1599,78 @@ class AdminRepository {
         riderActiveBookingSnap = await transaction.get(riderActiveBookingRef);
       }
 
-      if (!force &&
+      final candidateType =
+          RiderBookingCapacity.normalizeType(beforeData['bookingType']);
+      var scheduledBookingId =
+          _asString(riderData['activeScheduledBookingId']);
+      var realtimeBookingId =
+          _asString(riderData['activeRealtimeBookingId']);
+
+      // Ignore stale slots whose booking is already completed, cancelled,
+      // or reassigned so they cannot permanently block the rider.
+      Future<bool> isSlotStillLive(String slotBookingId) async {
+        if (slotBookingId.isEmpty || slotBookingId == resolvedBookingId) {
+          return true;
+        }
+        final slotSnap = await transaction.get(
+          _db.collection(AdminConstants.colBookings).doc(slotBookingId),
+        );
+        if (!slotSnap.exists) return false;
+        final slotBooking = normalizeBookingData(
+          slotBookingId,
+          _asMap(slotSnap.data()),
+        );
+        return _assignedRiderIdForBooking(slotBooking) == resolvedRiderId &&
+            isLiveAssignedBookingStatus(slotBooking['status']);
+      }
+
+      if (!await isSlotStillLive(scheduledBookingId)) {
+        scheduledBookingId = '';
+      }
+      if (!await isSlotStillLive(realtimeBookingId)) {
+        realtimeBookingId = '';
+      }
+
+      // Fall back to the legacy pointer when the rider has a pre-capacity
+      // booking that was never written to a slot field.
+      if (scheduledBookingId.isEmpty &&
+          realtimeBookingId.isEmpty &&
           riderActiveBookingId.isNotEmpty &&
-          riderActiveBookingId != resolvedBookingId) {
-        final activeBooking =
-            riderActiveBookingSnap != null && riderActiveBookingSnap.exists
-            ? normalizeBookingData(
-                riderActiveBookingId,
-                _asMap(riderActiveBookingSnap.data()),
-              )
-            : null;
+          riderActiveBookingId != resolvedBookingId &&
+          riderActiveBookingSnap != null &&
+          riderActiveBookingSnap.exists) {
+        final activeBooking = normalizeBookingData(
+          riderActiveBookingId,
+          _asMap(riderActiveBookingSnap.data()),
+        );
         final activeBookingStillLive =
-            activeBooking != null &&
             _assignedRiderIdForBooking(activeBooking) == resolvedRiderId &&
             isLiveAssignedBookingStatus(activeBooking['status']);
-
         if (activeBookingStillLive) {
-          final tripLabel = _coalesceString([
-            activeBooking['tripNumber'],
-            activeBooking['id'],
-          ], fallback: 'another trip');
-          throw StateError(
-            'This unit already has another live booking ($tripLabel). '
-            'Finish or reassign that trip first.',
-          );
+          if (RiderBookingCapacity.isScheduled(
+            activeBooking['bookingType'],
+          )) {
+            scheduledBookingId = riderActiveBookingId;
+          } else {
+            realtimeBookingId = riderActiveBookingId;
+          }
         }
+      }
+
+      final capacityConflict = RiderBookingCapacity.slotConflictMessage(
+        candidateBookingType: beforeData['bookingType'],
+        scheduledBookingId: scheduledBookingId,
+        realtimeBookingId: realtimeBookingId,
+        candidateBookingId: resolvedBookingId,
+      );
+      if (capacityConflict != null) {
+        throw StateError(capacityConflict);
+      }
+
+      if (candidateType == RiderBookingCapacity.scheduledType) {
+        scheduledBookingId = resolvedBookingId;
+      } else {
+        realtimeBookingId = resolvedBookingId;
       }
 
       final customerId = _coalesceString([
@@ -1613,6 +1688,8 @@ class AdminRepository {
           wasReassigned && currentRiderId != resolvedRiderId
           ? _db.collection(AdminConstants.colRiders).doc(currentRiderId)
           : null;
+      previousRiderIdToReconcile =
+          previousRiderRef == null ? '' : currentRiderId;
       DocumentSnapshot<Map<String, dynamic>>? previousRiderSnap;
       if (previousRiderRef != null) {
         previousRiderSnap = await transaction.get(previousRiderRef);
@@ -1674,20 +1751,34 @@ class AdminRepository {
       transaction.set(riderRef, {
         'activeBookingId': resolvedBookingId,
         'activeBookingStatus': nextStatus,
+        'activeScheduledBookingId': scheduledBookingId.isEmpty
+            ? FieldValue.delete()
+            : scheduledBookingId,
+        'activeRealtimeBookingId': realtimeBookingId.isEmpty
+            ? FieldValue.delete()
+            : realtimeBookingId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       if (previousRiderRef != null) {
-        final previousActiveBookingId = _asString(
-          _asMap(previousRiderSnap?.data())['activeBookingId'],
-        );
-        if (previousActiveBookingId == bookingId) {
-          transaction.set(previousRiderRef, {
+        final previousRiderData = _asMap(previousRiderSnap?.data());
+        final previousActiveBookingId =
+            _asString(previousRiderData['activeBookingId']);
+        final previousScheduledBookingId =
+            _asString(previousRiderData['activeScheduledBookingId']);
+        final previousRealtimeBookingId =
+            _asString(previousRiderData['activeRealtimeBookingId']);
+        transaction.set(previousRiderRef, {
+          if (previousActiveBookingId == resolvedBookingId)
             'activeBookingId': FieldValue.delete(),
+          if (previousActiveBookingId == resolvedBookingId)
             'activeBookingStatus': FieldValue.delete(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        }
+          if (previousScheduledBookingId == resolvedBookingId)
+            'activeScheduledBookingId': FieldValue.delete(),
+          if (previousRealtimeBookingId == resolvedBookingId)
+            'activeRealtimeBookingId': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
 
       if (customerId.isNotEmpty) {
@@ -1780,6 +1871,16 @@ class AdminRepository {
         ),
       );
     });
+
+      if (previousRiderIdToReconcile.isNotEmpty) {
+        try {
+          await _reconcileRiderActiveBookingPointer(
+            previousRiderIdToReconcile,
+          );
+        } catch (_) {
+          // Best-effort cleanup; the reassignment itself already committed.
+        }
+      }
     } catch (error) {
       if (error is StateError) rethrow;
       throw StateError(describeError(error));
@@ -1797,6 +1898,7 @@ class AdminRepository {
         .collection(AdminConstants.colDeliveryRequests)
         .doc(bookingId);
     final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+    String riderIdToReconcile = '';
 
     await _db.runTransaction((transaction) async {
       // ── Reads (must all happen before writes in a Firestore transaction) ──
@@ -1817,6 +1919,7 @@ class AdminRepository {
         beforeData['driverId'],
         beforeData['riderId'],
       ]);
+      riderIdToReconcile = riderId;
       final paymentStatus = _asString(
         beforeData['paymentStatus'],
         fallback: 'pending',
@@ -2034,6 +2137,14 @@ class AdminRepository {
         ),
       );
     });
+
+    if (riderIdToReconcile.isNotEmpty) {
+      try {
+        await _reconcileRiderActiveBookingPointer(riderIdToReconcile);
+      } catch (_) {
+        // Best-effort cleanup; the cancellation itself already committed.
+      }
+    }
   }
 
   /// Sets (or clears) the manual pickup call-time entry for a booking.

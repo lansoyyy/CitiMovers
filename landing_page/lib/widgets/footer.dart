@@ -191,6 +191,12 @@ class LandingFooter extends StatelessWidget {
         _FooterContactItem(
           icon: Icons.location_on_outlined,
           text:
+              'Home Office:\nBlock 39 Lot 20 Visayas St.\nBrgy. Sta. Lucia, Novaliches\nQuezon City 1117',
+        ),
+        const SizedBox(height: 12),
+        _FooterContactItem(
+          icon: Icons.location_on_outlined,
+          text:
               'Field Office:\n3JCP+2V2, Marange Road,\nSan Fernando, Pampanga',
         ),
         const SizedBox(height: 12),
@@ -204,6 +210,12 @@ class LandingFooter extends StatelessWidget {
           icon: Icons.phone_outlined,
           text: '0967-489-3335',
           url: 'tel:+639674893335',
+        ),
+        const SizedBox(height: 12),
+        _FooterContactItem(
+          icon: Icons.email_outlined,
+          text: 'Ceo@citimovers.net',
+          url: 'mailto:Ceo@citimovers.net',
         ),
         const SizedBox(height: 12),
         _FooterContactItem(
@@ -228,7 +240,7 @@ class LandingFooter extends StatelessWidget {
             ),
             if (!isMobile) const SizedBox(width: 40),
             Text(
-              'Pampanga and Bulacan, Philippines',
+              'Quezon City, Pampanga and Bulacan, Philippines',
               style: GoogleFonts.poppins(fontSize: 12, color: Colors.white38),
             ),
           ],

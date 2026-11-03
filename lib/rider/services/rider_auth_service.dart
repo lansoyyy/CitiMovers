@@ -1101,6 +1101,18 @@ class RiderAuthService {
     }
   }
 
+  /// Returns why the current rider cannot accept a delivery request, or `null`
+  /// when the rider still has capacity.
+  Future<String?> getAcceptanceBlockReason(String bookingId) async {
+    if (_currentRider == null) return 'Rider session not found.';
+
+    final bookingService = BookingService();
+    return bookingService.getBookingCapacityConflict(
+      bookingId: bookingId,
+      riderId: _currentRider!.riderId,
+    );
+  }
+
   /// Reject delivery request
   Future<bool> rejectDeliveryRequest(String bookingId, {String? reason}) async {
     try {

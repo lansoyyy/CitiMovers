@@ -5,8 +5,8 @@ class AppConstants {
   static String logo = 'assets/images/logo_drivers.png';
   static const String apiKey = 'AIzaSyBwByaaKz7j4OGnwPDxeMdmQ4Pa50GA42o';
   // App Information
-  static const String appName = 'CitiMovers Drivers';
-  static const String appVersion = '1.1.3';
+  static const String appName = 'CitiMovers';
+  static const String appVersion = '1.0.0';
   static const String appTagline = 'Your Reliable Delivery Partner';
 
   // API & Backend

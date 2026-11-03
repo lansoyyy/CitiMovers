@@ -116,28 +116,28 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
     );
   }
 
-  void _acceptDelivery(DeliveryRequest request) {
+  Future<void> _acceptDelivery(DeliveryRequest request) async {
     Navigator.pop(context);
 
-    _authService.acceptDeliveryRequest(request.id).then((success) {
+    final success = await _authService.acceptDeliveryRequest(request.id);
+    if (!mounted) return;
+    if (!success) {
+      final reason = await _authService.getAcceptanceBlockReason(request.id);
       if (!mounted) return;
-      if (!success) {
-        UIHelpers.showErrorToast('Failed to accept delivery');
-        return;
-      }
+      UIHelpers.showErrorToast(reason ?? 'Failed to accept delivery');
+      return;
+    }
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => RiderDeliveryProgressScreen(request: request),
-        ),
-      );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RiderDeliveryProgressScreen(request: request),
+      ),
+    );
 
-      setState(() {
-        _deliveryRequests.removeWhere((r) => r.id == request.id);
-      });
+    setState(() {
+      _deliveryRequests.removeWhere((r) => r.id == request.id);
     });
-    // UIHelpers.showSuccessToast('Delivery request accepted! Navigate to pickup location.');
   }
 
   void _rejectDelivery(DeliveryRequest request) {
@@ -592,7 +592,7 @@ class _RiderHomeTabState extends State<RiderHomeTab> {
                                       padding: const EdgeInsets.only(left: 20, right: 20),
                                       child: Text(
                                         textAlign: TextAlign.center,
-                                        'Stay online. Dispatch will assign your next trip from the admin panel, and the rider app will open it automatically.',
+                                        'Stay online. Dispatch will assign your next trip from the admin panel. You can hold up to 2 active trips: 1 scheduled and 1 realtime pickup.',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontFamily: 'Regular',

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
 import '../../utils/dispatch_map_colocation.dart';
+import '../../utils/rider_booking_capacity.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/driver_map_marker.dart';
 import '../../widgets/truck_plate_list_item.dart';
@@ -387,7 +388,22 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
           .toString()
           .trim();
       if (riderId.isNotEmpty) {
-        indexed[riderId] = booking;
+        indexed.putIfAbsent(riderId, () => booking);
+      }
+    }
+    return indexed;
+  }
+
+  Map<String, List<Map<String, dynamic>>> _indexAssignmentListsByRider(
+    List<Map<String, dynamic>> bookings,
+  ) {
+    final indexed = <String, List<Map<String, dynamic>>>{};
+    for (final booking in bookings) {
+      final riderId = (booking['driverId'] ?? booking['riderId'] ?? '')
+          .toString()
+          .trim();
+      if (riderId.isNotEmpty) {
+        indexed.putIfAbsent(riderId, () => []).add(booking);
       }
     }
     return indexed;
@@ -618,40 +634,9 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
 
   Future<bool> _assignBookingToRider(
     Map<String, dynamic> booking,
-    Map<String, dynamic> rider, {
-    Map<String, dynamic>? activityBooking,
-  }) async {
+    Map<String, dynamic> rider,
+  ) async {
     if (_isAssigning) return false;
-
-    final isBusy = activityBooking != null;
-    if (isBusy) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Force assign busy unit?'),
-          content: Text(
-            'This unit is currently busy on trip '
-            '${_bookingReference(activityBooking)}. '
-            'Assigning it to a new trip may leave the previous trip '
-            'incomplete. Are you sure you want to continue?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AdminTheme.statusPending,
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Force Assign'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return false;
-    }
 
     final reasonCtrl = TextEditingController(
       text: 'Dispatched from the admin dispatch board.',
@@ -732,7 +717,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         bookingId: (booking['id'] ?? '').toString(),
         riderId: (rider['id'] ?? '').toString(),
         reason: reason,
-        force: isBusy,
       );
       if (!mounted) return false;
       _scrollUnitsPanelToRider((rider['id'] ?? '').toString());
@@ -1005,6 +989,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
   Widget _buildUnitsPanel(
     List<Map<String, dynamic>> riders,
     Map<String, Map<String, dynamic>> activeAssignments,
+    Map<String, List<Map<String, dynamic>>> activeAssignmentsByRider,
     Map<String, dynamic>? selectedBooking,
     String? highlightedRiderId,
     String? selectedUnitName,
@@ -1306,6 +1291,20 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                 final riderId = (rider['id'] ?? '').toString();
                                 final activityBooking =
                                     activeAssignments[riderId];
+                                final riderActiveBookings =
+                                    activeAssignmentsByRider[riderId] ??
+                                        const <Map<String, dynamic>>[];
+                                final capacityConflict = selectedBooking == null
+                                    ? null
+                                    : RiderBookingCapacity.conflictMessage(
+                                        candidateBookingType:
+                                            selectedBooking['bookingType'],
+                                        liveBookings: riderActiveBookings,
+                                        excludingBookingId:
+                                            (selectedBooking['id'] ?? '')
+                                                .toString(),
+                                        referenceBuilder: _bookingReference,
+                                      );
                                 final isHighlighted =
                                     riderId == highlightedRiderId;
                                 final activityLabel = _activityLabel(
@@ -1314,7 +1313,8 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                 );
                                 final canAssign =
                                     selectedBooking != null &&
-                                    !_isAssigning;
+                                    !_isAssigning &&
+                                    capacityConflict == null;
                                 final activityColor = _statusColor(
                                   (activityBooking?['status'] ?? '').toString(),
                                   isOnline: rider['isOnline'] == true,
@@ -1463,14 +1463,18 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                             color: AdminTheme.textSecondary,
                                           ),
                                         ),
-                                      ] else if (selectedBooking != null) ...[
+                                      ],
+                                      if (selectedBooking != null) ...[
                                         const SizedBox(height: 10),
                                         Text(
-                                          'Available for trip ${_bookingReference(selectedBooking)}',
+                                          capacityConflict ??
+                                              'Available for trip ${_bookingReference(selectedBooking)}',
                                           style: GoogleFonts.inter(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
-                                            color: AdminTheme.statusActive,
+                                            color: capacityConflict != null
+                                                ? AdminTheme.statusPending
+                                                : AdminTheme.statusActive,
                                           ),
                                         ),
                                       ],
@@ -1482,8 +1486,6 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                               ? () => _assignBookingToRider(
                                                   selectedBooking,
                                                   rider,
-                                                  activityBooking:
-                                                      activityBooking,
                                                 )
                                               : null,
                                           icon: const Icon(
@@ -1494,8 +1496,8 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                                 ? 'Select Booking'
                                                 : _isAssigning
                                                 ? 'Assigning...'
-                                                : activityBooking != null
-                                                ? 'Force Assign to Trip'
+                                                : capacityConflict != null
+                                                ? 'Unit At Capacity'
                                                 : 'Assign to Trip',
                                           ),
                                         ),
@@ -1614,8 +1616,13 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         return StreamBuilder<List<Map<String, dynamic>>>(
           stream: AdminRepository.streamActiveAssignedBookings(),
           builder: (context, activeAssignmentsSnapshot) {
+            final activeAssignmentList =
+                activeAssignmentsSnapshot.data ?? const <Map<String, dynamic>>[];
             final activeAssignments = _indexAssignmentsByRider(
-              activeAssignmentsSnapshot.data ?? const <Map<String, dynamic>>[],
+              activeAssignmentList,
+            );
+            final activeAssignmentsByRider = _indexAssignmentListsByRider(
+              activeAssignmentList,
             );
 
             return StreamBuilder<List<Map<String, dynamic>>>(
@@ -1660,6 +1667,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                       final unitsPanel = _buildUnitsPanel(
                         riders,
                         activeAssignments,
+                        activeAssignmentsByRider,
                         selectedBooking,
                         highlightedRiderId,
                         selectedUnitName,

@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../config/app_constants.dart';
 import '../../services/admin_repository.dart';
+import '../../utils/rider_booking_capacity.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -31,12 +32,10 @@ class BookingDetailScreen extends StatefulWidget {
 class _RiderAssignmentDialogResult {
   final String riderId;
   final String reason;
-  final bool force;
 
   const _RiderAssignmentDialogResult({
     required this.riderId,
     required this.reason,
-    this.force = false,
   });
 }
 
@@ -287,6 +286,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       context: context,
       builder: (_) => _AssignRiderDialog(
         bookingId: widget.bookingId,
+        bookingType: (_bookingData?['bookingType'] ?? 'now').toString(),
         actionLabel: actionLabel,
         initialRiderId: currentRiderId,
       ),
@@ -300,7 +300,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         bookingId: widget.bookingId,
         riderId: selection.riderId,
         reason: selection.reason,
-        force: selection.force,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1953,11 +1952,13 @@ class _FlatDeliveryPhotosCard extends StatelessWidget {
 
 class _AssignRiderDialog extends StatefulWidget {
   final String bookingId;
+  final String bookingType;
   final String actionLabel;
   final String? initialRiderId;
 
   const _AssignRiderDialog({
     required this.bookingId,
+    required this.bookingType,
     required this.actionLabel,
     this.initialRiderId,
   });
@@ -1975,8 +1976,8 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
   String? _formError;
   String _searchQuery = '';
   List<Map<String, dynamic>> _allRiders = const <Map<String, dynamic>>[];
-  Map<String, Map<String, dynamic>> _activeBookingsByRider =
-      const <String, Map<String, dynamic>>{};
+  Map<String, List<Map<String, dynamic>>> _activeBookingsByRider =
+      const <String, List<Map<String, dynamic>>>{};
 
   @override
   void initState() {
@@ -2069,38 +2070,40 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
     return 'GPS ${DateFormat('MMM d, h:mm a').format(gpsUpdatedAt)}';
   }
 
-  bool _isBusyWithOtherBooking(
+  List<Map<String, dynamic>> _activeBookingsForRider(
     Map<String, dynamic> rider,
-    Map<String, Map<String, dynamic>> activeByRider,
+    Map<String, List<Map<String, dynamic>>> activeByRider,
   ) {
     final riderId = (rider['id'] ?? '').toString().trim();
-    if (riderId.isEmpty) return false;
+    if (riderId.isEmpty) return const <Map<String, dynamic>>[];
+    return activeByRider[riderId] ?? const <Map<String, dynamic>>[];
+  }
 
-    final activeBooking = activeByRider[riderId];
-    if (activeBooking != null &&
-        (activeBooking['id'] ?? '').toString() != widget.bookingId) {
-      return true;
-    }
-
-    final pointerBookingId = (rider['activeBookingId'] ?? '').toString().trim();
-    if (pointerBookingId.isEmpty || pointerBookingId == widget.bookingId) {
-      return false;
-    }
-
-    return AdminRepository.isLiveAssignedBookingStatus(
-      rider['activeBookingStatus'],
+  String? _capacityConflictForRider(
+    Map<String, dynamic> rider,
+    Map<String, List<Map<String, dynamic>>> activeByRider,
+  ) {
+    return RiderBookingCapacity.conflictMessage(
+      candidateBookingType: widget.bookingType,
+      liveBookings: _activeBookingsForRider(rider, activeByRider),
+      excludingBookingId: widget.bookingId,
+      referenceBuilder: (booking) {
+        final reference =
+            (booking['tripNumber'] ?? booking['id'] ?? '').toString();
+        if (reference.length <= 8) return reference;
+        return reference.substring(0, 8).toUpperCase();
+      },
     );
   }
 
   Map<String, dynamic>? _busyBookingForRider(
     Map<String, dynamic> rider,
-    Map<String, Map<String, dynamic>> activeByRider,
+    Map<String, List<Map<String, dynamic>>> activeByRider,
   ) {
-    final riderId = (rider['id'] ?? '').toString().trim();
-    final activeBooking = activeByRider[riderId];
-    if (activeBooking != null &&
-        (activeBooking['id'] ?? '').toString() != widget.bookingId) {
-      return activeBooking;
+    for (final booking in _activeBookingsForRider(rider, activeByRider)) {
+      if ((booking['id'] ?? '').toString() != widget.bookingId) {
+        return booking;
+      }
     }
 
     final pointerBookingId = (rider['activeBookingId'] ?? '').toString().trim();
@@ -2137,42 +2140,13 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
       (rider) => (rider['id'] ?? '').toString() == resolvedRiderId,
       orElse: () => const <String, dynamic>{},
     );
-    final isBusy = _isBusyWithOtherBooking(
+    final capacityConflict = _capacityConflictForRider(
       selectedRider,
       _activeBookingsByRider,
     );
-
-    if (isBusy) {
-      final busyBooking = _busyBookingForRider(
-        selectedRider,
-        _activeBookingsByRider,
-      );
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Force assign busy unit?'),
-          content: Text(
-            'This unit is currently busy on trip '
-            '${_bookingReference(busyBooking ?? const {})}. '
-            'Assigning it to a new trip may leave the previous trip '
-            'incomplete. Are you sure you want to continue?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AdminTheme.statusPending,
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Force Assign'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
+    if (capacityConflict != null) {
+      setState(() => _formError = capacityConflict);
+      return;
     }
 
     if (!mounted) return;
@@ -2182,7 +2156,6 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
       _RiderAssignmentDialogResult(
         riderId: resolvedRiderId,
         reason: trimmedReason,
-        force: isBusy,
       ),
     );
   }
@@ -2201,7 +2174,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Choose the registered unit that should handle this trip. Units already carrying another active trip are locked.',
+              'Choose the registered unit that should handle this trip. Units can hold up to 2 active trips (1 scheduled + 1 realtime pickup); units already at that limit are locked.',
               style: GoogleFonts.inter(
                 fontSize: 13,
                 color: AdminTheme.textSecondary,
@@ -2312,7 +2285,8 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                         );
                       }
 
-                      final activeByRider = <String, Map<String, dynamic>>{};
+                      final activeByRider =
+                          <String, List<Map<String, dynamic>>>{};
                       for (final booking
                           in activeSnap.data ??
                               const <Map<String, dynamic>>[]) {
@@ -2321,7 +2295,9 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                 .toString()
                                 .trim();
                         if (riderId.isNotEmpty) {
-                          activeByRider[riderId] = booking;
+                          activeByRider
+                              .putIfAbsent(riderId, () => [])
+                              .add(booking);
                         }
                       }
                       _activeBookingsByRider = activeByRider;
@@ -2395,19 +2371,24 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                     rider,
                                     activeByRider,
                                   );
-                                  final isBusy = _isBusyWithOtherBooking(
-                                    rider,
-                                    activeByRider,
-                                  );
+                                  final capacityConflict =
+                                      _capacityConflictForRider(
+                                        rider,
+                                        activeByRider,
+                                      );
+                                  final isAtCapacity = capacityConflict != null;
+                                  final isBusy = busyBooking != null;
                                   final isSelected =
                                       riderId == visibleSelectedRiderId;
 
                                   return InkWell(
                                     borderRadius: BorderRadius.circular(16),
-                                    onTap: () => setState(() {
-                                      _selectedRiderId = riderId;
-                                      _formError = null;
-                                    }),
+                                    onTap: isAtCapacity
+                                        ? null
+                                        : () => setState(() {
+                                              _selectedRiderId = riderId;
+                                              _formError = null;
+                                            }),
                                     child: AnimatedContainer(
                                       duration:
                                           const Duration(milliseconds: 180),
@@ -2436,12 +2417,14 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                           Radio<String>(
                                             value: riderId,
                                             groupValue: visibleSelectedRiderId,
-                                            onChanged: (value) {
-                                              setState(() {
-                                                _selectedRiderId = value;
-                                                _formError = null;
-                                              });
-                                            },
+                                            onChanged: isAtCapacity
+                                                ? null
+                                                : (value) {
+                                                    setState(() {
+                                                      _selectedRiderId = value;
+                                                      _formError = null;
+                                                    });
+                                                  },
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
@@ -2525,53 +2508,77 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                                     vertical: 4,
                                                   ),
                                                   decoration: BoxDecoration(
-                                                    color: isBusy
+                                                    color: isAtCapacity
                                                         ? AdminTheme
-                                                              .statusPending
+                                                              .statusCancelled
                                                               .withValues(
                                                             alpha: 0.1,
                                                           )
-                                                        : (rider['isOnline'] ==
-                                                                  true
+                                                        : (isBusy
                                                               ? AdminTheme
-                                                                    .statusActive
+                                                                    .statusPending
                                                                     .withValues(
                                                                     alpha: 0.1,
                                                                   )
-                                                              : AdminTheme
-                                                                    .surface),
+                                                              : (rider['isOnline'] ==
+                                                                        true
+                                                                    ? AdminTheme
+                                                                          .statusActive
+                                                                          .withValues(
+                                                                          alpha:
+                                                                              0.1,
+                                                                        )
+                                                                    : AdminTheme
+                                                                          .surface)),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                       999,
                                                     ),
                                                   ),
                                                   child: Text(
-                                                    isBusy
-                                                        ? 'Busy on ${_bookingReference(busyBooking ?? const {})}'
-                                                        : (rider['isOnline'] ==
-                                                                  true
-                                                              ? 'Ready'
-                                                              : 'Offline'),
+                                                    isAtCapacity
+                                                        ? 'At capacity'
+                                                        : (isBusy
+                                                              ? 'Busy on ${_bookingReference(busyBooking)}'
+                                                              : (rider['isOnline'] ==
+                                                                        true
+                                                                    ? 'Ready'
+                                                                    : 'Offline')),
                                                     style: GoogleFonts.inter(
                                                       fontSize: 11,
                                                       fontWeight:
                                                           FontWeight.w600,
-                                                      color: isBusy
+                                                      color: isAtCapacity
                                                           ? AdminTheme
-                                                              .statusPending
-                                                          : (rider['isOnline'] ==
-                                                                    true
+                                                              .statusCancelled
+                                                          : (isBusy
                                                                 ? AdminTheme
-                                                                    .statusActive
-                                                                : AdminTheme
-                                                                    .textSecondary),
+                                                                      .statusPending
+                                                                : (rider['isOnline'] ==
+                                                                          true
+                                                                      ? AdminTheme
+                                                                          .statusActive
+                                                                      : AdminTheme
+                                                                          .textSecondary)),
                                                     ),
                                                   ),
                                                 ),
-                                                if (isBusy) ...[
+                                                if (isAtCapacity) ...[
                                                   const SizedBox(height: 6),
                                                   Text(
-                                                    'Selecting this unit will override its current trip.',
+                                                    capacityConflict,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10,
+                                                      color: AdminTheme
+                                                          .statusCancelled,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ] else if (isBusy) ...[
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    'Unit has one active trip. This booking can be added as its second trip (1 scheduled + 1 realtime pickup).',
                                                     style: GoogleFonts.inter(
                                                       fontSize: 10,
                                                       color: AdminTheme
