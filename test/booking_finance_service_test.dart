@@ -19,6 +19,22 @@ void main() {
       expect(breakdown.adminNetAmount, 1980);
     });
 
+    test('includes additional charges in the gross amount', () {
+      final breakdown = BookingFinanceService.calculate(
+        estimatedFare: 10000,
+        loadingDemurrageFee: 500,
+        unloadingDemurrageFee: 250,
+        additionalChargesTotal: 300,
+        tipAmount: 250,
+      );
+
+      expect(breakdown.grossAmount, 11300);
+      expect(breakdown.partnerNetAmount, 9040);
+      expect(breakdown.adminFeeAmount, 2260);
+      expect(breakdown.vatAmount, 226);
+      expect(breakdown.adminNetAmount, 2034);
+    });
+
     test('keeps a higher persisted final fare when resolving totals', () {
       final resolved = BookingFinanceService.resolveGrossAmount(
         estimatedFare: 10000,

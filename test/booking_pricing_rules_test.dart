@@ -27,6 +27,17 @@ void main() {
       expect(booking.lockedFare, 25000);
       expect(booking.totalFare, 25000);
     });
+
+    test('includes additional charges in the total fare', () {
+      final booking = _buildBooking(
+        finalFare: null,
+        additionalChargesTotal: 750,
+        loadingDemurrageFee: 0,
+        unloadingDemurrageFee: 0,
+      );
+
+      expect(booking.totalFare, 25750);
+    });
   });
 
   group('BookingModel cancellation rules', () {
@@ -74,6 +85,7 @@ BookingModel _buildBooking({
   double? finalFare = 25000,
   double? loadingDemurrageFee,
   double? unloadingDemurrageFee,
+  double additionalChargesTotal = 0,
   double? tipAmount,
   String? tripNumber,
   String? tripDateKey,
@@ -119,6 +131,7 @@ BookingModel _buildBooking({
     createdAt: createdAt ?? DateTime(2026, 4, 4),
     loadingDemurrageFee: loadingDemurrageFee,
     unloadingDemurrageFee: unloadingDemurrageFee,
+    additionalChargesTotal: additionalChargesTotal,
     tipAmount: tipAmount,
   );
 }

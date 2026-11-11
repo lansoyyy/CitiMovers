@@ -44,11 +44,15 @@ class BookingFinanceService {
     required double estimatedFare,
     double loadingDemurrageFee = 0.0,
     double unloadingDemurrageFee = 0.0,
+    double additionalChargesTotal = 0.0,
     double tipAmount = 0.0,
     double? persistedFinalFare,
   }) {
-    final computedAmount =
-        estimatedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
+    final computedAmount = estimatedFare +
+        loadingDemurrageFee +
+        unloadingDemurrageFee +
+        additionalChargesTotal +
+        tipAmount;
     final persistedAmount = persistedFinalFare ?? 0.0;
     return persistedAmount > computedAmount ? persistedAmount : computedAmount;
   }
@@ -57,6 +61,7 @@ class BookingFinanceService {
     required double estimatedFare,
     double loadingDemurrageFee = 0.0,
     double unloadingDemurrageFee = 0.0,
+    double additionalChargesTotal = 0.0,
     double tipAmount = 0.0,
     double? persistedFinalFare,
   }) {
@@ -64,6 +69,7 @@ class BookingFinanceService {
       estimatedFare: estimatedFare,
       loadingDemurrageFee: loadingDemurrageFee,
       unloadingDemurrageFee: unloadingDemurrageFee,
+      additionalChargesTotal: additionalChargesTotal,
       tipAmount: tipAmount,
       persistedFinalFare: persistedFinalFare,
     );

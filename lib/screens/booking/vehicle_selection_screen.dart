@@ -46,22 +46,13 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
     if (!_showFare) return;
 
     await _mapsService.fetchFuelPrice();
-    final user = AuthService().currentUser;
 
     final calculatedFares = <String, double>{};
     for (final vehicle in _vehicles) {
-      if (user != null) {
-        calculatedFares[vehicle.id] = await BookingService.resolveBookingFare(
-          user: user,
-          distanceKm: widget.distance,
-          vehicleType: vehicle.name,
-        );
-      } else {
-        calculatedFares[vehicle.id] = _mapsService.calculateFare(
-          distanceKm: widget.distance,
-          vehicleType: vehicle.name,
-        );
-      }
+      calculatedFares[vehicle.id] = await BookingService.resolveBookingFare(
+        distanceKm: widget.distance,
+        vehicleType: vehicle.name,
+      );
     }
 
     if (!mounted) return;

@@ -1839,6 +1839,13 @@ class _BookingDetailsBottomSheetState extends State<BookingDetailsBottomSheet> {
                     Icons.payment,
                     [
                       _buildDetailRow('Total Fare', getFare()),
+                      ...widget.booking.additionalCharges.map(
+                        (charge) => _buildDetailRow(
+                          (charge['label'] ?? charge['type'] ?? 'Additional')
+                              .toString(),
+                          'P${((charge['amount'] as num?) ?? 0).toStringAsFixed(2)}',
+                        ),
+                      ),
                       _buildDetailRow('Payment Method', getPaymentMethod()),
                       _buildDetailRow(
                           'Payment Status',

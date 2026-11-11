@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../services/admin_repository.dart';
-import '../../services/rate_config_repository.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/common_widgets.dart';
 
@@ -23,7 +22,6 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
   Map<String, dynamic>? _userData;
   bool _loading = true;
   String _customerAccountType = 'cod';
-  final Map<String, TextEditingController> _contractRateControllers = {};
   final TextEditingController _billingCycleController =
       TextEditingController(text: '30');
 
@@ -38,21 +36,8 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
     final userData = await AdminRepository.getNormalizedUser(widget.customerId);
     if (!mounted) return;
 
-    for (final controller in _contractRateControllers.values) {
-      controller.dispose();
-    }
-    _contractRateControllers.clear();
-
     final accountType =
         (userData?['customerAccountType'] ?? 'cod').toString();
-    final contractRates =
-        Map<String, dynamic>.from(userData?['contractRates'] ?? {});
-
-    for (final vehicle in AdminRateConfigRepository.vehicleTypes) {
-      _contractRateControllers[vehicle] = TextEditingController(
-        text: '${contractRates[vehicle] ?? ''}',
-      );
-    }
 
     _billingCycleController.text =
         '${userData?['billingCycleDays'] ?? 30}';
@@ -71,17 +56,24 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
     );
 
     if (_customerAccountType == 'warehouse_contract') {
-      final contractRates = <String, double>{};
-      for (final entry in _contractRateControllers.entries) {
-        final amount = double.tryParse(entry.value.text.trim());
-        if (amount != null) {
-          contractRates[entry.key] = amount;
+      final existingContractRates = <String, double>{};
+      final rawContractRates = _userData?['contractRates'];
+      if (rawContractRates is Map) {
+        for (final entry in rawContractRates.entries) {
+          final amount = switch (entry.value) {
+            num v => v.toDouble(),
+            String v => double.tryParse(v),
+            _ => null,
+          };
+          if (amount != null) {
+            existingContractRates[entry.key.toString()] = amount;
+          }
         }
       }
 
       await AdminRepository.updateContractRates(
         userId: widget.customerId,
-        contractRates: contractRates,
+        contractRates: existingContractRates,
         billingCycleDays:
             int.tryParse(_billingCycleController.text.trim()) ?? 30,
       );
@@ -97,9 +89,6 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
   @override
   void dispose() {
     _tabs.dispose();
-    for (final controller in _contractRateControllers.values) {
-      controller.dispose();
-    }
     _billingCycleController.dispose();
     super.dispose();
   }
@@ -358,35 +347,14 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
                         labelText: 'Billing cycle (days)',
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Fixed contract rates per vehicle',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: AdminRateConfigRepository.vehicleTypes
-                          .map((vehicle) {
-                        return SizedBox(
-                          width: 220,
-                          child: TextField(
-                            controller: _contractRateControllers[vehicle],
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: vehicle,
-                              isDense: true,
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                    Text(
+                      'Contract customers are billed on the same distance-based vehicle rates and invoiced every billing cycle.',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AdminTheme.textSecondary,
+                        height: 1.5,
+                      ),
                     ),
                   ] else ...[
                     const SizedBox(height: 12),

@@ -47,9 +47,12 @@ class BookingModel {
   final DateTime? unloadingCompletedAt;
   final double? loadingDemurrageFee;
   final double? unloadingDemurrageFee;
+  final List<Map<String, dynamic>> additionalCharges;
+  final double additionalChargesTotal;
   final DateTime? pickupCallTime;
   final DateTime? loadingDocsReceivedAt;
   final Map<String, dynamic>? deliveryPhotos;
+  final List<Map<String, dynamic>> customerDeliveryPhotos;
   final String? receiverName;
   final List<dynamic>? picklistItems;
   final DateTime? completedAt;
@@ -103,9 +106,12 @@ class BookingModel {
     this.unloadingCompletedAt,
     this.loadingDemurrageFee,
     this.unloadingDemurrageFee,
+    this.additionalCharges = const <Map<String, dynamic>>[],
+    this.additionalChargesTotal = 0.0,
     this.pickupCallTime,
     this.loadingDocsReceivedAt,
     this.deliveryPhotos,
+    this.customerDeliveryPhotos = const <Map<String, dynamic>>[],
     this.receiverName,
     this.picklistItems,
     this.completedAt,
@@ -137,6 +143,28 @@ class BookingModel {
       return value.map((key, v) => MapEntry(key.toString(), v));
     }
     return null;
+  }
+
+  static List<Map<String, dynamic>> _parseAdditionalCharges(dynamic value) {
+    if (value is! List) return const <Map<String, dynamic>>[];
+    final charges = <Map<String, dynamic>>[];
+    for (final item in value) {
+      if (item is Map) {
+        charges.add(
+          item.map((key, v) => MapEntry(key.toString(), v)),
+        );
+      }
+    }
+    return charges;
+  }
+
+  static double _sumAdditionalCharges(
+    List<Map<String, dynamic>> charges,
+  ) {
+    return charges.fold<double>(
+      0.0,
+      (total, charge) => total + ((charge['amount'] as num?)?.toDouble() ?? 0.0),
+    );
   }
 
   static int? _parseFirestoreInt(dynamic value) {
@@ -257,6 +285,9 @@ class BookingModel {
 
   /// Create BookingModel from Firestore document
   factory BookingModel.fromMap(Map<String, dynamic> map) {
+    final additionalCharges = _parseAdditionalCharges(
+      map['additionalCharges'],
+    );
     return BookingModel(
       bookingId: map['bookingId'] as String?,
       tripNumber: map['tripNumber'] as String?,
@@ -301,9 +332,16 @@ class BookingModel {
       unloadingCompletedAt: _parseFirestoreDate(map['unloadingCompletedAt']),
       loadingDemurrageFee: (map['loadingDemurrageFee'] as num?)?.toDouble(),
       unloadingDemurrageFee: (map['unloadingDemurrageFee'] as num?)?.toDouble(),
+      additionalCharges: additionalCharges,
+      additionalChargesTotal:
+          (map['additionalChargesTotal'] as num?)?.toDouble() ??
+              _sumAdditionalCharges(additionalCharges),
       pickupCallTime: _parseFirestoreDate(map['pickupCallTime']),
       loadingDocsReceivedAt: _parseFirestoreDate(map['loadingDocsReceivedAt']),
       deliveryPhotos: _parseMap(map['deliveryPhotos']),
+      customerDeliveryPhotos: _parseAdditionalCharges(
+        map['customerDeliveryPhotos'],
+      ),
       receiverName: map['receiverName'] as String?,
       picklistItems: map['picklistItems'] as List<dynamic>?,
       completedAt: _parseFirestoreDate(map['completedAt']),
@@ -359,9 +397,12 @@ class BookingModel {
       'unloadingCompletedAt': unloadingCompletedAt?.millisecondsSinceEpoch,
       'loadingDemurrageFee': loadingDemurrageFee,
       'unloadingDemurrageFee': unloadingDemurrageFee,
+      'additionalCharges': additionalCharges,
+      'additionalChargesTotal': additionalChargesTotal,
       'pickupCallTime': pickupCallTime?.millisecondsSinceEpoch,
       'loadingDocsReceivedAt': loadingDocsReceivedAt?.millisecondsSinceEpoch,
       'deliveryPhotos': deliveryPhotos,
+      'customerDeliveryPhotos': customerDeliveryPhotos,
       'receiverName': receiverName,
       'picklistItems': picklistItems,
       'completedAt': completedAt?.millisecondsSinceEpoch,
@@ -420,9 +461,12 @@ class BookingModel {
     DateTime? unloadingCompletedAt,
     double? loadingDemurrageFee,
     double? unloadingDemurrageFee,
+    List<Map<String, dynamic>>? additionalCharges,
+    double? additionalChargesTotal,
     DateTime? pickupCallTime,
     DateTime? loadingDocsReceivedAt,
     Map<String, dynamic>? deliveryPhotos,
+    List<Map<String, dynamic>>? customerDeliveryPhotos,
     String? receiverName,
     List<dynamic>? picklistItems,
     DateTime? completedAt,
@@ -471,10 +515,15 @@ class BookingModel {
       loadingDemurrageFee: loadingDemurrageFee ?? this.loadingDemurrageFee,
       unloadingDemurrageFee:
           unloadingDemurrageFee ?? this.unloadingDemurrageFee,
+      additionalCharges: additionalCharges ?? this.additionalCharges,
+      additionalChargesTotal:
+          additionalChargesTotal ?? this.additionalChargesTotal,
       pickupCallTime: pickupCallTime ?? this.pickupCallTime,
       loadingDocsReceivedAt:
           loadingDocsReceivedAt ?? this.loadingDocsReceivedAt,
       deliveryPhotos: deliveryPhotos ?? this.deliveryPhotos,
+      customerDeliveryPhotos:
+          customerDeliveryPhotos ?? this.customerDeliveryPhotos,
       receiverName: receiverName ?? this.receiverName,
       picklistItems: picklistItems ?? this.picklistItems,
       completedAt: completedAt ?? this.completedAt,
@@ -543,7 +592,10 @@ class BookingModel {
       (loadingDemurrageFee ?? 0.0) + (unloadingDemurrageFee ?? 0.0);
 
   double get totalFare {
-    final computedTotal = lockedFare + totalDemurrageFee + (tipAmount ?? 0.0);
+    final computedTotal = lockedFare +
+        totalDemurrageFee +
+        additionalChargesTotal +
+        (tipAmount ?? 0.0);
     final persistedGrossAmount = grossAmount ?? 0.0;
     final persistedFinalFare = finalFare ?? 0.0;
     if (persistedGrossAmount > computedTotal &&

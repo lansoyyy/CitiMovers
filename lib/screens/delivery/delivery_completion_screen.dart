@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/delivery_photo_resolver.dart';
 import '../../utils/ui_helpers.dart';
@@ -7,6 +9,7 @@ import '../../services/booking_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/customer_profile_helper.dart';
 import '../../services/driver_service.dart';
+import '../../services/storage_service.dart';
 
 class DeliveryCompletionScreen extends StatefulWidget {
   final BookingModel booking;
@@ -30,6 +33,8 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
   final BookingService _bookingService = BookingService();
   final AuthService _authService = AuthService();
   final DriverService _driverService = DriverService.instance;
+  final StorageService _storageService = StorageService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   final TextEditingController _reviewController = TextEditingController();
   final TextEditingController _customTipController = TextEditingController();
@@ -38,8 +43,12 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
 
   double _rating = 0.0;
   bool _isSubmitting = false;
+  bool _isUploadingCustomerPhoto = false;
   String? _driverName;
   Map<String, dynamic>? _deliveryPhotos;
+  List<Map<String, dynamic>> _customerDeliveryPhotos = [];
+  List<Map<String, dynamic>> _additionalCharges = [];
+  double _additionalChargesTotal = 0.0;
 
   // Picklist items
   List<Map<String, dynamic>> _picklistItems = [];
@@ -149,6 +158,9 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
       if (bookingId == null || bookingId.isEmpty) {
         setState(() {
           _deliveryPhotos = _normalizePhotosMap(widget.booking.deliveryPhotos);
+          _customerDeliveryPhotos = widget.booking.customerDeliveryPhotos;
+          _additionalCharges = widget.booking.additionalCharges;
+          _additionalChargesTotal = widget.booking.additionalChargesTotal;
         });
         return;
       }
@@ -158,12 +170,87 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
         _deliveryPhotos = _normalizePhotosMap(
           bookingData?.deliveryPhotos ?? widget.booking.deliveryPhotos,
         );
+        _customerDeliveryPhotos = bookingData?.customerDeliveryPhotos ??
+            widget.booking.customerDeliveryPhotos;
+        _additionalCharges =
+            bookingData?.additionalCharges ?? widget.booking.additionalCharges;
+        _additionalChargesTotal = bookingData?.additionalChargesTotal ??
+            widget.booking.additionalChargesTotal;
       });
     } catch (e) {
       debugPrint('Error fetching delivery photos: $e');
       setState(() {
         _deliveryPhotos = _normalizePhotosMap(widget.booking.deliveryPhotos);
+        _customerDeliveryPhotos = widget.booking.customerDeliveryPhotos;
+        _additionalCharges = widget.booking.additionalCharges;
+        _additionalChargesTotal = widget.booking.additionalChargesTotal;
       });
+    }
+  }
+
+  Future<void> _addCustomerDeliveryPhoto() async {
+    if (_isUploadingCustomerPhoto) return;
+    final bookingId = widget.booking.bookingId;
+    if (bookingId == null || bookingId.isEmpty) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final picked = await _imagePicker.pickImage(
+      source: source,
+      imageQuality: 75,
+      maxWidth: 1600,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => _isUploadingCustomerPhoto = true);
+    try {
+      final url = await _storageService.uploadDeliveryPhoto(
+        File(picked.path),
+        bookingId,
+        'customer_actual_delivery',
+      );
+      if (url == null) {
+        UIHelpers.showErrorToast('Failed to upload delivery photo.');
+        return;
+      }
+      final saved = await _bookingService.addCustomerDeliveryPhoto(
+        bookingId: bookingId,
+        photoUrl: url,
+        uploadedBy: _authService.currentUser?.userId ?? '',
+      );
+      if (!saved) {
+        UIHelpers.showErrorToast('Failed to save delivery photo.');
+        return;
+      }
+      await _fetchDeliveryPhotos();
+      if (mounted) {
+        UIHelpers.showSuccessToast('Delivery photo uploaded.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingCustomerPhoto = false);
+      }
     }
   }
 
@@ -937,6 +1024,17 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
                 ],
               ),
             ),
+
+            const SizedBox(height: 16),
+
+            const SizedBox(height: 16),
+
+            if (_additionalCharges.isNotEmpty) ...[
+              _buildAdditionalChargesSummary(),
+              const SizedBox(height: 16),
+            ],
+
+            _buildCustomerReportSection(),
 
             const SizedBox(height: 16),
 
@@ -1781,6 +1879,226 @@ class _DeliveryCompletionScreenState extends State<DeliveryCompletionScreen>
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAdditionalChargesSummary() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Additional Charges',
+            style: TextStyle(
+              fontSize: 18,
+              fontFamily: 'Bold',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ..._additionalCharges.map((charge) {
+            final label =
+                (charge['label'] ?? charge['type'] ?? 'Charge').toString();
+            final amount = (charge['amount'] as num?)?.toDouble() ?? 0.0;
+            final notes = (charge['notes'] ?? '').toString().trim();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Medium',
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        if (notes.isNotEmpty)
+                          Text(
+                            notes,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'Regular',
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'P${amount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Bold',
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const Divider(),
+          Row(
+            children: [
+              const Text(
+                'Total',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'P${_additionalChargesTotal.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontFamily: 'Bold',
+                  color: AppColors.primaryRed,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerReportSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Report Actual Delivery (Optional)',
+            style: TextStyle(
+              fontSize: 18,
+              fontFamily: 'Bold',
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Upload photos of the items you received to support your feedback.',
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: 'Regular',
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ..._customerDeliveryPhotos.map(
+                (photo) {
+                  final url = (photo['url'] ?? '').toString();
+                  if (url.isEmpty) return const SizedBox.shrink();
+                  return InkWell(
+                    onTap: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => Dialog(
+                        child: InteractiveViewer(
+                          child: Image.network(url),
+                        ),
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        url,
+                        width: 92,
+                        height: 92,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 92,
+                          height: 92,
+                          color: AppColors.lightGrey,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              InkWell(
+                onTap: _isUploadingCustomerPhoto
+                    ? null
+                    : _addCustomerDeliveryPhoto,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    color: AppColors.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.lightGrey),
+                  ),
+                  child: _isUploadingCustomerPhoto
+                      ? const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.add_a_photo_outlined,
+                              color: AppColors.primaryRed,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Add Photo',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontFamily: 'Medium',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -7,7 +7,6 @@ class VehicleRateConfig {
   final double perKmRate;
   final String formulaType;
   final double minFare;
-  final double peakSurchargePercent;
   final double? fuelMultiplierNumerator;
   final double? fuelMultiplierDenominator;
 
@@ -17,7 +16,6 @@ class VehicleRateConfig {
     required this.perKmRate,
     this.formulaType = 'linear',
     this.minFare = 0,
-    this.peakSurchargePercent = 20,
     this.fuelMultiplierNumerator,
     this.fuelMultiplierDenominator,
   });
@@ -29,7 +27,6 @@ class VehicleRateConfig {
       perKmRate: _readDouble(map['perKmRate']),
       formulaType: (map['formulaType'] ?? 'linear').toString(),
       minFare: _readDouble(map['minFare']),
-      peakSurchargePercent: _readDouble(map['peakSurchargePercent'], fallback: 20),
       fuelMultiplierNumerator: _readOptionalDouble(map['fuelMultiplierNumerator']),
       fuelMultiplierDenominator:
           _readOptionalDouble(map['fuelMultiplierDenominator']),
@@ -42,7 +39,6 @@ class VehicleRateConfig {
       'perKmRate': perKmRate,
       'formulaType': formulaType,
       'minFare': minFare,
-      'peakSurchargePercent': peakSurchargePercent,
       if (fuelMultiplierNumerator != null)
         'fuelMultiplierNumerator': fuelMultiplierNumerator,
       if (fuelMultiplierDenominator != null)
@@ -76,7 +72,7 @@ class RateConfigService {
 
   Map<String, VehicleRateConfig>? _cachedCodRates;
   Map<String, double>? _cachedContractDefaults;
-  double _fuelPricePerLiter = 130.0;
+  double _fuelPricePerLiter = 95.0;
   DateTime? _lastLoadedAt;
 
   static Map<String, VehicleRateConfig> get defaultCodRates => {
@@ -110,9 +106,9 @@ class RateConfigService {
           baseFare: 0,
           perKmRate: 0,
           formulaType: 'fuel_10wheeler',
-          minFare: 19500,
-          fuelMultiplierNumerator: 3,
-          fuelMultiplierDenominator: 2,
+          minFare: 17272.73,
+          fuelMultiplierNumerator: 5,
+          fuelMultiplierDenominator: 2.75,
         ),
         '20-Footer Trailer': const VehicleRateConfig(
           vehicleType: '20-Footer Trailer',
@@ -167,6 +163,14 @@ class RateConfigService {
       final data = ratesDoc.data() ?? {};
       final codRaw = data['codRates'];
       final contractRaw = data['contractDefaults'];
+      final formulaVersion = (data['formulaVersion'] as num?)?.toInt() ?? 1;
+      final rawTenWheeler =
+          codRaw is Map ? codRaw['10-Wheeler Wingvan'] : null;
+      double? parseRateValue(dynamic value) {
+        if (value is num) return value.toDouble();
+        if (value is String) return double.tryParse(value);
+        return null;
+      }
 
       final codRates = Map<String, VehicleRateConfig>.from(defaultCodRates);
       if (codRaw is Map) {
@@ -178,6 +182,23 @@ class RateConfigService {
             );
           }
         });
+      }
+
+      if (formulaVersion < 2) {
+        final isLegacyTenWheeler = rawTenWheeler is Map &&
+            ((parseRateValue(rawTenWheeler['fuelMultiplierNumerator']) == 3 &&
+                    parseRateValue(
+                          rawTenWheeler['fuelMultiplierDenominator'],
+                        ) ==
+                        2) ||
+                parseRateValue(rawTenWheeler['minFare']) == 19500);
+        if (isLegacyTenWheeler) {
+          codRates['10-Wheeler Wingvan'] =
+              defaultCodRates['10-Wheeler Wingvan']!;
+        }
+        if (_fuelPricePerLiter == 130.0) {
+          _fuelPricePerLiter = 95.0;
+        }
       }
 
       final contractDefaults = Map<String, double>.from(defaultContractRates);
@@ -219,15 +240,7 @@ class RateConfigService {
     DateTime? referenceTime,
   }) {
     final config = codRates[vehicleType] ?? codRates.values.first;
-    double fare = _calculateBaseFare(config, distanceKm);
-
-    final now = referenceTime ?? DateTime.now();
-    if ((now.hour >= 7 && now.hour <= 9) ||
-        (now.hour >= 17 && now.hour <= 19)) {
-      fare *= 1 + (config.peakSurchargePercent / 100);
-    }
-
-    return fare;
+    return _calculateBaseFare(config, distanceKm);
   }
 
   double _calculateBaseFare(VehicleRateConfig config, double distanceKm) {

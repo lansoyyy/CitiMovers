@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_model.dart';
-import '../models/user_model.dart';
 import '../utils/app_constants.dart';
 import 'notification_service.dart';
 import 'booking_status_service.dart';
@@ -27,6 +26,14 @@ class BookingService {
   final TripNumberService _tripNumberService = TripNumberService();
   static const String _bookingsCollection = 'bookings';
 
+  static const Map<String, String> additionalChargeTypeLabels = {
+    'toll': 'Toll fee',
+    'parking': 'Parking fee',
+    'passway': 'Passway fee',
+    'extra_helper': 'Extra helper / Mano fee',
+    'other': 'Other charge',
+  };
+
   static const Duration _autoContinueActiveStaleThreshold = Duration(hours: 72);
   static const Duration _autoContinuePendingStaleThreshold =
       Duration(hours: 24);
@@ -43,12 +50,14 @@ class BookingService {
     required double lockedFare,
     double loadingDemurrageFee = 0.0,
     double unloadingDemurrageFee = 0.0,
+    double additionalChargesTotal = 0.0,
     double tipAmount = 0.0,
   }) {
     return BookingFinanceService.resolveGrossAmount(
       estimatedFare: lockedFare,
       loadingDemurrageFee: loadingDemurrageFee,
       unloadingDemurrageFee: unloadingDemurrageFee,
+      additionalChargesTotal: additionalChargesTotal,
       tipAmount: tipAmount,
     );
   }
@@ -58,6 +67,7 @@ class BookingService {
     double? estimatedFare,
     double? loadingDemurrageFee,
     double? unloadingDemurrageFee,
+    double? additionalChargesTotal,
     double? tipAmount,
     double? persistedFinalFare,
   }) {
@@ -68,6 +78,8 @@ class BookingService {
           _readDouble(bookingData?['loadingDemurrageFee']),
       unloadingDemurrageFee: unloadingDemurrageFee ??
           _readDouble(bookingData?['unloadingDemurrageFee']),
+      additionalChargesTotal: additionalChargesTotal ??
+          _readDouble(bookingData?['additionalChargesTotal']),
       tipAmount: tipAmount ?? _readDouble(bookingData?['tipAmount']),
       persistedFinalFare:
           persistedFinalFare ?? _readDouble(bookingData?['finalFare']),
@@ -78,6 +90,7 @@ class BookingService {
     Map<String, dynamic>? bookingData, {
     double? loadingDemurrageFee,
     double? unloadingDemurrageFee,
+    double? additionalChargesTotal,
     double? tipAmount,
   }) {
     final lockedFare = _readDouble(bookingData?['estimatedFare']);
@@ -85,11 +98,14 @@ class BookingService {
         loadingDemurrageFee ?? _readDouble(bookingData?['loadingDemurrageFee']);
     final resolvedUnloadingDemurrage = unloadingDemurrageFee ??
         _readDouble(bookingData?['unloadingDemurrageFee']);
+    final resolvedAdditionalCharges = additionalChargesTotal ??
+        _readDouble(bookingData?['additionalChargesTotal']);
     final resolvedTip = tipAmount ?? _readDouble(bookingData?['tipAmount']);
     return BookingFinanceService.resolveGrossAmount(
       estimatedFare: lockedFare,
       loadingDemurrageFee: resolvedLoadingDemurrage,
       unloadingDemurrageFee: resolvedUnloadingDemurrage,
+      additionalChargesTotal: resolvedAdditionalCharges,
       tipAmount: resolvedTip,
       persistedFinalFare: _readDouble(bookingData?['finalFare']),
     );
@@ -308,17 +324,9 @@ class BookingService {
   }
 
   static Future<double> resolveBookingFare({
-    required UserModel user,
     required double distanceKm,
     required String vehicleType,
   }) async {
-    if (CustomerProfileHelper.isContractCustomer(user)) {
-      return RateConfigService.instance.resolveContractFare(
-        vehicleType: vehicleType,
-        userContractRates: user.contractRates,
-      );
-    }
-
     await RateConfigService.instance.ensureLoaded();
     return RateConfigService.instance.calculateCodFare(
       distanceKm: distanceKm,
@@ -520,6 +528,129 @@ class BookingService {
     } catch (e) {
       // Capacity sync must never fail the delivery action that triggered it.
       debugPrint('Error syncing rider booking capacity: $e');
+    }
+  }
+
+  static List<Map<String, dynamic>> _additionalChargesFrom(dynamic value) {
+    if (value is! List) return <Map<String, dynamic>>[];
+    final charges = <Map<String, dynamic>>[];
+    for (final item in value) {
+      if (item is Map) {
+        charges.add(item.map((key, v) => MapEntry(key.toString(), v)));
+      }
+    }
+    return charges;
+  }
+
+  static double _additionalChargesTotal(
+    List<Map<String, dynamic>> charges,
+  ) {
+    return charges.fold<double>(
+      0.0,
+      (total, charge) => total + ((charge['amount'] as num?)?.toDouble() ?? 0.0),
+    );
+  }
+
+  Future<bool> addAdditionalCharge({
+    required String bookingId,
+    required String type,
+    required double amount,
+    String? notes,
+    String? addedByRole,
+    String? addedById,
+  }) async {
+    if (amount <= 0) return false;
+    final normalizedType = additionalChargeTypeLabels.containsKey(type)
+        ? type
+        : 'other';
+    final now = DateTime.now();
+    final bookingRef =
+        _firestore.collection(_bookingsCollection).doc(bookingId);
+
+    try {
+      await _firestore.runTransaction((txn) async {
+        final snap = await txn.get(bookingRef);
+        if (!snap.exists) {
+          throw StateError('Booking not found.');
+        }
+        final data = snap.data()!;
+        final status = BookingStatusService.normalizeStatus(
+          (data['status'] ?? '').toString(),
+        );
+        if (BookingStatusService.isFinalStatus(status)) {
+          throw StateError(
+            'Additional charges can no longer be changed after completion.',
+          );
+        }
+
+        final charges = _additionalChargesFrom(data['additionalCharges']);
+        charges.add({
+          'id': '${now.microsecondsSinceEpoch}',
+          'type': normalizedType,
+          'label': additionalChargeTypeLabels[normalizedType],
+          'amount': amount,
+          'notes': (notes ?? '').trim(),
+          'addedByRole': (addedByRole ?? 'rider').trim(),
+          'addedById': (addedById ?? '').trim(),
+          'addedAt': now.millisecondsSinceEpoch,
+        });
+
+        txn.update(bookingRef, {
+          'additionalCharges': charges,
+          'additionalChargesTotal': _additionalChargesTotal(charges),
+          'additionalChargesUpdatedAt': now.millisecondsSinceEpoch,
+          'updatedAt': now.millisecondsSinceEpoch,
+        });
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error adding additional charge: $e');
+      return false;
+    }
+  }
+
+  Future<bool> removeAdditionalCharge({
+    required String bookingId,
+    required String chargeId,
+    String? removedByRole,
+    String? removedById,
+  }) async {
+    final now = DateTime.now();
+    final bookingRef =
+        _firestore.collection(_bookingsCollection).doc(bookingId);
+
+    try {
+      await _firestore.runTransaction((txn) async {
+        final snap = await txn.get(bookingRef);
+        if (!snap.exists) {
+          throw StateError('Booking not found.');
+        }
+        final data = snap.data()!;
+        final status = BookingStatusService.normalizeStatus(
+          (data['status'] ?? '').toString(),
+        );
+        if (BookingStatusService.isFinalStatus(status)) {
+          throw StateError(
+            'Additional charges can no longer be changed after completion.',
+          );
+        }
+
+        final charges = _additionalChargesFrom(data['additionalCharges']);
+        charges.removeWhere((charge) => charge['id']?.toString() == chargeId);
+
+        txn.update(bookingRef, {
+          'additionalCharges': charges,
+          'additionalChargesTotal': _additionalChargesTotal(charges),
+          'additionalChargesUpdatedAt': now.millisecondsSinceEpoch,
+          'updatedAt': now.millisecondsSinceEpoch,
+          'additionalChargesRemovedByRole': (removedByRole ?? 'rider').trim(),
+          'additionalChargesRemovedById': (removedById ?? '').trim(),
+        });
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error removing additional charge: $e');
+      return false;
     }
   }
 
@@ -1394,8 +1525,13 @@ class BookingService {
         updateData['finalFare'] = financeBreakdown.grossAmount;
         updateData.addAll(financeBreakdown.toMap());
         updateData['totalDemurrageFee'] = totalDemurrageFee;
-        updateData['paymentStatus'] = 'captured';
-        updateData['paymentCapturedAt'] = DateTime.now().millisecondsSinceEpoch;
+        final isContractBooking =
+            (bookingData?['paymentMethod'] ?? '').toString() == 'Contract';
+        if (!isContractBooking) {
+          updateData['paymentStatus'] = 'captured';
+          updateData['paymentCapturedAt'] =
+              DateTime.now().millisecondsSinceEpoch;
+        }
       }
 
       await _firestore
@@ -1741,6 +1877,47 @@ class BookingService {
       return true;
     } catch (e) {
       debugPrint('Error adding delivery photo: $e');
+      return false;
+    }
+  }
+
+  Future<bool> addCustomerDeliveryPhoto({
+    required String bookingId,
+    required String photoUrl,
+    String? uploadedBy,
+  }) async {
+    final trimmedUrl = photoUrl.trim();
+    if (trimmedUrl.isEmpty) return false;
+    final bookingRef =
+        _firestore.collection(_bookingsCollection).doc(bookingId);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    try {
+      await _firestore.runTransaction((txn) async {
+        final snap = await txn.get(bookingRef);
+        if (!snap.exists) {
+          throw StateError('Booking not found.');
+        }
+        final data = snap.data()!;
+        final existing = (data['customerDeliveryPhotos'] is List)
+            ? (data['customerDeliveryPhotos'] as List)
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
+            : <Map<String, dynamic>>[];
+        existing.add({
+          'url': trimmedUrl,
+          'uploadedAt': nowMs,
+          'uploadedBy': (uploadedBy ?? '').trim(),
+        });
+        txn.update(bookingRef, {
+          'customerDeliveryPhotos': existing,
+          'updatedAt': nowMs,
+        });
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error adding customer delivery photo: $e');
       return false;
     }
   }

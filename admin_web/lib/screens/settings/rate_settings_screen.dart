@@ -16,8 +16,8 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
   bool _loading = true;
   bool _saving = false;
   final Map<String, Map<String, TextEditingController>> _codControllers = {};
-  final Map<String, TextEditingController> _contractControllers = {};
   final TextEditingController _fuelController = TextEditingController();
+  Map<String, double> _existingContractDefaults = {};
 
   @override
   void initState() {
@@ -32,9 +32,6 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
         controller.dispose();
       }
     }
-    for (final controller in _contractControllers.values) {
-      controller.dispose();
-    }
     _fuelController.dispose();
     super.dispose();
   }
@@ -46,6 +43,15 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
     final codRates = Map<String, dynamic>.from(config['codRates'] ?? {});
     final contractDefaults =
         Map<String, dynamic>.from(config['contractDefaults'] ?? {});
+    double parseAmount(dynamic value) => switch (value) {
+          num v => v.toDouble(),
+          String v => double.tryParse(v) ?? 0.0,
+          _ => 0.0,
+        };
+    _existingContractDefaults = {
+      for (final entry in contractDefaults.entries)
+        entry.key.toString(): parseAmount(entry.value),
+    };
 
     for (final vehicle in AdminRateConfigRepository.vehicleTypes) {
       final vehicleRates = Map<String, dynamic>.from(codRates[vehicle] ?? {});
@@ -59,13 +65,15 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
         'minFare': TextEditingController(
           text: '${vehicleRates['minFare'] ?? 0}',
         ),
-        'peakSurchargePercent': TextEditingController(
-          text: '${vehicleRates['peakSurchargePercent'] ?? 20}',
+        'fuelMultiplierNumerator': TextEditingController(
+          text:
+              '${vehicleRates['fuelMultiplierNumerator'] ?? _defaultFuelNumeratorFor(vehicle)}',
+        ),
+        'fuelMultiplierDenominator': TextEditingController(
+          text:
+              '${vehicleRates['fuelMultiplierDenominator'] ?? _defaultFuelDenominatorFor(vehicle)}',
         ),
       };
-      _contractControllers[vehicle] = TextEditingController(
-        text: '${contractDefaults[vehicle] ?? 0}',
-      );
     }
 
     _fuelController.text = fuel.toStringAsFixed(0);
@@ -77,7 +85,6 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
     setState(() => _saving = true);
     try {
       final codRates = <String, dynamic>{};
-      final contractDefaults = <String, double>{};
 
       for (final vehicle in AdminRateConfigRepository.vehicleTypes) {
         final controllers = _codControllers[vehicle]!;
@@ -85,22 +92,24 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
           'baseFare': double.tryParse(controllers['baseFare']!.text) ?? 0,
           'perKmRate': double.tryParse(controllers['perKmRate']!.text) ?? 0,
           'minFare': double.tryParse(controllers['minFare']!.text) ?? 0,
-          'peakSurchargePercent':
-              double.tryParse(controllers['peakSurchargePercent']!.text) ?? 20,
           'formulaType': _formulaTypeFor(vehicle),
           if (_formulaTypeFor(vehicle).startsWith('fuel_')) ...{
-            'fuelMultiplierNumerator': _fuelNumeratorFor(vehicle),
-            'fuelMultiplierDenominator': _fuelDenominatorFor(vehicle),
+            'fuelMultiplierNumerator': double.tryParse(
+                  controllers['fuelMultiplierNumerator']!.text,
+                ) ??
+                _defaultFuelNumeratorFor(vehicle),
+            'fuelMultiplierDenominator': double.tryParse(
+                  controllers['fuelMultiplierDenominator']!.text,
+                ) ??
+                _defaultFuelDenominatorFor(vehicle),
           },
         };
-        contractDefaults[vehicle] =
-            double.tryParse(_contractControllers[vehicle]!.text) ?? 0;
       }
 
       await AdminRateConfigRepository.saveRatesConfig(
         codRates: codRates,
-        contractDefaults: contractDefaults,
-        fuelPrice: double.tryParse(_fuelController.text) ?? 130,
+        contractDefaults: _existingContractDefaults,
+        fuelPrice: double.tryParse(_fuelController.text) ?? 95,
       );
 
       if (!mounted) return;
@@ -130,8 +139,10 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
     }
   }
 
-  double _fuelNumeratorFor(String vehicle) {
+  double _defaultFuelNumeratorFor(String vehicle) {
     switch (vehicle) {
+      case '10-Wheeler Wingvan':
+        return 5;
       case '40-Footer Trailer':
         return 4;
       default:
@@ -139,8 +150,10 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
     }
   }
 
-  double _fuelDenominatorFor(String vehicle) {
+  double _defaultFuelDenominatorFor(String vehicle) {
     switch (vehicle) {
+      case '10-Wheeler Wingvan':
+        return 2.75;
       case '20-Footer Trailer':
       case '40-Footer Trailer':
         return 2.5;
@@ -172,7 +185,7 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Configure COD calculator rates and default contract fixed rates per vehicle type.',
+            'Configure distance-based rates, fuel price, and heavy-vehicle fuel formula factors.',
             style: GoogleFonts.inter(
               fontSize: 13,
               color: AdminTheme.textSecondary,
@@ -220,6 +233,17 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
+                            if (_formulaTypeFor(vehicle)
+                                .startsWith('fuel_')) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Fare = distance x distance multiplier / fuel consumption x fuel price',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             Wrap(
                               spacing: 12,
@@ -228,14 +252,19 @@ class _RateSettingsScreenState extends State<RateSettingsScreen> {
                                 _field('Base fare', controllers['baseFare']!),
                                 _field('Per km', controllers['perKmRate']!),
                                 _field('Min fare', controllers['minFare']!),
-                                _field(
-                                  'Peak surcharge %',
-                                  controllers['peakSurchargePercent']!,
-                                ),
-                                _field(
-                                  'Contract default',
-                                  _contractControllers[vehicle]!,
-                                ),
+                                if (_formulaTypeFor(vehicle)
+                                    .startsWith('fuel_')) ...[
+                                  _field(
+                                    'Distance multiplier',
+                                    controllers[
+                                        'fuelMultiplierNumerator']!,
+                                  ),
+                                  _field(
+                                    'Fuel consumption (km/L)',
+                                    controllers[
+                                        'fuelMultiplierDenominator']!,
+                                  ),
+                                ],
                               ],
                             ),
                           ],

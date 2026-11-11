@@ -105,6 +105,9 @@ class FirestoreSchemaSeeder {
               'cancellationReason': 'string?',
               'insuranceCoverage': 'number?',
               'tipAmount': 'number?',
+              'additionalCharges': 'array<map>?',
+              'additionalChargesTotal': 'number?',
+              'customerDeliveryPhotos': 'array<map>?',
               'demurrageCharges': 'number?',
               'loadingStartTime': 'number?',
               'loadingEndTime': 'number?',
@@ -620,7 +623,7 @@ class FirestoreSchemaSeeder {
         'type': '10-Wheeler Wingvan',
         'description': 'Heavy-duty transport for large cargo and bulk deliveries',
         'baseFare': 0.00,
-        'perKmRate': 195.00, // distance × 3/2 × ₱130/L
+        'perKmRate': 172.73,
         'capacity': 'Up to 12,000 kg',
         'features': <String>['Heavy cargo', 'Bulk delivery', 'Long distance', 'Professional drivers', 'Helper available'],
         'imageUrl': 'assets/images/10wheeler_wingvan.png',
@@ -635,7 +638,7 @@ class FirestoreSchemaSeeder {
         'type': '20-Footer Trailer',
         'description': 'Heavy-duty 20-foot trailer for industrial and bulk cargo',
         'baseFare': 0.00,
-        'perKmRate': 156.00, // distance × 3/2.5 × ₱130/L
+        'perKmRate': 156.00,
         'capacity': 'Up to 20,000 kg',
         'features': <String>['Industrial cargo', 'Long distance', 'Heavy-duty', 'Secure transport'],
         'imageUrl': 'assets/images/trailer.png',
@@ -650,7 +653,7 @@ class FirestoreSchemaSeeder {
         'type': '40-Footer Trailer',
         'description': 'Maximum capacity 40-foot trailer for the heaviest loads',
         'baseFare': 0.00,
-        'perKmRate': 208.00, // distance × 4/2.5 × ₱130/L
+        'perKmRate': 208.00,
         'capacity': 'Up to 32,000 kg',
         'features': <String>['Maximum capacity', 'Industrial grade', 'Long distance', 'Heavy-duty'],
         'imageUrl': 'assets/images/trailer.png',

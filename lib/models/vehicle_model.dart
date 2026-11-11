@@ -60,15 +60,6 @@ class VehicleModel {
     }
   }
 
-  /// Get fare with peak hour surcharge
-  double getFareWithSurcharge(double distanceKm, {bool isPeakHour = false}) {
-    double fare = getEstimatedFare(distanceKm);
-    if (isPeakHour) {
-      fare *= 1.2; // 20% surcharge
-    }
-    return fare;
-  }
-
   /// Create VehicleModel from Firestore document
   factory VehicleModel.fromMap(Map<String, dynamic> map) {
     return VehicleModel(
@@ -203,9 +194,9 @@ class VehicleModel {
         description: 'Heavy-duty transport for large cargo and bulk deliveries',
         baseFare: 0,
         perKmRate: 0,
-        first100kmRate: 195, // distanceKm × 3/2 × ₱130/L
-        after100kmRate: 195,
-        minimumFare100km: 19500, // min at 100km
+        first100kmRate: 172.73,
+        after100kmRate: 172.73,
+        minimumFare100km: 17272.73,
         capacity: 'Up to 12,000 kg',
         features: [
           'Heavy cargo',
@@ -223,7 +214,7 @@ class VehicleModel {
         type: '20-Footer Trailer',
         description: 'Heavy-duty 20-foot trailer for industrial and bulk cargo',
         baseFare: 0,
-        perKmRate: 156, // distanceKm × 3/2.5 × ₱130/L
+        perKmRate: 156,
         first100kmRate: 156,
         after100kmRate: 156,
         minimumFare100km: 15600, // min at 100km
@@ -242,7 +233,7 @@ class VehicleModel {
         type: '40-Footer Trailer',
         description: 'Maximum capacity 40-foot trailer for the heaviest loads',
         baseFare: 0,
-        perKmRate: 208, // distanceKm × 4/2.5 × ₱130/L
+        perKmRate: 208,
         first100kmRate: 208,
         after100kmRate: 208,
         minimumFare100km: 20800, // min at 100km

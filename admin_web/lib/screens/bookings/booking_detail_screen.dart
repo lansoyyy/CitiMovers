@@ -363,6 +363,157 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     }
   }
 
+  Future<void> _addAdditionalCharge() async {
+    if (_isMutating) return;
+    final amountCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    var selectedType = AdminRepository.additionalChargeTypeLabels.keys.first;
+    String? formError;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Add Additional Charge'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: selectedType,
+                      decoration: const InputDecoration(
+                        labelText: 'Charge type',
+                      ),
+                      items: AdminRepository.additionalChargeTypeLabels.entries
+                          .map(
+                            (entry) => DropdownMenuItem(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => selectedType = value);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amountCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Amount',
+                        prefixText: '₱ ',
+                        errorText: formError,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (optional)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final amount = double.tryParse(amountCtrl.text.trim());
+                    if (amount == null || amount <= 0) {
+                      setDialogState(
+                        () => formError = 'Enter an amount greater than zero.',
+                      );
+                      return;
+                    }
+                    Navigator.pop(dialogContext, {
+                      'type': selectedType,
+                      'amount': amount,
+                      'notes': notesCtrl.text.trim(),
+                    });
+                  },
+                  child: const Text('Add Charge'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    amountCtrl.dispose();
+    notesCtrl.dispose();
+
+    if (result == null) return;
+
+    setState(() => _isMutating = true);
+    try {
+      await AdminRepository.addBookingAdditionalCharge(
+        bookingId: widget.bookingId,
+        type: result['type'] as String,
+        amount: (result['amount'] as num).toDouble(),
+        notes: result['notes'] as String?,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Additional charge added.')),
+      );
+      await _loadBooking();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AdminRepository.describeError(error)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
+    }
+  }
+
+  Future<void> _removeAdditionalCharge(String chargeId) async {
+    if (_isMutating) return;
+    setState(() => _isMutating = true);
+    try {
+      await AdminRepository.removeBookingAdditionalCharge(
+        bookingId: widget.bookingId,
+        chargeId: chargeId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Additional charge removed.')),
+      );
+      await _loadBooking();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AdminRepository.describeError(error)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isMutating = false);
+      }
+    }
+  }
+
   /// Opens the date/time pickers to set (or clear) the pickup call time.
   /// Demurrage rules (1/3/5/6): an early arrival counts from the call time,
   /// a late arrival from actual arrival, and loading that starts before the
@@ -584,6 +735,18 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     final deliveryPhotosMap = _asMap(_bookingData?['deliveryPhotosMap']);
     final deliveryPhotosList =
         (_bookingData?['deliveryPhotos'] as List?) ?? [];
+    final customerReportUrls = <String>[];
+    final rawCustomerPhotos = _bookingData?['customerDeliveryPhotos'];
+    if (rawCustomerPhotos is List) {
+      for (final item in rawCustomerPhotos) {
+        if (item is Map) {
+          final url = (item['url'] ?? '').toString().trim();
+          if (url.startsWith('http')) {
+            customerReportUrls.add(url);
+          }
+        }
+      }
+    }
 
     // Debug logging for photo diagnostics
     debugPrint('[BookingDetail] deliveryPhotosMap keys: ${deliveryPhotosMap.keys.toList()}');
@@ -668,6 +831,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ],
                 ),
               const SizedBox(height: 16),
+              _AdditionalChargesCard(
+                data: d,
+                canEdit: AdminRepository.canCancelBookingStatus(d['status']),
+                onAdd: _addAdditionalCharge,
+                onRemove: _removeAdditionalCharge,
+              ),
+              const SizedBox(height: 16),
               _SupportNotesCard(bookingId: widget.bookingId, d: d),
               const SizedBox(height: 16),
               if (deliveryPhotosMap.isNotEmpty)
@@ -681,6 +851,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       .where((url) => url.startsWith('http'))
                       .toList(),
                 ),
+              if (customerReportUrls.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _FlatDeliveryPhotosCard(
+                  title: 'Customer Delivery Report Photos',
+                  urls: customerReportUrls,
+                ),
+              ],
             ],
           ),
         );
@@ -1008,6 +1185,146 @@ class _StatusTimelineCard extends StatelessWidget {
   }
 }
 
+class _AdditionalChargesCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final bool canEdit;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
+
+  const _AdditionalChargesCard({
+    required this.data,
+    required this.canEdit,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final charges = (data['additionalCharges'] as List?)
+            ?.whereType<Map>()
+            .map((item) => MapEntry(
+                  item['id']?.toString() ?? '',
+                  item.map((key, value) => MapEntry(key.toString(), value)),
+                ))
+            .toList() ??
+        const <MapEntry<String, Map<String, dynamic>>>[];
+    final total = (data['additionalChargesTotal'] ?? 0) as num;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: SectionHeader(title: 'Additional Charges')),
+                if (canEdit)
+                  TextButton.icon(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add_circle_outline, size: 18),
+                    label: const Text('Add Charge'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (charges.isEmpty)
+              Text(
+                'No additional charges recorded.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AdminTheme.textSecondary,
+                ),
+              )
+            else
+              ...charges.map((entry) {
+                final charge = entry.value;
+                final label =
+                    (charge['label'] ?? charge['type'] ?? 'Charge').toString();
+                final notes = (charge['notes'] ?? '').toString().trim();
+                final amount = (charge['amount'] ?? 0) as num;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.receipt_long_outlined,
+                        size: 18,
+                        color: AdminTheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              label,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (notes.isNotEmpty)
+                              Text(
+                                notes,
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: AdminTheme.textSecondary,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '₱ ${amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (canEdit)
+                        IconButton(
+                          onPressed: () => onRemove(entry.key),
+                          tooltip: 'Remove charge',
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: 18,
+                            color: AdminTheme.statusCancelled,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }),
+            const Divider(height: 20),
+            Row(
+              children: [
+                Text(
+                  'Total Additional Charges',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '₱ ${total.toStringAsFixed(2)}',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AdminTheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PaymentCard extends StatelessWidget {
   final Map<String, dynamic> d;
   const _PaymentCard({required this.d});
@@ -1017,6 +1334,7 @@ class _PaymentCard extends StatelessWidget {
     final estimated = (d['estimatedFare'] ?? 0) as num;
     final final_ = (d['finalFare'] ?? 0) as num;
     final gross = (d['grossAmount'] ?? d['finalFare'] ?? 0) as num;
+    final additionalCharges = (d['additionalChargesTotal'] ?? 0) as num;
     final tip = (d['tipAmount'] ?? 0) as num;
     final partnerNet = (d['partnerNetAmount'] ?? 0) as num;
     final adminFee = (d['adminFeeAmount'] ?? 0) as num;
@@ -1043,6 +1361,10 @@ class _PaymentCard extends StatelessWidget {
               'Final Fare',
               '₱ ${final_.toStringAsFixed(2)}',
               bold: true,
+            ),
+            _buildFinancialRow(
+              'Additional Charges',
+              '₱ ${additionalCharges.toStringAsFixed(2)}',
             ),
             _buildFinancialRow('Tip', '₱ ${tip.toStringAsFixed(2)}'),
             _buildFinancialRow(
@@ -1888,7 +2210,11 @@ class _CategorizedDeliveryPhotosCard extends StatelessWidget {
 
 class _FlatDeliveryPhotosCard extends StatelessWidget {
   final List<String> urls;
-  const _FlatDeliveryPhotosCard({required this.urls});
+  final String title;
+  const _FlatDeliveryPhotosCard({
+    required this.urls,
+    this.title = 'Delivery Photos',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1898,7 +2224,7 @@ class _FlatDeliveryPhotosCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionHeader(title: 'Delivery Photos'),
+            SectionHeader(title: title),
             const SizedBox(height: 12),
             Wrap(
               spacing: 10,

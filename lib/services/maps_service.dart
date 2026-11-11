@@ -61,7 +61,7 @@ class MapsService {
   }
 
   // Fuel price per liter from Firestore configs/app (default matches Firestore seed value)
-  double _fuelPricePerLiter = 130.0;
+  double _fuelPricePerLiter = 95.0;
 
   /// Fetches the current fuel price per litre from Firestore `configs/app`
   /// and caches it in the singleton.  Safe to call multiple times.

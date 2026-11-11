@@ -4,7 +4,7 @@ class IntegrationsConfig {
   static const String emailJsPublicKey = 'LEnABj81nmpvvGCDJ';
   static const String emailJsAccessToken = 'VC9ew3T8WgVHGrzF_8k0O';
 
-  static const String reportSenderEmail = 'admin@citimovers.net';
+  static const String reportSenderEmail = 'pod@citimovers.net';
   static const String reportSenderName = 'CitiMovers';
 
   static const List<String> internalReportRecipients = <String>[

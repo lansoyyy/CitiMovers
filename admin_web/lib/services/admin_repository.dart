@@ -190,9 +190,17 @@ class AdminRepository {
     final estimatedFare = _asDouble(raw['estimatedFare']);
     final loadingDemurrageFee = _asDouble(raw['loadingDemurrageFee']);
     final unloadingDemurrageFee = _asDouble(raw['unloadingDemurrageFee']);
+    final additionalChargesTotal = raw['additionalChargesTotal'] != null
+        ? _asDouble(raw['additionalChargesTotal'])
+        : _additionalChargesTotal(
+            _normalizeAdditionalCharges(raw['additionalCharges']),
+          );
     final tipAmount = _asDouble(raw['tipAmount']);
-    final computedFinalFare =
-        estimatedFare + loadingDemurrageFee + unloadingDemurrageFee + tipAmount;
+    final computedFinalFare = estimatedFare +
+        loadingDemurrageFee +
+        unloadingDemurrageFee +
+        additionalChargesTotal +
+        tipAmount;
     final persistedFinalFare = _asDouble(raw['finalFare']);
     final persistedGrossAmount = _asDouble(raw['grossAmount']);
     final resolvedGrossAmount = [
@@ -593,6 +601,28 @@ class AdminRepository {
     }, SetOptions(merge: true));
   }
 
+  static List<Map<String, dynamic>> _normalizeAdditionalCharges(dynamic raw) {
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    final charges = <Map<String, dynamic>>[];
+    for (final item in raw) {
+      if (item is Map) {
+        charges.add(
+          item.map((key, value) => MapEntry(key.toString(), value)),
+        );
+      }
+    }
+    return charges;
+  }
+
+  static double _additionalChargesTotal(
+    List<Map<String, dynamic>> charges,
+  ) {
+    return charges.fold<double>(
+      0.0,
+      (total, charge) => total + _asDouble(charge['amount']),
+    );
+  }
+
   static List<String> _normalizeDeliveryPhotos(dynamic rawPhotos) {
     final collected = <String>[];
     _collectDeliveryPhotoUrls(rawPhotos, collected);
@@ -815,6 +845,14 @@ class AdminRepository {
       ]),
       'distance': _asDouble(raw['distance']),
       'estimatedFare': estimatedFare,
+      'additionalCharges': _normalizeAdditionalCharges(
+        raw['additionalCharges'],
+      ),
+      'additionalChargesTotal': raw['additionalChargesTotal'] != null
+          ? _asDouble(raw['additionalChargesTotal'])
+          : _additionalChargesTotal(
+              _normalizeAdditionalCharges(raw['additionalCharges']),
+            ),
       'grossAmount': accountingFields['grossAmount'],
       'finalFare': resolvedFinalFare,
       'tipAmount': tipAmount,
@@ -1461,6 +1499,153 @@ class AdminRepository {
     String bookingId,
     Map<String, dynamic> data,
   ) => _db.collection(AdminConstants.colBookings).doc(bookingId).update(data);
+
+  static const Map<String, String> additionalChargeTypeLabels = {
+    'toll': 'Toll fee',
+    'parking': 'Parking fee',
+    'passway': 'Passway fee',
+    'extra_helper': 'Extra helper / Mano fee',
+    'other': 'Other charge',
+  };
+
+  static Future<void> addBookingAdditionalCharge({
+    required String bookingId,
+    required String type,
+    required double amount,
+    String? notes,
+  }) async {
+    final resolvedBookingId = bookingId.trim();
+    if (resolvedBookingId.isEmpty) {
+      throw StateError('Booking ID is required.');
+    }
+    if (amount <= 0) {
+      throw StateError('Amount must be greater than zero.');
+    }
+    final normalizedType =
+        additionalChargeTypeLabels.containsKey(type) ? type : 'other';
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(resolvedBookingId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    await _db.runTransaction((transaction) async {
+      final snap = await transaction.get(bookingRef);
+      if (!snap.exists) {
+        throw StateError('Booking not found.');
+      }
+      final beforeData = normalizeBookingData(
+        resolvedBookingId,
+        _asMap(snap.data()),
+      );
+      if (!canCancelBookingStatus(beforeData['status'])) {
+        throw StateError(
+          'Additional charges can no longer be changed after completion.',
+        );
+      }
+
+      final charges = _normalizeAdditionalCharges(
+        beforeData['additionalCharges'],
+      );
+      charges.add({
+        'id': '$nowMs-${charges.length + 1}',
+        'type': normalizedType,
+        'label': additionalChargeTypeLabels[normalizedType],
+        'amount': amount,
+        'notes': (notes ?? '').trim(),
+        'addedByRole': 'admin',
+        'addedById': AdminConstants.adminUsername,
+        'addedAt': nowMs,
+      });
+      final total = _additionalChargesTotal(charges);
+
+      transaction.update(bookingRef, {
+        'additionalCharges': charges,
+        'additionalChargesTotal': total,
+        'additionalChargesUpdatedAt': FieldValue.serverTimestamp(),
+        'lastAdminActionAt': FieldValue.serverTimestamp(),
+        'lastAdminActionBy': AdminConstants.adminUsername,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(
+        auditRef,
+        _buildAuditEntry(
+          action: AdminConstants.auditUpdateBookingAdditionalCharge,
+          entityType: 'booking',
+          entityId: resolvedBookingId,
+          reason: 'Additional charge added',
+          before: {
+            'additionalChargesTotal': beforeData['additionalChargesTotal'],
+          },
+          after: {
+            'additionalChargesTotal': total,
+            'type': normalizedType,
+            'amount': amount,
+          },
+        ),
+      );
+    });
+  }
+
+  static Future<void> removeBookingAdditionalCharge({
+    required String bookingId,
+    required String chargeId,
+  }) async {
+    final resolvedBookingId = bookingId.trim();
+    if (resolvedBookingId.isEmpty || chargeId.trim().isEmpty) {
+      throw StateError('Booking and charge IDs are required.');
+    }
+    final bookingRef = _db
+        .collection(AdminConstants.colBookings)
+        .doc(resolvedBookingId);
+    final auditRef = _db.collection(AdminConstants.colAdminAuditLogs).doc();
+
+    await _db.runTransaction((transaction) async {
+      final snap = await transaction.get(bookingRef);
+      if (!snap.exists) {
+        throw StateError('Booking not found.');
+      }
+      final beforeData = normalizeBookingData(
+        resolvedBookingId,
+        _asMap(snap.data()),
+      );
+      if (!canCancelBookingStatus(beforeData['status'])) {
+        throw StateError(
+          'Additional charges can no longer be changed after completion.',
+        );
+      }
+
+      final charges = _normalizeAdditionalCharges(
+        beforeData['additionalCharges'],
+      );
+      charges.removeWhere(
+        (charge) => _asString(charge['id']) == chargeId.trim(),
+      );
+      final total = _additionalChargesTotal(charges);
+
+      transaction.update(bookingRef, {
+        'additionalCharges': charges,
+        'additionalChargesTotal': total,
+        'additionalChargesUpdatedAt': FieldValue.serverTimestamp(),
+        'lastAdminActionAt': FieldValue.serverTimestamp(),
+        'lastAdminActionBy': AdminConstants.adminUsername,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(
+        auditRef,
+        _buildAuditEntry(
+          action: AdminConstants.auditUpdateBookingAdditionalCharge,
+          entityType: 'booking',
+          entityId: resolvedBookingId,
+          reason: 'Additional charge removed',
+          before: {
+            'additionalChargesTotal': beforeData['additionalChargesTotal'],
+          },
+          after: {'additionalChargesTotal': total},
+        ),
+      );
+    });
+  }
 
   static Future<void> assignRiderToBooking({
     required String bookingId,

@@ -133,6 +133,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   Timer? _unloadingTimer;
   Duration _unloadingDuration = Duration.zero;
   double _unloadingDemurrageFee = 0.0;
+  List<Map<String, dynamic>> _additionalCharges = [];
+  double _additionalChargesTotal = 0.0;
   DateTime? _unloadingStartTime; // wall-clock start for accurate elapsed time
   File? _startUnloadingPhoto;
   File? _finishUnloadingPhoto;
@@ -772,6 +774,17 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
       case ReceivingSubStep.signature:
         return 4;
     }
+  }
+
+  List<Map<String, dynamic>> _parseAdditionalCharges(dynamic rawValue) {
+    if (rawValue is! List) return <Map<String, dynamic>>[];
+    final charges = <Map<String, dynamic>>[];
+    for (final item in rawValue) {
+      if (item is Map) {
+        charges.add(item.map((key, value) => MapEntry(key.toString(), value)));
+      }
+    }
+    return charges;
   }
 
   Map<String, dynamic> _normalizeDeliveryPhotos(dynamic rawValue) {
@@ -1962,6 +1975,16 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             DemurrageUtils.calculateFee(_loadingDuration, _baseFareAmount);
         _unloadingDemurrageFee =
             DemurrageUtils.calculateFee(_unloadingDuration, _baseFareAmount);
+        _additionalCharges = _parseAdditionalCharges(
+          bookingData?['additionalCharges'],
+        );
+        _additionalChargesTotal = (bookingData?['additionalChargesTotal'] as num?)
+                ?.toDouble() ??
+            _additionalCharges.fold<double>(
+              0.0,
+              (total, charge) =>
+                  total + ((charge['amount'] as num?)?.toDouble() ?? 0.0),
+            );
         _serviceInvoicePhotoUrls
           ..clear()
           ..addAll(restoredServiceInvoiceUrls);
@@ -4201,12 +4224,18 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
             widget.request.fare.replaceAll(RegExp(r'[^0-9.]'), '')) ??
         0.0;
     final customerId = bookingDoc?['customerId'] as String?;
+    final isContractBooking =
+        (bookingDoc?['paymentMethod'] ?? '').toString() == 'Contract';
+    final additionalChargesTotal =
+        (bookingDoc?['additionalChargesTotal'] as num?)?.toDouble() ?? 0.0;
 
     // --- Wallet: add earnings to rider ---
     final riderId = _riderAuthService.currentRider?.riderId ?? '';
     if (riderId.isNotEmpty) {
-      final totalEarnings =
-          lockedFare + savedLoadingDemurrage + savedUnloadingDemurrage;
+      final totalEarnings = lockedFare +
+          savedLoadingDemurrage +
+          savedUnloadingDemurrage +
+          additionalChargesTotal;
       if (totalEarnings > 0) {
         await _walletService.addEarnings(
           riderId: riderId,
@@ -4219,15 +4248,28 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
     // --- Wallet: charge customer for demurrage (if any) ---
     final totalDemurrage = savedLoadingDemurrage + savedUnloadingDemurrage;
-    if (totalDemurrage > 0) {
-      if (customerId != null && customerId.isNotEmpty) {
-        await _walletService.deductFromWallet(
-          userId: customerId,
-          amount: totalDemurrage,
-          description: 'Demurrage fee - ${widget.request.id}',
-          referenceId: widget.request.id,
-        );
-      }
+    if (!isContractBooking &&
+        totalDemurrage > 0 &&
+        customerId != null &&
+        customerId.isNotEmpty) {
+      await _walletService.deductFromWallet(
+        userId: customerId,
+        amount: totalDemurrage,
+        description: 'Demurrage fee - ${widget.request.id}',
+        referenceId: widget.request.id,
+      );
+    }
+
+    if (!isContractBooking &&
+        additionalChargesTotal > 0 &&
+        customerId != null &&
+        customerId.isNotEmpty) {
+      await _walletService.deductFromWallet(
+        userId: customerId,
+        amount: additionalChargesTotal,
+        description: 'Additional delivery charges - ${widget.request.id}',
+        referenceId: widget.request.id,
+      );
     }
 
     setState(() {
@@ -4492,6 +4534,27 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
 
       final phtNow = DateTime.now().toUtc().add(const Duration(hours: 8));
 
+      final additionalChargesRaw = bookingData?['additionalCharges'];
+      final additionalCharges = <Map<String, dynamic>>[];
+      if (additionalChargesRaw is List) {
+        for (final item in additionalChargesRaw) {
+          if (item is Map) {
+            additionalCharges
+                .add(item.map((key, value) => MapEntry(key.toString(), value)));
+          }
+        }
+      }
+      final additionalChargesTotal = additionalCharges.fold<double>(
+        0.0,
+        (total, charge) => total + ((charge['amount'] as num?)?.toDouble() ?? 0.0),
+      );
+      final additionalChargesText = additionalCharges
+          .map(
+            (charge) =>
+                '${charge['label'] ?? charge['type'] ?? 'Charge'}: PHP ${(((charge['amount'] as num?)?.toDouble()) ?? 0.0).toStringAsFixed(2)}',
+          )
+          .join('\n');
+
       final templateParams = <String, dynamic>{
         'sender': IntegrationsConfig.reportSenderEmail,
         'receiver_name': receiverName,
@@ -4549,6 +4612,8 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
         'service_invoice_urls': invoiceUrls.join('\n'),
         'signed_document_urls': signedDocUrlList.join('\n'),
         'signed_document_count': '${signedDocUrlList.length}',
+        'additional_charges': additionalChargesText,
+        'additional_charges_total': additionalChargesTotal.toStringAsFixed(2),
         'picklist_items': formatPicklist(
             (picklistFromBooking is List && picklistFromBooking.isNotEmpty)
                 ? picklistFromBooking
@@ -4751,7 +4816,16 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
-                  child: _buildCurrentStepContent(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_currentStep != DeliveryStep.completed) ...[
+                        _buildAdditionalChargesCard(),
+                        const SizedBox(height: 16),
+                      ],
+                      _buildCurrentStepContent(),
+                    ],
+                  ),
                 ),
               ),
               if (_currentStep != DeliveryStep.completed) _buildBottomAction(),
@@ -6576,6 +6650,279 @@ class _RiderDeliveryProgressScreenState extends State<RiderDeliveryProgressScree
   }
 
   // --- Components ---
+
+  Widget _buildAdditionalChargesCard() {
+    final riderId = _riderAuthService.currentRider?.riderId ?? '';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.lightGrey),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Additional Charges',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Bold',
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _showAddAdditionalChargeDialog,
+                icon: const Icon(Icons.add_circle_outline, size: 18),
+                label: const Text('Add'),
+              ),
+            ],
+          ),
+          if (_additionalCharges.isEmpty)
+            const Text(
+              'No toll, parking, passway, or extra helper charges added.',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Regular',
+                color: AppColors.textSecondary,
+              ),
+            )
+          else
+            ..._additionalCharges.map((charge) {
+              final chargeId = (charge['id'] ?? '').toString();
+              final label =
+                  (charge['label'] ?? charge['type'] ?? 'Charge').toString();
+              final amount = (charge['amount'] as num?)?.toDouble() ?? 0.0;
+              final notes = (charge['notes'] ?? '').toString().trim();
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Medium',
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          if (notes.isNotEmpty)
+                            Text(
+                              notes,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'Regular',
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      'P${amount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Bold',
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: chargeId.isEmpty
+                          ? null
+                          : () => _removeAdditionalCharge(chargeId, riderId),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 18,
+                        color: AppColors.error,
+                      ),
+                      tooltip: 'Remove charge',
+                    ),
+                  ],
+                ),
+              );
+            }),
+          const Divider(height: 20),
+          Row(
+            children: [
+              const Text(
+                'Total',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'Bold',
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'P${_additionalChargesTotal.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontFamily: 'Bold',
+                  color: AppColors.primaryRed,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddAdditionalChargeDialog() async {
+    final amountCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    var selectedType = BookingService.additionalChargeTypeLabels.keys.first;
+    String? formError;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Add Additional Charge'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: selectedType,
+                      decoration: const InputDecoration(
+                        labelText: 'Charge type',
+                      ),
+                      items: BookingService.additionalChargeTypeLabels.entries
+                          .map(
+                            (entry) => DropdownMenuItem(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => selectedType = value);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amountCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Amount',
+                        prefixText: 'P ',
+                        errorText: formError,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (optional)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final amount = double.tryParse(amountCtrl.text.trim());
+                    if (amount == null || amount <= 0) {
+                      setDialogState(
+                        () => formError = 'Enter an amount greater than zero.',
+                      );
+                      return;
+                    }
+                    Navigator.pop(dialogContext, {
+                      'type': selectedType,
+                      'amount': amount,
+                      'notes': notesCtrl.text.trim(),
+                    });
+                  },
+                  child: const Text('Add Charge'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    amountCtrl.dispose();
+    notesCtrl.dispose();
+
+    if (result == null) return;
+
+    final success = await _bookingService.addAdditionalCharge(
+      bookingId: widget.request.id,
+      type: result['type'] as String,
+      amount: (result['amount'] as num).toDouble(),
+      notes: result['notes'] as String?,
+      addedByRole: 'rider',
+      addedById: _riderAuthService.currentRider?.riderId ?? '',
+    );
+    if (!mounted) return;
+    if (!success) {
+      UIHelpers.showErrorToast('Failed to add additional charge.');
+      return;
+    }
+    await _reloadAdditionalCharges();
+    if (mounted) {
+      UIHelpers.showSuccessToast('Additional charge added.');
+    }
+  }
+
+  Future<void> _removeAdditionalCharge(
+    String chargeId,
+    String riderId,
+  ) async {
+    final success = await _bookingService.removeAdditionalCharge(
+      bookingId: widget.request.id,
+      chargeId: chargeId,
+      removedByRole: 'rider',
+      removedById: riderId,
+    );
+    if (!mounted) return;
+    if (!success) {
+      UIHelpers.showErrorToast('Failed to remove additional charge.');
+      return;
+    }
+    await _reloadAdditionalCharges();
+  }
+
+  Future<void> _reloadAdditionalCharges() async {
+    final bookingDoc = await _getBookingDoc(widget.request.id);
+    if (!mounted) return;
+    setState(() {
+      _additionalCharges = _parseAdditionalCharges(
+        bookingDoc?['additionalCharges'],
+      );
+      _additionalChargesTotal =
+          (bookingDoc?['additionalChargesTotal'] as num?)?.toDouble() ??
+              _additionalCharges.fold<double>(
+                0.0,
+                (total, charge) =>
+                    total + ((charge['amount'] as num?)?.toDouble() ?? 0.0),
+              );
+    });
+  }
 
   Widget _buildDemurrageTimerCard(String title, Duration duration, double fee) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');

@@ -216,8 +216,26 @@ async function buildTemplateParams(bookingId, booking) {
   const subject =
     `${vehicleType || 'TYPE'}_${plate || 'PLATE'}_${rdd}_Citimovers`;
 
+  const additionalCharges = Array.isArray(booking.additionalCharges)
+    ? booking.additionalCharges.filter(
+        (charge) => charge && typeof charge === 'object',
+      )
+    : [];
+  const additionalChargesTotal = additionalCharges.reduce(
+    (sum, charge) => sum + Number(charge.amount || 0),
+    0,
+  );
+  const additionalChargesText = additionalCharges
+    .map(
+      (charge) =>
+        `${charge.label || charge.type || 'Charge'}: PHP ${Number(
+          charge.amount || 0,
+        ).toFixed(2)}`,
+    )
+    .join('\n');
+
   const params = {
-    sender: 'admin@citimovers.net',
+    sender: 'pod@citimovers.net',
     receiver_name: String(booking.receiverName || riderData.name || ''),
     type: vehicleType,
     plate,
@@ -260,6 +278,8 @@ async function buildTemplateParams(bookingId, booking) {
     service_invoice_urls: invoiceUrls.join('\n'),
     signed_document_urls: signedDocUrls.join('\n'),
     signed_document_count: String(signedDocUrls.length),
+    additional_charges: additionalChargesText,
+    additional_charges_total: additionalChargesTotal.toFixed(2),
     picklist_items: formatPicklist(booking.picklistItems),
     bcc_emails: '',
     cc_emails: '',

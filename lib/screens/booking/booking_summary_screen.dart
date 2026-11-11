@@ -77,20 +77,10 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       widget.dropoffLocation,
     );
     if (mounted) {
-      final user = AuthService().currentUser;
-      double fare = 0;
-      if (user != null) {
-        fare = await BookingService.resolveBookingFare(
-          user: user,
-          distanceKm: widget.distance,
-          vehicleType: widget.vehicle.name,
-        );
-      } else {
-        fare = _mapsService.calculateFare(
-          distanceKm: widget.distance,
-          vehicleType: widget.vehicle.name,
-        );
-      }
+      final fare = await BookingService.resolveBookingFare(
+        distanceKm: widget.distance,
+        vehicleType: widget.vehicle.name,
+      );
 
       if (!mounted) return;
       setState(() {

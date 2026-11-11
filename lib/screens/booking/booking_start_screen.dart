@@ -4,10 +4,6 @@ import '../../utils/app_colors.dart';
 import '../../utils/ui_helpers.dart';
 import '../../models/location_model.dart';
 import '../../services/maps_service.dart';
-import '../../services/auth_service.dart';
-import '../../services/customer_profile_helper.dart';
-import '../../services/booking_service.dart';
-import '../../models/user_model.dart';
 import 'map_view_screen.dart';
 import 'vehicle_selection_screen.dart';
 
@@ -30,7 +26,6 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
   DateTime? _estimatedArrival; // Calculate ETA based on current time + duration
   DateTime?
       _estimatedDelivery; // Calculate delivery time (ETA + loading/unloading time)
-  double? _estimatedFare; // Calculate estimated fare
   bool _isCalculating = false;
   bool _isSearching = false;
   List<PlaceSuggestion> _searchSuggestions = [];
@@ -39,12 +34,6 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
   Timer? _debounceTimer;
   int _searchCounter = 0; // Prevents stale results from overwriting newer ones
   String? _lastSearchError; // Stores last error for user feedback
-
-  bool get _showFare {
-    final user = AuthService().currentUser;
-    if (user == null) return true;
-    return CustomerProfileHelper.shouldShowFare(user);
-  }
 
   void _onSearchChanged(String query) {
     _debounceTimer?.cancel();
@@ -173,27 +162,7 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
         _dropoffLocation!,
       );
 
-      if (routeInfo != null) {
-        // Refresh fuel price from Firestore before calculating the fare
-        await _mapsService.fetchFuelPrice();
-
-        double? estimatedFare;
-        if (_showFare) {
-          final user = AuthService().currentUser;
-          if (user != null) {
-            estimatedFare = await BookingService.resolveBookingFare(
-              user: user,
-              distanceKm: routeInfo.distanceKm,
-              vehicleType: '10-Wheeler Wingvan',
-            );
-          } else {
-            estimatedFare = _mapsService.calculateFare(
-              distanceKm: routeInfo.distanceKm,
-              vehicleType: '10-Wheeler Wingvan',
-            );
-          }
-        }
-
+      if (routeInfo != null && routeInfo.distanceKm > 0) {
         setState(() {
           _distance = routeInfo.distanceKm;
           _durationMinutes = routeInfo.durationMinutes;
@@ -203,19 +172,18 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
             _estimatedDelivery =
                 _estimatedArrival!.add(const Duration(hours: 2));
           }
-          _estimatedFare = estimatedFare;
           _isCalculating = false;
         });
       } else {
-        // Route calculation failed but we still have both locations
-        // Set a fallback distance to enable the button
         setState(() {
-          _distance = 0.0; // Will be calculated server-side if needed
-          _durationMinutes = 0;
-          _estimatedFare = 0.0;
+          _distance = null;
+          _durationMinutes = null;
+          _estimatedArrival = null;
+          _estimatedDelivery = null;
           _isCalculating = false;
         });
-        UIHelpers.showErrorToast('Could not calculate route distance');
+        UIHelpers.showErrorToast(
+            'Could not calculate route distance. Please try again.');
       }
     } catch (e) {
       debugPrint('Error calculating distance: $e');
@@ -735,50 +703,6 @@ class _BookingStartScreenState extends State<BookingStartScreen> {
                                         ),
                                       ),
                                     ],
-                                  ),
-                                ],
-                                // Fare Row
-                                if (_showFare && _estimatedFare != null) ...[
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          AppColors.primaryRed.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: AppColors.primaryRed
-                                            .withOpacity(0.3),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.payments,
-                                          color: AppColors.primaryRed,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'Est. Fare: P${_estimatedFare!.toStringAsFixed(0)}',
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontFamily: 'Bold',
-                                              color: AppColors.primaryRed,
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          '(10-Wheeler Wingvan)',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontFamily: 'Regular',
-                                            color: AppColors.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
                                   ),
                                 ],
                               ],
