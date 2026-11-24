@@ -1651,6 +1651,7 @@ class AdminRepository {
     required String bookingId,
     required String riderId,
     required String reason,
+    bool force = false,
   }) async {
     final resolvedBookingId = bookingId.trim();
     final resolvedRiderId = riderId.trim();
@@ -1700,20 +1701,25 @@ class AdminRepository {
 
     await _reconcileRiderActiveBookingPointer(resolvedRiderId);
 
-    final liveBookings = await _getLiveAssignedBookingsForRider(
-      resolvedRiderId,
-    );
-    final capacityConflict = RiderBookingCapacity.conflictMessage(
-      candidateBookingType: beforeBooking['bookingType'],
-      liveBookings: liveBookings,
-      excludingBookingId: resolvedBookingId,
-      referenceBuilder: (booking) => _coalesceString([
-        booking['tripNumber'],
-        booking['id'],
-      ], fallback: 'another trip'),
-    );
-    if (capacityConflict != null) {
-      throw StateError(capacityConflict);
+    // Capacity gate — `force` is the admin's explicit override for stuck
+    // situations (e.g. a stale live trip the rider can no longer finish in
+    // the app). The UI confirms the override before passing it here.
+    if (!force) {
+      final liveBookings = await _getLiveAssignedBookingsForRider(
+        resolvedRiderId,
+      );
+      final capacityConflict = RiderBookingCapacity.conflictMessage(
+        candidateBookingType: beforeBooking['bookingType'],
+        liveBookings: liveBookings,
+        excludingBookingId: resolvedBookingId,
+        referenceBuilder: (booking) => _coalesceString([
+          booking['tripNumber'],
+          booking['id'],
+        ], fallback: 'another trip'),
+      );
+      if (capacityConflict != null) {
+        throw StateError(capacityConflict);
+      }
     }
 
     final bookingRef = _db
@@ -1848,7 +1854,7 @@ class AdminRepository {
         realtimeBookingId: realtimeBookingId,
         candidateBookingId: resolvedBookingId,
       );
-      if (capacityConflict != null) {
+      if (capacityConflict != null && !force) {
         throw StateError(capacityConflict);
       }
 
@@ -2052,6 +2058,7 @@ class AdminRepository {
             'riderId': resolvedRiderId,
             'riderName': riderName,
             'wasReassigned': wasReassigned,
+            if (force) 'forcedCapacityOverride': true,
           },
         ),
       );

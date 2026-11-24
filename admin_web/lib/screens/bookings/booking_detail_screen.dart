@@ -32,10 +32,12 @@ class BookingDetailScreen extends StatefulWidget {
 class _RiderAssignmentDialogResult {
   final String riderId;
   final String reason;
+  final bool force;
 
   const _RiderAssignmentDialogResult({
     required this.riderId,
     required this.reason,
+    this.force = false,
   });
 }
 
@@ -300,6 +302,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         bookingId: widget.bookingId,
         riderId: selection.riderId,
         reason: selection.reason,
+        force: selection.force,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2470,9 +2473,36 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
       selectedRider,
       _activeBookingsByRider,
     );
+
+    // At-capacity units are no longer hard-locked: admins can force the
+    // assignment after an explicit confirmation. This is the escape hatch for
+    // riders stuck on a live trip they can no longer finish in the app.
     if (capacityConflict != null) {
-      setState(() => _formError = capacityConflict);
-      return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Force Assign At-Capacity Unit?'),
+          content: Text(
+            '$capacityConflict\n\nForce assigning keeps the stuck trip open. '
+            'Resolve or cancel that trip from its booking page as soon as '
+            'possible so the unit is not double-booked.\n\nContinue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminTheme.statusPending,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Force Assign'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
     }
 
     if (!mounted) return;
@@ -2482,6 +2512,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
       _RiderAssignmentDialogResult(
         riderId: resolvedRiderId,
         reason: trimmedReason,
+        force: capacityConflict != null,
       ),
     );
   }
@@ -2709,12 +2740,10 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
 
                                   return InkWell(
                                     borderRadius: BorderRadius.circular(16),
-                                    onTap: isAtCapacity
-                                        ? null
-                                        : () => setState(() {
-                                              _selectedRiderId = riderId;
-                                              _formError = null;
-                                            }),
+                                    onTap: () => setState(() {
+                                      _selectedRiderId = riderId;
+                                      _formError = null;
+                                    }),
                                     child: AnimatedContainer(
                                       duration:
                                           const Duration(milliseconds: 180),
@@ -2743,14 +2772,12 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                           Radio<String>(
                                             value: riderId,
                                             groupValue: visibleSelectedRiderId,
-                                            onChanged: isAtCapacity
-                                                ? null
-                                                : (value) {
-                                                    setState(() {
-                                                      _selectedRiderId = value;
-                                                      _formError = null;
-                                                    });
-                                                  },
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _selectedRiderId = value;
+                                                _formError = null;
+                                              });
+                                            },
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
@@ -2892,7 +2919,7 @@ class _AssignRiderDialogState extends State<_AssignRiderDialog> {
                                                 if (isAtCapacity) ...[
                                                   const SizedBox(height: 6),
                                                   Text(
-                                                    capacityConflict,
+                                                    '$capacityConflict You can still select this unit and confirm a forced assignment.',
                                                     style: GoogleFonts.inter(
                                                       fontSize: 10,
                                                       color: AdminTheme

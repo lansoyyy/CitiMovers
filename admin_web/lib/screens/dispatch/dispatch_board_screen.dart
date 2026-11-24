@@ -634,9 +634,28 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
 
   Future<bool> _assignBookingToRider(
     Map<String, dynamic> booking,
-    Map<String, dynamic> rider,
-  ) async {
+    Map<String, dynamic> rider, {
+    bool forceCapacity = false,
+  }) async {
     if (_isAssigning) return false;
+
+    // At-capacity units can still be force-assigned after an explicit
+    // confirmation — the escape hatch for riders stuck on a live trip they
+    // can no longer finish in the app.
+    if (forceCapacity) {
+      final confirmed = await ConfirmDialog.show(
+        context,
+        title: 'Force Assign At-Capacity Unit',
+        message:
+            'This unit still has active booking(s) and is at capacity. '
+            'Force assignment may overload the unit. Resolve or cancel the '
+            'stuck trip from its booking page as soon as possible.\n\n'
+            'Continue?',
+        confirmLabel: 'Force Assign',
+        confirmColor: AdminTheme.statusPending,
+      );
+      if (!confirmed || !mounted) return false;
+    }
 
     final reasonCtrl = TextEditingController(
       text: 'Dispatched from the admin dispatch board.',
@@ -717,6 +736,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
         bookingId: (booking['id'] ?? '').toString(),
         riderId: (rider['id'] ?? '').toString(),
         reason: reason,
+        force: forceCapacity,
       );
       if (!mounted) return false;
       _scrollUnitsPanelToRider((rider['id'] ?? '').toString());
@@ -1312,9 +1332,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                   rider,
                                 );
                                 final canAssign =
-                                    selectedBooking != null &&
-                                    !_isAssigning &&
-                                    capacityConflict == null;
+                                    selectedBooking != null && !_isAssigning;
                                 final activityColor = _statusColor(
                                   (activityBooking?['status'] ?? '').toString(),
                                   isOnline: rider['isOnline'] == true,
@@ -1486,6 +1504,8 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                               ? () => _assignBookingToRider(
                                                   selectedBooking,
                                                   rider,
+                                                  forceCapacity:
+                                                      capacityConflict != null,
                                                 )
                                               : null,
                                           icon: const Icon(
@@ -1497,7 +1517,7 @@ class _DispatchBoardScreenState extends State<DispatchBoardScreen> {
                                                 : _isAssigning
                                                 ? 'Assigning...'
                                                 : capacityConflict != null
-                                                ? 'Unit At Capacity'
+                                                ? 'Force Assign (At Capacity)'
                                                 : 'Assign to Trip',
                                           ),
                                         ),
